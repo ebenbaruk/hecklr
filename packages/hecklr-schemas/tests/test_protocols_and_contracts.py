@@ -261,7 +261,7 @@ def test_llm_request_validates_its_contract() -> None:
 def test_json_schemas_cover_every_authored_file(tmp_path: Path) -> None:
     schemas = authoring_json_schemas()
 
-    assert set(schemas) == {"hecklr-config", "scenario", "persona", "world"}
+    assert set(schemas) == {"hecklr-config", "scenario", "persona", "world", "conversation"}
     scenario = schemas["scenario"]
     assert scenario["$id"] == "https://hecklr.dev/schemas/scenario.schema.json"
     assert scenario["additionalProperties"] is False
@@ -269,6 +269,7 @@ def test_json_schemas_cover_every_authored_file(tmp_path: Path) -> None:
 
     paths = write_json_schemas(tmp_path / "schemas")
     assert sorted(p.name for p in paths) == [
+        "conversation.schema.json",
         "hecklr-config.schema.json",
         "persona.schema.json",
         "scenario.schema.json",

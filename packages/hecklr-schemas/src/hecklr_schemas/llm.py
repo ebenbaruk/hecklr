@@ -56,6 +56,15 @@ class LLMResponse(FrozenModel):
     cost_usd: Annotated[Decimal, Field(ge=0)] = Decimal(0)
     """Zero when served from the response cache."""
     cached: bool = False
+    truncated: bool = False
+    """The reply stopped at ``max_tokens`` and is cut off."""
+
+
+class ModelPrice(FrozenModel):
+    """Price of one model in USD per million tokens."""
+
+    input_per_mtok: Annotated[Decimal, Field(ge=0)]
+    output_per_mtok: Annotated[Decimal, Field(ge=0)]
 
 
 @runtime_checkable

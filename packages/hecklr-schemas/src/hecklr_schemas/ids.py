@@ -21,6 +21,8 @@ GradeId = NewType("GradeId", str)
 ComparisonId = NewType("ComparisonId", str)
 ClusterId = NewType("ClusterId", str)
 PatchId = NewType("PatchId", str)
+LabelId = NewType("LabelId", str)
+ProposalId = NewType("ProposalId", str)
 
 # Field types that validate the ULID text form on load.
 RunIdField = Annotated[RunId, _UlidStr]
@@ -30,6 +32,8 @@ GradeIdField = Annotated[GradeId, _UlidStr]
 ComparisonIdField = Annotated[ComparisonId, _UlidStr]
 ClusterIdField = Annotated[ClusterId, _UlidStr]
 PatchIdField = Annotated[PatchId, _UlidStr]
+LabelIdField = Annotated[LabelId, _UlidStr]
+ProposalIdField = Annotated[ProposalId, _UlidStr]
 
 
 def new_id() -> str:

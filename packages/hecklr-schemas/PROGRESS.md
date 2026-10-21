@@ -20,7 +20,21 @@ Spec: `docs/SPEC.md` → "Core data model", "Agent adapters", "Graders", "Config
   `LLMProvider`; data: `SessionContext`, `AgentChunk`, `SessionSummary`, `TimedFrame`,
   `EmailMessage`, `GradeContext`, `LLMRequest`, `LLMResponse`.
 - JSON Schema export for authored files (`authoring_json_schemas`, `write_json_schemas`).
-- Tests: 106, including Hypothesis JSON round trips for every event payload, trials, grades and
+- Review round (ADR 0006):
+  - Trial-loop Protocols: `EventSink`, `TrialBrief`, `CustomerSimulator` with `SimTurn`/`SimEnd`
+    and `SimulatorFactory`, `WorldSandbox` with `WorldSession`, and `ChannelDriver` with
+    `DriverResult`.
+  - Timing fields: `end_ms`, `latency_ms` and `audio_span_id` on utterances; `reason` on
+    silences; `reaction_ms` on interrupts. Each `VoiceMetric` documents how it is derived.
+  - `Estimate`/`MetricSummary`; `Comparison` now carries estimates plus `look` and `alpha_spent`.
+  - `Run` gains `baseline_id` and `adaptive`.
+  - `JudgeVote` votes on `Grade`. Only `ok` grades can pass.
+  - New records: `HumanLabel`, `ScenarioProposal`, and `Conversation` (native JSONL).
+  - `FailureCluster` validates that members match `source`, and exemplars are split by kind.
+  - `ToolFault` rejects parameters that belong to other fault kinds.
+  - `AgentConfig.tool_mode` (sandbox or observed) and `ModelsConfig.prices`.
+  - `LLMResponse.truncated`.
+- Tests: 135, including Hypothesis JSON round trips for every event payload, trials, grades and
   runs; line and branch coverage 100%.
 
 ## Next
@@ -32,6 +46,9 @@ Spec: `docs/SPEC.md` → "Core data model", "Agent adapters", "Graders", "Config
 - YAML loaders must keep ISO timestamps as strings (e.g. a `SafeLoader` without the timestamp
   resolver); `facts` and seed records are JSON values, and PyYAML's default turns `2026-10-23` into
   a `date`.
+- Suite loaders must check that `mode: adversarial` scenarios only cross personas that have an
+  `adversarial` strategy (a scenario cannot see persona definitions).
+- `WorldSnapshot` record keys are strings: integer key `1` is `world.orders["1"]`.
 - `datetime` fields are wall-clock metadata and must be timezone-aware; durations and event times
   always come from the harness clock in integer milliseconds.
 

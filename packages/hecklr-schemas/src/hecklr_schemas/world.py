@@ -125,9 +125,9 @@ class FaultKind(StrEnum):
     """Failure a scenario injects into a world tool to test agent resilience."""
 
     TIMEOUT = "timeout"
-    """The call never answers; the agent's own timeout must fire."""
+    """The call is held until the trial ends; the agent's own timeout must fire."""
     HTTP_500 = "http_500"
-    """The call fails with a server error."""
+    """The call fails with HTTP status 500 (an MCP tool error on the MCP server)."""
     SLOW = "slow"
     """The call succeeds after ``delay_ms``."""
     STALE_DATA = "stale_data"
@@ -148,17 +148,21 @@ class ToolFault(FrozenModel):
 
     @model_validator(mode="after")
     def _kind_has_its_parameters(self) -> Self:
-        if self.kind is FaultKind.SLOW and self.delay_ms is None:
-            raise ValueError("a 'slow' fault needs delay_ms")
-        if self.kind is FaultKind.STALE_DATA and not self.patch:
-            raise ValueError("a 'stale_data' fault needs a non-empty patch")
+        if (self.kind is FaultKind.SLOW) != (self.delay_ms is not None):
+            raise ValueError("delay_ms is required for, and only allowed in, a 'slow' fault")
+        if (self.kind is FaultKind.STALE_DATA) != bool(self.patch):
+            raise ValueError("a non-empty patch is required for, and only allowed in, 'stale_data'")
         return self
 
 
 class WorldSnapshot(FrozenModel):
-    """Full world state at one instant: collection -> record key -> record."""
+    """Full world state at one instant: collection -> record key -> record.
+
+    Record keys are always strings (JSON object keys), so a record whose key field is the integer
+    ``1`` is ``collections["orders"]["1"]``; state expressions index with the string form.
+    """
 
     world_id: Identifier
     taken_at_ms: NonNegativeMs
-    """Harness clock time of the snapshot."""
+    """Trial clock time of the snapshot (ms since the trial started, like ``Event.t_ms``)."""
     collections: dict[str, dict[str, Record]]

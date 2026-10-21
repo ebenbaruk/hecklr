@@ -74,7 +74,7 @@ class TimedFrame:
     sample_index: int
     """Position of the first sample on the receive stream; the sample-accurate clock."""
     t_ms: int
-    """Harness clock time when the frame arrived."""
+    """Trial clock time (ms since the trial started, like ``Event.t_ms``) when the frame arrived."""
 
     @property
     def duration_ms(self) -> float:

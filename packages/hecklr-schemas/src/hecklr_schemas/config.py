@@ -17,6 +17,7 @@ from hecklr_schemas.common import (
     SchemaVersion,
 )
 from hecklr_schemas.events import EmailAddress
+from hecklr_schemas.llm import ModelPrice
 from hecklr_schemas.world import EntryPoint
 
 EnvVarName = Annotated[str, Field(pattern=r"^[A-Z_][A-Z0-9_]*$")]
@@ -173,6 +174,10 @@ class AgentConfig(FrozenModel):
     adapters: AgentAdapters
     editable: list[str] = Field(default_factory=list)
     """Files the fixer may change (system prompt, tool descriptions); nothing else."""
+    tool_mode: Literal["sandbox", "observed"] = "sandbox"
+    """``sandbox``: the agent's tools call the world sandbox. ``observed``: the agent keeps its own
+    backend and tool calls are read from the OpenTelemetry GenAI spans it emits, joined to trials
+    by the ``X-Hecklr-Trial-Id`` header."""
 
     @model_validator(mode="after")
     def _has_an_adapter(self) -> Self:
@@ -215,6 +220,9 @@ class ModelsConfig(FrozenModel):
     tts: ModelName | None = None
     providers: dict[Identifier, ProviderSettings] = Field(default_factory=dict)
     """Per-prefix overrides, e.g. ``openai-compatible: {base_url: http://gpu:8000/v1}``."""
+    prices: dict[ModelName, ModelPrice] = Field(default_factory=dict)
+    """Prices for models missing from Hecklr's table, or overrides of it. A paid model without a
+    known price is refused rather than counted as free; declare a self-hosted model at 0."""
 
 
 class StatsConfig(FrozenModel):

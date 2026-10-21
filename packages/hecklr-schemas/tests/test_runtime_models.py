@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from hypothesis import given, settings
@@ -28,6 +28,7 @@ from hecklr_schemas import (
     GradeId,
     HandoffPayload,
     InterruptPayload,
+    JudgeVote,
     Patch,
     PatchStatus,
     Run,
@@ -90,8 +91,12 @@ def audio_spans(draw: st.DrawFn) -> AudioSpanPayload:
 @st.composite
 def silences(draw: st.DrawFn) -> SilencePayload:
     start, end = draw(spans())
+    planned = draw(st.booleans())
     return SilencePayload(
-        start_ms=start, end_ms=end, attributed_to=draw(st.sampled_from([None, "user", "agent"]))
+        start_ms=start,
+        end_ms=end,
+        attributed_to="user" if planned else draw(st.sampled_from([None, "user", "agent"])),
+        reason=draw(st.sampled_from(["hesitation", "re_engagement"])) if planned else "turn_gap",
     )
 
 
@@ -127,8 +132,10 @@ payloads = st.one_of(
         UtterancePayload,
         text=texts,
         turn=st.integers(0, 500),
+        latency_ms=st.none() | ms,
         interrupted=st.booleans(),
         asr_confidence=st.none() | st.floats(0, 1),
+        audio_span_id=st.none() | ulids.map(EventId),
     ),
     audio_spans(),
     st.builds(
@@ -143,6 +150,7 @@ payloads = st.one_of(
         InterruptPayload,
         target=st.sampled_from(["user", "agent"]),
         style=st.sampled_from(["barge_in", "backchannel"]),
+        reaction_ms=st.none() | ms,
     ),
     silences(),
     st.builds(EmailPayload, message=emails),
@@ -211,6 +219,9 @@ grades = st.builds(
         st.builds(EventRef, trial_id=ulids.map(TrialId), event_id=ulids.map(EventId)), max_size=3
     ),
     judge_model=st.none() | st.just("anthropic/claude-sonnet-5-5"),
+    votes=st.lists(
+        st.builds(JudgeVote, passed=st.booleans(), rationale=st.none() | texts), max_size=3
+    ),
     cost_usd=money,
 )
 
@@ -232,6 +243,8 @@ runs = st.builds(
     config_hash=st.from_regex(r"[0-9a-f]{64}", fullmatch=True),
     seed=st.integers(0, 2**32),
     suite=st.none() | idents,
+    baseline_id=st.none() | ulids.map(RunId),
+    adaptive=st.booleans(),
     matrix=st.lists(specs, max_size=5),
     budget=st.builds(Budget, usd=st.none() | money, concurrency=st.integers(1, 256)),
     counts=st.builds(
@@ -328,14 +341,15 @@ def test_tool_result_is_result_xor_error() -> None:
     assert ToolResultPayload(call_id="c", tool="t", result=None, latency_ms=3).ok
 
 
-def test_grade_in_error_status_cannot_pass() -> None:
-    with pytest.raises(ValidationError, match="cannot pass"):
+@pytest.mark.parametrize("status", ["skipped", "error"])
+def test_only_ok_grades_can_pass(status: Literal["skipped", "error"]) -> None:
+    with pytest.raises(ValidationError, match=f"{status} status cannot pass"):
         Grade(
             id=GradeId(new_id()),
             trial_id=TrialId(new_id()),
             grader="judge:resolved",
             grader_version="1",
-            status="error",
+            status=status,
             value=False,
             passed=True,
         )
@@ -353,17 +367,19 @@ def test_grade_value_must_be_finite() -> None:
         )
 
 
+def _estimate(value: float, low: float, high: float, method: str) -> dict[str, Any]:
+    return {"value": value, "ci_low": low, "ci_high": high, "n": 40, "method": method}
+
+
 def _comparison(**overrides: Any) -> dict[str, Any]:
     data: dict[str, Any] = {
         "id": ComparisonId(new_id()),
         "baseline": RunId(new_id()),
         "candidate": RunId(new_id()),
         "metric": "pass_rate",
-        "baseline_value": 0.9,
-        "candidate_value": 0.83,
-        "delta": -0.07,
-        "ci_low": -0.11,
-        "ci_high": -0.03,
+        "baseline_estimate": _estimate(0.9, 0.85, 0.94, "cluster_bootstrap"),
+        "candidate_estimate": _estimate(0.83, 0.77, 0.88, "cluster_bootstrap"),
+        "delta": _estimate(-0.07, -0.11, -0.03, "paired_cluster_bootstrap"),
         "p_value": 0.004,
         "q_value": 0.01,
         "verdict": Verdict.REGRESSION,
@@ -382,13 +398,16 @@ def test_comparison_round_trips_and_defaults_to_suite_slice() -> None:
     comparison = Comparison.model_validate(_comparison())
 
     assert comparison.slice == {}
-    assert comparison.confidence == 0.95
+    assert comparison.delta.confidence == 0.95
+    assert (comparison.look, comparison.alpha_spent) == (1, None)
     _round_trips(comparison)
 
 
 def test_comparison_interval_must_be_ordered() -> None:
     with pytest.raises(ValidationError, match="exceeds ci_high"):
-        Comparison.model_validate(_comparison(ci_low=0.1, ci_high=-0.1))
+        Comparison.model_validate(
+            _comparison(delta=_estimate(-0.07, 0.1, -0.1, "paired_cluster_bootstrap"))
+        )
 
 
 def test_trials_needed_only_for_inconclusive() -> None:
@@ -426,17 +445,17 @@ def test_run_counts_report_finished_trials() -> None:
     assert counts.finished == 9
 
 
-def test_failure_cluster_size_counts_both_sources() -> None:
+def test_failure_cluster_size_counts_its_members() -> None:
     cluster = FailureCluster(
         id=new_id(),  # type: ignore[arg-type]  # pydantic validates the str at runtime
         label="fails when the customer gives two addresses",
         source="production",
-        trial_ids=[TrialId(new_id())],
         conversation_ids=["prod-1", "prod-2"],
+        exemplar_conversation_ids=["prod-2"],
         created_at=datetime(2026, 10, 21, tzinfo=UTC),
     )
 
-    assert cluster.size == 3
+    assert cluster.size == 2
     _round_trips(cluster)
 
 
@@ -449,7 +468,14 @@ def test_patch_round_trips_with_validation_results() -> None:
         diff="--- a/prompts/system.md\n+++ b/prompts/system.md\n@@ -1 +1 @@\n-a\n+b\n",
         rationale="Confirm the slot before booking.",
         status=PatchStatus.ACCEPTED,
-        targeted=[Comparison.model_validate(_comparison(verdict="improvement", delta=0.1))],
+        targeted=[
+            Comparison.model_validate(
+                _comparison(
+                    verdict="improvement",
+                    delta=_estimate(0.1, 0.05, 0.15, "paired_cluster_bootstrap"),
+                )
+            )
+        ],
         cost_usd=Decimal("0.42"),
         created_at=datetime(2026, 10, 21, tzinfo=UTC),
     )

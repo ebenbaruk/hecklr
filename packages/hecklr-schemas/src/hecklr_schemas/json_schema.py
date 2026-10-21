@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from hecklr_schemas.config import HecklrConfig
 from hecklr_schemas.persona import Persona
 from hecklr_schemas.scenario import Scenario
+from hecklr_schemas.transcripts import Conversation
 from hecklr_schemas.world import World
 
 AUTHORING_MODELS: Final[dict[str, type[BaseModel]]] = {
@@ -16,8 +17,9 @@ AUTHORING_MODELS: Final[dict[str, type[BaseModel]]] = {
     "scenario": Scenario,
     "persona": Persona,
     "world": World,
+    "conversation": Conversation,
 }
-"""Schema name -> model for every YAML file a user writes."""
+"""Schema name -> model for every file a user writes: YAML, plus one JSONL line per conversation."""
 
 _SCHEMA_URI_BASE = "https://hecklr.dev/schemas"
 

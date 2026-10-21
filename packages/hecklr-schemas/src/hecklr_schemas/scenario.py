@@ -6,6 +6,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, JsonValue, model_validator
 
 from hecklr_schemas.common import Channel, FrozenModel, Identifier, ModelName, SchemaVersion
+from hecklr_schemas.ids import ClusterIdField
 from hecklr_schemas.world import ToolFault
 
 Speaker = Literal["user", "agent"]
@@ -127,20 +128,25 @@ class LatencyP95BelowCriterion(FrozenModel):
 
 
 class VoiceMetric(StrEnum):
-    """Voice turn-taking metrics measured on the harness clock."""
+    """Voice turn-taking metrics measured on the harness clock, each derived from trial events."""
 
     RESPONSE_LATENCY = "response_latency"
-    """End of caller speech to first agent audio frame, in ms."""
+    """End of caller speech to first agent audio frame, in ms: ``latency_ms`` of agent
+    ``utterance`` events."""
     BARGE_IN_REACTION = "barge_in_reaction"
-    """Caller starts speaking over the agent to agent audio stopping, in ms."""
+    """Caller starts speaking over the agent to agent audio stopping, in ms: ``reaction_ms`` of
+    user ``interrupt`` events with style ``barge_in`` (``None`` counts as never stopping)."""
     FALSE_INTERRUPTIONS = "false_interruptions"
-    """Agent starts speaking during a caller hesitation, per 100 caller turns."""
+    """Agent ``audio_span`` events (speech) that start inside a ``silence`` with reason
+    ``hesitation``, per 100 user ``utterance`` events."""
     BACKCHANNEL_ROBUSTNESS = "backchannel_robustness"
-    """Share of caller backchannels that wrongly stop the agent, 0 to 1."""
+    """Share of user ``interrupt`` events with style ``backchannel`` whose ``reaction_ms`` is set,
+    i.e. the agent wrongly stopped; 0 to 1."""
     DEAD_AIR = "dead_air"
-    """Silences over 2 s attributable to the agent, per call."""
+    """``silence`` events attributed to the agent with reason ``turn_gap`` lasting over 2 s, per
+    call."""
     TALK_OVER_RATIO = "talk_over_ratio"
-    """Seconds of overlapping speech per minute."""
+    """Seconds of overlap between user and agent speech ``audio_span`` events, per minute."""
 
 
 class VoiceMetricCriterion(FrozenModel):
@@ -241,7 +247,8 @@ class ScenarioSource(FrozenModel):
 
     kind: Literal["authored", "replay", "mined", "generated"] = "authored"
     conversation_id: str | None = None
-    cluster_id: str | None = None
+    """``Conversation.id`` of the transcript a replay or mined scenario came from."""
+    cluster_id: ClusterIdField | None = None
     note: str | None = None
 
 
@@ -262,6 +269,8 @@ class Scenario(FrozenModel):
     success: Annotated[list[SuccessCriterion], Field(min_length=1)]
     limits: ScenarioLimits = ScenarioLimits()
     mode: SimulationMode = SimulationMode.GUIDED
+    """``adversarial`` needs personas with an ``adversarial`` strategy; the suite loader checks
+    this, since a scenario alone does not know its personas' definitions."""
     user_turns: list[str] | None = None
     """Required for, and only allowed in, ``scripted`` mode."""
     faults: list[ToolFault] = Field(default_factory=list)

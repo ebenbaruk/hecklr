@@ -65,15 +65,28 @@ class EmailMessage(FrozenModel):
 
 
 class UtterancePayload(FrozenModel):
-    """A complete message or spoken turn (for voice, the ASR transcript or the TTS text)."""
+    """A complete message or spoken turn (for voice, the ASR transcript or the TTS text).
+
+    Timing, all on the trial clock: ``Event.t_ms`` is when the turn started (user: message sent or
+    speech onset; agent: first token or first audio frame) and ``end_ms`` when it finished (last
+    token or end of speech). For agent turns ``latency_ms`` runs from the end of the user turn it
+    answers to ``Event.t_ms``. Hence, for chat, time to first token is ``latency_ms`` and time to
+    last token is ``latency_ms + end_ms - t_ms``; for voice, ``latency_ms`` is the response latency.
+    """
 
     kind: Literal["utterance"] = "utterance"
     text: str
     turn: Annotated[int, Field(ge=0)]
     """Index of the turn within the trial, counting both parties."""
+    end_ms: NonNegativeMs | None = None
+    """When the turn finished; never before ``Event.t_ms``."""
+    latency_ms: NonNegativeMs | None = None
+    """Agent turns only: end of the preceding user turn to the start of this one."""
     interrupted: bool = False
     """The turn was cut off by the other party."""
     asr_confidence: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
+    audio_span_id: EventIdField | None = None
+    """Voice only: the ``audio_span`` event this transcript was recognized from or spoken as."""
 
 
 class AudioSpanPayload(FrozenModel):
@@ -138,6 +151,22 @@ class InterruptPayload(FrozenModel):
     target: Party
     style: Literal["barge_in", "backchannel"] = "barge_in"
     """A backchannel ("mm-hm") is overlap the agent must not treat as an interruption."""
+    reaction_ms: NonNegativeMs | None = None
+    """From ``Event.t_ms`` until ``target`` stopped speaking; ``None`` if it kept talking.
+
+    For a barge-in this is the barge-in reaction time; for a backchannel any value means the
+    target wrongly stopped.
+    """
+
+
+SilenceReason = Literal["turn_gap", "hesitation", "re_engagement"]
+"""Why nobody spoke.
+
+- ``turn_gap``: an ordinary pause between or before turns (dead air when long and the agent's).
+- ``hesitation``: a caller pause planned mid-utterance to test premature endpointing; agent speech
+  starting inside one is a false interruption.
+- ``re_engagement``: a caller silence of 5-10 s planned to test the agent's re-engagement prompt.
+"""
 
 
 class SilencePayload(FrozenModel):
@@ -148,11 +177,14 @@ class SilencePayload(FrozenModel):
     end_ms: NonNegativeMs
     attributed_to: Party | None = None
     """Whose turn it was to speak; ``None`` if ambiguous."""
+    reason: SilenceReason = "turn_gap"
 
     @model_validator(mode="after")
-    def _ends_after_start(self) -> Self:
+    def _is_consistent(self) -> Self:
         if self.end_ms < self.start_ms:
             raise ValueError(f"end_ms {self.end_ms} precedes start_ms {self.start_ms}")
+        if self.reason != "turn_gap" and self.attributed_to != "user":
+            raise ValueError(f"a {self.reason} silence is the caller's: attributed_to must be user")
         return self
 
 
@@ -214,9 +246,26 @@ class Event(FrozenModel):
     seq: Annotated[int, Field(ge=0)]
     """Position in the trial's event log; orders events that share a millisecond."""
     t_ms: NonNegativeMs
-    """Harness monotonic clock, milliseconds since the trial started."""
+    """Harness monotonic clock, milliseconds since the trial started.
+
+    Every ``*_ms`` instant in a trial (payload spans, world snapshots, audio frames) shares this
+    origin. ``seq`` is append order, which can differ from time order when an event is recorded
+    after the fact (an agent reply is logged once complete, at the time it started): sort by
+    ``(t_ms, seq)`` for a timeline.
+    """
     actor: Actor
     payload: EventPayload
+
+    @model_validator(mode="after")
+    def _utterance_ends_after_it_starts(self) -> Self:
+        payload = self.payload
+        if (
+            isinstance(payload, UtterancePayload)
+            and payload.end_ms is not None
+            and payload.end_ms < self.t_ms
+        ):
+            raise ValueError(f"utterance end_ms {payload.end_ms} precedes t_ms {self.t_ms}")
+        return self
 
     @property
     def kind(self) -> EventKind:

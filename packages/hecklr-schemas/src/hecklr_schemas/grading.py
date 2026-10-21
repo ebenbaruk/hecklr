@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+from hecklr_schemas.common import ModelName
 from hecklr_schemas.events import Event
 from hecklr_schemas.llm import LLMProvider
 from hecklr_schemas.persona import Persona
@@ -30,7 +31,7 @@ class GradeContext:
     criterion_index: int | None = None
     llm: LLMProvider | None = field(default=None, repr=False)
     """Model access for judges; ``None`` for deterministic graders."""
-    judge_model: str | None = None
+    judge_model: ModelName | None = None
     """Default ``provider/model`` for judges, from ``hecklr.yaml``."""
 
 
