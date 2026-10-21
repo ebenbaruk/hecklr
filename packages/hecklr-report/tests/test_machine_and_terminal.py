@@ -82,6 +82,25 @@ def test_junit_marks_unanalyzable_scenarios_as_errors(
     assert root.get("errors") == "1"
 
 
+def test_junit_drops_characters_xml_cannot_carry(
+    regression: tuple[Analysis, RunResults],
+) -> None:
+    analysis = regression[0]
+    failing = next(s for s in analysis.scenarios if s.pass_rate and s.pass_rate.value < 0.5)
+    dirty = failing.model_copy(
+        update={"cause": FailureCause(cause="judge:x\x01", rationale="bad\x00 \x08byte\x1f")}
+    )
+    scenarios = [dirty if s is failing else s for s in analysis.scenarios]
+
+    junit = render_junit(analysis.model_copy(update={"scenarios": scenarios}))
+    root = ET.fromstring(junit)  # noqa: S314 - our own freshly rendered XML
+
+    failure = root.find(f"testsuite/testcase[@name='{failing.scenario_id}']/failure")
+    assert failure is not None
+    assert failure.text == "bad\ufffd \ufffdbyte\ufffd"
+    assert "judge:x\ufffd" in (failure.get("message") or "")
+
+
 def record(analysis: Analysis) -> str:
     console = Console(record=True, width=240, color_system=None)
     render_terminal(analysis, console)

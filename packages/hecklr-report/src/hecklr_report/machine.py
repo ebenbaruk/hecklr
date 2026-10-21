@@ -1,5 +1,6 @@
 """Machine-readable reports: JSON (the full ``Analysis``) and JUnit XML (one test per scenario)."""
 
+import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from typing import Final
@@ -10,6 +11,11 @@ from hecklr_report.model import Analysis, ScenarioResult
 JUNIT_PASS_THRESHOLD: Final = 0.5
 """A scenario's test case fails when most of its trials failed: the same majority rule that
 defines a flip, so a red test case and a flipped scenario mean the same thing."""
+
+
+_XML_FORBIDDEN = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff\ud800-\udfff]")
+"""Characters XML 1.0 cannot carry at all; ElementTree writes them anyway and CI parsers reject
+the file, so model text loses them before it goes in."""
 
 
 def render_json(analysis: Analysis) -> str:
@@ -97,7 +103,11 @@ def _testcase(result: ScenarioResult, classname: str, seconds: float) -> ET.Elem
     if result.cause is not None:
         message += f"; main cause: {result.cause.cause}"
     failure = ET.SubElement(
-        case, "failure", {"message": message, "type": result.flip or "failing_scenario"}
+        case, "failure", {"message": _xml_text(message), "type": result.flip or "failing_scenario"}
     )
-    failure.text = (result.cause.rationale if result.cause else None) or message
+    failure.text = _xml_text((result.cause.rationale if result.cause else None) or message)
     return case
+
+
+def _xml_text(text: str) -> str:
+    return _XML_FORBIDDEN.sub("\N{REPLACEMENT CHARACTER}", text)
