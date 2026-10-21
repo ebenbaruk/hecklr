@@ -8,6 +8,12 @@ license = "Apache-2.0"
 authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
     "hecklr-schemas",
+    "hecklr-core",
+    "hecklr-grade",
+    "hecklr-stats",
+    "jinja2>=3.1.6",
+    "numpy>=2.3",
+    "rich>=14.0",
 ]
 
 [build-system]
