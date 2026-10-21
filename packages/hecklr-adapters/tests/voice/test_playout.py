@@ -1,10 +1,12 @@
 """The playout timeline: real-time release, placement by arrival, clear, marks, end of stream."""
 
+import anyio
 import numpy as np
 import pytest
 
+from hecklr_adapters import AgentError
 from hecklr_adapters.voice.audio import FRAME_SAMPLES
-from hecklr_adapters.voice.playout import Playout, paced_frames
+from hecklr_adapters.voice.playout import Playout, Receiver
 from hecklr_schemas import TimedFrame
 
 
@@ -143,21 +145,58 @@ def test_end_releases_a_partial_frame_without_waiting() -> None:
 
 
 @pytest.mark.anyio
-async def test_paced_frames_reads_until_the_stream_ends_then_plays_out() -> None:
+async def test_receiver_reads_in_the_background_and_plays_out_after_the_end() -> None:
     playout = Playout()
-    sent = [audio(60), None]
-    waits: list[float | None] = []
+    sent = [audio(60)]
 
-    async def receive(timeout_s: float | None) -> bool:
-        waits.append(timeout_s)
-        item = sent.pop(0) if sent else None
-        if item is None:
+    async def read() -> bool:
+        if not sent:
             return False
-        playout.write(item)
+        playout.write(sent.pop())
         return True
 
-    frames = [frame async for frame in paced_frames(playout, receive)]
-    assert [frame.sample_index for frame in frames] == [
-        frames[0].sample_index + k * FRAME_SAMPLES for k in range(3)
-    ]
-    assert waits[0] is None  # nothing queued: wait for the agent without a deadline
+    receiver = Receiver(playout, read)
+    receiver.start()
+    frames = [frame async for frame in receiver.frames()]
+    await receiver.stop()
+    start = frames[0].sample_index
+    assert [frame.sample_index for frame in frames] == [start + k * FRAME_SAMPLES for k in range(3)]
+
+
+@pytest.mark.anyio
+async def test_receiver_raises_a_transport_failure_after_the_audio_before_it() -> None:
+    playout = Playout()
+    reads = 0
+
+    async def read() -> bool:
+        nonlocal reads
+        reads += 1
+        if reads > 1:
+            raise AgentError("connection reset")
+        playout.write(audio(20))
+        return True
+
+    receiver = Receiver(playout, read)
+    receiver.start()
+    heard: list[TimedFrame] = []
+
+    async def listen() -> None:
+        async for frame in receiver.frames():
+            heard.append(frame)
+
+    with pytest.raises(AgentError, match="reset"):
+        await listen()
+    assert len(heard) == 1
+    await receiver.stop()
+
+
+@pytest.mark.anyio
+async def test_stopping_a_receiver_cancels_its_read() -> None:
+    async def read() -> bool:
+        await anyio.sleep(10)
+        return True
+
+    receiver = Receiver(Playout(), read)
+    receiver.start()
+    await receiver.stop()
+    await receiver.stop()

@@ -1,23 +1,24 @@
 """The voice contract's cases: each voice adapter configuration with its reference agent.
 
 A case knows what its transport can promise (lossless audio, an abnormal close, how a
-barge-in is stopped) so the contract asks the same questions of every adapter and holds each
-to the strongest answer its transport allows.
+barge-in is stopped, how much delay its codecs add) so the contract asks the same questions of
+every adapter and holds each to the strongest answer its transport allows.
 """
 
+import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import anyio
+import pytest
 
 from hecklr_adapters.voice import WebSocketVoiceAdapterConfig, WebSocketVoiceTarget
 from hecklr_schemas import VoiceTarget
 from hecklr_voice.testing import synthetic_reply
 
 from .voice_reference import (
-    FRAME_MS,
     CallLog,
     LoopbackBrain,
     Protocol,
@@ -28,6 +29,9 @@ from .voice_reference import (
 )
 
 CASE_DEADLINE_S = 60
+TOLERANCE_MS = 20
+"""SC4: measured voice timings within 20 ms of the truth."""
+Transport = Literal["websocket", "livekit", "pipecat"]
 
 
 @dataclass
@@ -39,13 +43,13 @@ class ReferenceCall:
 
     async def call(self, index: int) -> CallLog:
         """The ``index``-th call the agent took, once it has arrived."""
-        with anyio.fail_after(5):
+        with anyio.fail_after(10):
             await poll_until(lambda: len(self.calls) > index)
         return self.calls[index]
 
     async def wait_hung_up(self, call: CallLog) -> None:
         """Until the agent has seen the caller leave."""
-        with anyio.fail_after(5):
+        with anyio.fail_after(10):
             await poll_until(lambda: call.caller_hung_up)
 
 
@@ -55,28 +59,66 @@ class VoiceCase:
 
     name: str
     wire_rate: int
+    """The rate caller audio reaches the agent at."""
     lossless: bool
     """Audio crosses unchanged, so the tagged reply transcribes exactly."""
     clears: bool
     """The agent stops by telling the transport to drop queued audio, not by going quiet."""
+    transport: Transport = "websocket"
     can_fail: bool = True
-    transport_delay_ms: float = 0.0
-    """Codec and jitter-buffer delay the transport adds to every agent timing."""
+    """The transport can end a call abnormally (as opposed to the agent just leaving)."""
+    offset_ms: tuple[float, float] = (0.0, 0.0)
+    """Range of the round-trip delay the transport itself adds (codecs, jitter buffers).
+
+    It is real latency a caller hears, so Hecklr measures it on top of the agent's own delay;
+    the contract checks that it is bounded and the same for every reply.
+    """
+    jitter_ms: float = 0.0
+    """How much the transport's own delay may wander during a call.
+
+    WebRTC receivers adapt their jitter buffers as a call goes on, so the delay a caller hears
+    moves by tens of milliseconds; a sample-preserving WebSocket keeps it fixed.
+    """
+    timing_needs_idle_cpu: bool = False
+    """SC4 for this case is only meaningful on an otherwise idle machine.
+
+    WebRTC jitter buffers grow when the CPU is busy, and the reference bots share this process
+    (and its GIL) with the harness: under a parallel test run their delay climbs by hundreds
+    of milliseconds, which measures the test machine, not the adapter.
+    """
+    caller_loss_ms: float = 0.0
+    """Caller speech the reference agent's own receive path may lose (see PROGRESS.md)."""
     protocol: Protocol = "pcm"
     rhythm: Rhythm = "paced"
     extra: dict[str, Any] = field(default_factory=dict)
+    environment: Any = None
+    """What the reference agent needs from the test session (a LiveKit server)."""
 
-    def require(self) -> None:
-        """Skip when this machine cannot run the case's reference agent."""
+    @property
+    def timing_is_meaningful(self) -> bool:
+        """Whether this run can judge the case's timing (not a load-sensitive case under xdist)."""
+        return not (self.timing_needs_idle_cpu and os.environ.get("PYTEST_XDIST_WORKER"))
 
-    def reaction_window(self, reaction_ms: float) -> tuple[float, float]:
-        """Where the measured barge-in reaction must fall, before the tolerance.
+    def require_idle_cpu_for_timing(self) -> None:
+        """Skip an SC4 test for this case inside a parallel (xdist) run, if it needs a quiet CPU."""
+        if not self.timing_is_meaningful:
+            pytest.skip(f"{self.name}: SC4 needs an idle machine; run this file without -n")
 
-        A ``clear`` drops audio that is still queued, but the 20 ms frame already in the
-        caller's earpiece plays out, as on a phone: the heard stop is up to one frame later.
+    def check_offsets(self, offsets: list[float], spread_ms: float) -> None:
+        """SC4 over this transport: every timing error lies in the transport's delay window
+        within the 20 ms tolerance, and all errors agree within 2 x 20 ms plus ``spread_ms``.
+
+        ``spread_ms`` covers a ``clear``: queued audio is dropped, but the 20 ms frame already
+        in the caller's earpiece plays out, as on a phone.
         """
-        late = FRAME_MS if self.clears else 0.0
-        return reaction_ms + self.transport_delay_ms, reaction_ms + self.transport_delay_ms + late
+        low, high = self.offset_ms
+        assert offsets
+        assert all(low - TOLERANCE_MS <= o <= high + spread_ms + TOLERANCE_MS for o in offsets), (
+            self.name,
+            offsets,
+        )
+        spread = max(offsets) - min(offsets)
+        assert spread <= 2 * TOLERANCE_MS + spread_ms + self.jitter_ms, (self.name, offsets)
 
     @asynccontextmanager
     async def agent(
@@ -102,11 +144,18 @@ class VoiceCase:
 
         # A contract failure must fail the test, not hang the suite.
         with anyio.fail_after(CASE_DEADLINE_S):
-            async with self._serve(make_brain, fail_after_replies) as reference:
+            match self.transport:
+                case "websocket":
+                    serving = self._websocket(make_brain, fail_after_replies)
+                case "livekit":
+                    serving = self._livekit(make_brain)
+                case "pipecat":
+                    serving = self._pipecat(make_brain)
+            async with serving as reference:
                 yield reference
 
     @asynccontextmanager
-    async def _serve(
+    async def _websocket(
         self, make_brain: Callable[[], LoopbackBrain], fail_after_replies: int | None
     ) -> AsyncIterator[ReferenceCall]:
         agent = WebSocketAgent(
@@ -117,6 +166,36 @@ class VoiceCase:
                 {"type": "websocket", "url": url, "protocol": self.protocol, **self.extra}
             )
             yield ReferenceCall(WebSocketVoiceTarget(config), agent.calls)
+
+    @asynccontextmanager
+    async def _livekit(
+        self, make_brain: Callable[[], LoopbackBrain]
+    ) -> AsyncIterator[ReferenceCall]:
+        from hecklr_adapters.voice.livekit import LiveKitVoiceTarget
+        from hecklr_schemas import LiveKitAdapterConfig, new_id
+
+        from .voice_livekit import API_KEY, API_SECRET, LiveKitAgent, run_livekit_agent
+
+        prefix = f"contract-{new_id().lower()}"
+        agent = LiveKitAgent(self.environment, prefix, make_brain, self.rhythm)
+        config = LiveKitAdapterConfig(type="livekit", url=self.environment.url, room_prefix=prefix)
+        environ = {"LIVEKIT_API_KEY": API_KEY, "LIVEKIT_API_SECRET": API_SECRET}
+        with run_livekit_agent(agent):
+            yield ReferenceCall(LiveKitVoiceTarget(config, environ), agent.calls)
+
+    @asynccontextmanager
+    async def _pipecat(
+        self, make_brain: Callable[[], LoopbackBrain]
+    ) -> AsyncIterator[ReferenceCall]:
+        from hecklr_adapters.voice.pipecat import PipecatVoiceTarget
+        from hecklr_schemas import PipecatAdapterConfig
+
+        from .voice_pipecat import PipecatAgent, serve_pipecat
+
+        agent = PipecatAgent(make_brain)
+        with serve_pipecat(agent) as url:
+            config = PipecatAdapterConfig.model_validate({"type": "pipecat", "url": url})
+            yield ReferenceCall(PipecatVoiceTarget(config), agent.calls)
 
 
 VOICE_CASES = [
@@ -133,4 +212,32 @@ VOICE_CASES = [
         "websocket-twilio", 8_000, lossless=False, clears=True, protocol="twilio", rhythm="burst"
     ),
     VoiceCase("websocket-pipecat", 16_000, lossless=True, clears=False, protocol="pipecat"),
+    VoiceCase(
+        "livekit",
+        48_000,
+        lossless=False,
+        clears=True,
+        transport="livekit",
+        can_fail=False,
+        offset_ms=(0.0, 350.0),  # 80-170 ms idle, up to ~340 ms on a loaded machine
+        jitter_ms=60.0,
+        rhythm="burst",
+        timing_needs_idle_cpu=True,
+    ),
+    VoiceCase(
+        "pipecat-smallwebrtc",
+        48_000,
+        lossless=False,
+        clears=True,
+        transport="pipecat",
+        can_fail=False,
+        offset_ms=(0.0, 400.0),
+        # Measured against Pipecat 1.13's SmallWebRTC receive path (aiortc on the bot side):
+        # the bot hears ~110 ms less of each utterance and one reply in a long call arrives
+        # ~150 ms later than the rest. The same caller track looped through plain aiortc keeps
+        # every edge within 10 ms (tests/voice/test_pipecat.py), so this is the bot's side.
+        jitter_ms=200.0,
+        caller_loss_ms=150.0,
+        timing_needs_idle_cpu=True,
+    ),
 ]

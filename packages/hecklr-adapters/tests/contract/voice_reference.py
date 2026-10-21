@@ -40,6 +40,7 @@ from hecklr_voice.codec import mulaw_decode, mulaw_encode
 from hecklr_voice.vad import DEFAULT_ENERGY_THRESHOLD_DBFS
 
 FRAME_MS: Final = 20
+PACED_LEAD_MS: Final = 40
 # Pipecat's own generated protobuf code, so the adapter's hand-written codec is checked against
 # the real format. Generated code carries no type information.
 frames_pb2: Any = importlib.import_module("pipecat.frames.protobufs.frames_pb2")
@@ -82,6 +83,14 @@ class Reply:
     start_ms: float
     duration_ms: float
     cut_ms: float | None = None
+    late_ms: float = 0.0
+    """How much later than planned the first audio actually left."""
+    cut_late_ms: float = 0.0
+    """How much later than planned the cut actually happened.
+
+    The agent's thread competes with the harness for the CPU, so its sends can leave a few
+    milliseconds late; the truth Hecklr must measure is what the agent actually did.
+    """
 
     @property
     def end_ms(self) -> float:
@@ -101,12 +110,21 @@ class LoopbackBrain:
     endpoint_ms: float = 200.0
     greeting: bool = False
     hang_up_after: int | None = None
+    media_clock: bool = True
+    """Time caller audio by its sample position (exact on a sample-preserving transport).
+
+    WebRTC receivers stretch and shrink audio to manage their jitter buffer, so positions
+    drift from real time there; those shells time each chunk by its arrival instead.
+    """
     replies: list[Reply] = field(default_factory=list)
-    caller_samples: int = 0
     caller_rate: int | None = None
-    heard_speech: bool = False
+    speech_ms: list[float] = field(default_factory=list)
+    """Times of every caller speech edge heard."""
     _speaking: bool = False
     _last_ms: float = 0.0
+    _heard: int = 0
+    """Caller samples heard so far: the position on the caller's media clock."""
+    _origin_ms: float | None = None
 
     def __post_init__(self) -> None:
         if self.greeting:
@@ -118,19 +136,27 @@ class LoopbackBrain:
         return len(self.reply) / (SAMPLE_RATE / 1000)
 
     def hear(self, samples: Pcm16, rate: int, arrival_ms: float) -> None:
-        """Hear one chunk of caller audio that arrived at ``arrival_ms``."""
-        self.caller_samples += len(samples)
+        """Hear one chunk of caller audio that arrived at ``arrival_ms``.
+
+        Times come from the caller's media clock with earliest-arrival alignment, as an RTP
+        receiver does, so this thread's own scheduling delays never move the truth.
+        """
         self.caller_rate = rate
         per_ms = rate / 1000
+        origin = arrival_ms - self._heard / per_ms
+        self._origin_ms = origin if self._origin_ms is None else min(self._origin_ms, origin)
+        start_ms = self._origin_ms + self._heard / per_ms if self.media_clock else arrival_ms
+        self._heard += len(samples)
         speech = len(samples) > 0 and frame_dbfs(samples) >= DEFAULT_ENERGY_THRESHOLD_DBFS
         edges = speech_edges(samples) if speech else None
         if edges is not None:
-            self.heard_speech = True
+            onset_ms, end_ms = start_ms + edges[0] / per_ms, start_ms + edges[1] / per_ms
+            self.speech_ms += [onset_ms, end_ms]
             if not self._speaking:
                 self._speaking = True
-                self._caller_started(arrival_ms + edges[0] / per_ms)
-            self._last_ms = arrival_ms + edges[1] / per_ms
-        elif self._speaking and arrival_ms - self._last_ms >= self.endpoint_ms:
+                self._caller_started(onset_ms)
+            self._last_ms = end_ms
+        elif self._speaking and start_ms - self._last_ms >= self.endpoint_ms:
             self._speaking = False
             busy_until = max((reply.end_ms for reply in self.replies), default=0.0)
             start = max(self._last_ms + self.reply_after_ms, busy_until)
@@ -180,22 +206,38 @@ async def _say(reply: Reply, audio: Pcm16, voice: Voice) -> None:
     if voice.rhythm == "paced":
         await _paced(reply, audio, voice)
         return
-    await voice.send(audio)
+    # As TTS streams: a burst of chunks far faster than real time, the first one small.
+    for offset in range(0, len(audio), voice.rate // 4):
+        await voice.send(audio[offset : offset + voice.rate // 4])
+        if offset == 0:
+            reply.late_ms = now_ms() - reply.start_ms
     await poll_until(lambda: now_ms() >= reply.end_ms, 0.001)
     if reply.cut_ms is not None and reply.cut_ms < reply.start_ms + reply.duration_ms:
         await voice.clear()
+        reply.cut_late_ms = now_ms() - reply.cut_ms
 
 
 async def _paced(reply: Reply, audio: Pcm16, voice: Voice) -> None:
+    """Real-time 20 ms packets, each sent up to ``PACED_LEAD_MS`` ahead of its time.
+
+    The lead is the sender's buffer: a scheduling hiccup on this thread shorter than it never
+    opens a gap in what the caller hears. The cut is decided at the caller's onset, well
+    before its packet leaves, so the stop is still placed at the sample.
+    """
     per_frame = voice.rate * FRAME_MS // 1000
+    per_ms = voice.rate / 1000
     for offset in range(0, len(audio), per_frame):
-        at = reply.start_ms + offset / (voice.rate / 1000)
-        await sleep_until(at)
+        at = reply.start_ms + offset / per_ms
+        await sleep_until(max(reply.start_ms, at - PACED_LEAD_MS))
         chunk = audio[offset : offset + per_frame]
+        if offset == 0:
+            reply.late_ms = now_ms() - at
         if reply.cut_ms is not None and reply.cut_ms < at + FRAME_MS:
-            keep = max(0, round((reply.cut_ms - at) * voice.rate / 1000))
+            keep = max(0, round((reply.cut_ms - at) * per_ms))
             if keep:
                 await voice.send(chunk[:keep])
+            # The packets play back to back from the first one's arrival.
+            reply.cut_late_ms = reply.late_ms + at + keep / per_ms - reply.cut_ms
             return
         await voice.send(chunk)
 
@@ -291,14 +333,14 @@ def serve_websocket(agent: WebSocketAgent) -> Iterator[str]:
 
 async def _converse(agent: WebSocketAgent, log: CallLog, connection: ServerConnection) -> None:
     brain = log.brain
-    replies_sent = 0
+    chunks_sent = 0
 
     async def send(pcm: Pcm16) -> None:
-        nonlocal replies_sent
+        nonlocal chunks_sent
         await connection.send(_encode(agent, pcm))
         if agent.protocol == "twilio" and agent.rhythm == "burst":
-            replies_sent += 1
-            mark = {"event": "mark", "streamSid": "MZ", "mark": {"name": f"reply-{replies_sent}"}}
+            chunks_sent += 1
+            mark = {"event": "mark", "streamSid": "MZ", "mark": {"name": f"chunk-{chunks_sent}"}}
             await connection.send(json.dumps(mark))
 
     async def clear() -> None:

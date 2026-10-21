@@ -15,6 +15,8 @@ frames. ``clear()`` drops everything not yet played, which is how a transport-le
 (Twilio ``clear``, Pipecat's interruption frame) stops the agent mid-sentence.
 """
 
+import asyncio
+import contextlib
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
@@ -131,29 +133,72 @@ class Playout:
         return self._origin_ms + position / SAMPLES_PER_MS
 
 
-Receive = Callable[[float | None], Awaitable[bool]]
-"""Wait up to the given seconds (``None``: indefinitely) for one inbound item and handle it.
-
-Returns ``False`` once the agent's stream has ended. Timing out is not an error: it returns
-``True`` so the playout can release a frame that has come due.
-"""
+Read = Callable[[], Awaitable[bool]]
+"""Wait for one inbound item from the transport and handle it; ``False`` once the stream ended."""
 
 
-async def paced_frames(playout: Playout, receive: Receive) -> AsyncIterator[TimedFrame]:
-    """Drive ``receive`` and yield the playout's frames as they come due, to the stream's end.
+class Receiver:
+    """Reads the agent's side of a call in the background and serves the playout's frames.
 
-    One loop does both, so an adapter needs no background task: it reads the transport only
-    while the driver is consuming frames, and the playout decides when each frame is heard.
+    Audio must be stamped when it arrives, not when the driver gets round to reading it: the
+    driver does other work between frames, and a transport that queues frames meanwhile (a
+    socket buffer, LiveKit's stream queue) would otherwise hand over a backlog that looks like
+    late audio. So a task reads from the moment the call connects, and :meth:`frames` only
+    paces what the playout holds. The task is a plain asyncio task because it outlives the
+    ``connect`` call that starts it (ADR 0006a: adapters run on asyncio).
     """
-    while True:
-        frame = playout.pop_frame()
-        if frame is not None:
-            yield frame
-            continue
-        if playout.ended:
-            if playout.idle:
-                return
-            await anyio.sleep(playout.wait_s() or 0.0)
-            continue
-        if not await receive(playout.wait_s()):
-            playout.end()
+
+    def __init__(self, playout: Playout, read: Read) -> None:
+        self.playout = playout
+        self._read = read
+        self._task: asyncio.Task[None] | None = None
+        self._error: BaseException | None = None
+        self._ended = False
+        self._wake = asyncio.Event()
+
+    def start(self) -> None:
+        """Start reading."""
+        self._task = asyncio.get_running_loop().create_task(self._run())
+
+    async def stop(self) -> None:
+        """Stop reading (idempotent)."""
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+
+    async def frames(self) -> AsyncIterator[TimedFrame]:
+        """Frames as they come due, until the agent's stream has ended and played out.
+
+        Raises:
+            AgentError: the transport failed (re-raised from the reading task), after the
+                audio received before the failure has been played.
+        """
+        while True:
+            frame = self.playout.pop_frame()
+            if frame is not None:
+                yield frame
+                continue
+            if self._ended:
+                self.playout.end()
+                if self.playout.idle:
+                    if self._error is not None:
+                        raise self._error
+                    return
+            self._wake.clear()
+            with anyio.move_on_after(_or_forever(self.playout.wait_s())):
+                await self._wake.wait()
+
+    async def _run(self) -> None:
+        try:
+            while await self._read():
+                self._wake.set()
+        except Exception as exc:  # noqa: BLE001 -- handed to the consumer of frames(), not lost
+            self._error = exc
+        finally:
+            self._ended = True
+            self._wake.set()
+
+
+def _or_forever(seconds: float | None) -> float:
+    return float("inf") if seconds is None else seconds

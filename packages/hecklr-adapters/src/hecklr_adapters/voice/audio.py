@@ -8,6 +8,7 @@ few input samples of look-ahead (well under a millisecond at 16 kHz). General-pu
 resamplers buffer tens of milliseconds, which would show up as fake agent latency.
 """
 
+import math
 from typing import Final
 
 import numpy as np
@@ -75,12 +76,23 @@ class StreamResampler:
             raise ValueError(f"sample rates must be positive, got {rate_in} -> {rate_out}")
         self.rate_in = rate_in
         self.rate_out = rate_out
-        self._cutoff = min(1.0, rate_out / rate_in)
-        self._reach = int(np.ceil(_HALF_WIDTH / self._cutoff))
+        cutoff = min(1.0, rate_out / rate_in)
+        self._reach = int(np.ceil(_HALF_WIDTH / cutoff))
+        self._offsets = np.arange(-self._reach + 1, self._reach + 1, dtype=np.int64)
+        self._kernels = self._phase_kernels(cutoff)
         self._history = np.zeros(self._reach, dtype=np.float64)
         """Input samples kept for the kernel; ``_history[0]`` is input index ``_base``."""
         self._base = -self._reach
         self._produced = 0
+
+    def _phase_kernels(self, cutoff: float) -> npt.NDArray[np.float64]:
+        """One normalized kernel per fractional position; a rational ratio has few of them."""
+        step = math.gcd(self.rate_in, self.rate_out)
+        fractions = np.arange(0, self.rate_out, step, dtype=np.float64) / self.rate_out
+        distance = fractions[:, None] - self._offsets[None, :]
+        window = 0.5 + 0.5 * np.cos(np.pi * np.clip(distance / self._reach, -1.0, 1.0))
+        kernels: npt.NDArray[np.float64] = np.sinc(distance * cutoff) * window
+        return kernels / kernels.sum(axis=1, keepdims=True)
 
     def process(self, samples: Pcm16) -> Pcm16:
         """Resample one chunk; returns every output sample its input now determines."""
@@ -93,32 +105,21 @@ class StreamResampler:
         count = max(0, last - self._produced + 1)
         if count == 0:
             return np.zeros(0, dtype=np.int16)
-        positions = (
-            np.arange(self._produced, self._produced + count, dtype=np.float64)
-            * self.rate_in
-            / self.rate_out
+        numerators = (
+            np.arange(self._produced, self._produced + count, dtype=np.int64) * self.rate_in
         )
-        out = self._interpolate(positions)
+        centers = numerators // self.rate_out
+        phases = (numerators % self.rate_out) // math.gcd(self.rate_in, self.rate_out)
+        values = self._history[centers[:, None] + self._offsets[None, :] - self._base]
+        out = np.einsum("ij,ij->i", self._kernels[phases], values)
         self._produced += count
         # The next output's first tap is floor(position) - reach + 1; nothing before it is needed.
         next_center = self._produced * self.rate_in // self.rate_out
         drop = max(0, next_center - self._reach + 1 - self._base)
         self._history = self._history[drop:]
         self._base += drop
-        return np.clip(np.rint(out), -32768, 32767).astype(np.int16)
-
-    def _interpolate(self, positions: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-        centers = np.floor(positions).astype(np.int64)
-        offsets = np.arange(-self._reach + 1, self._reach + 1, dtype=np.int64)
-        taps = centers[:, None] + offsets[None, :]
-        distance = positions[:, None] - taps
-        x = distance * self._cutoff
-        window = 0.5 + 0.5 * np.cos(np.pi * np.clip(distance / self._reach, -1.0, 1.0))
-        kernel = np.sinc(x) * window
-        kernel /= kernel.sum(axis=1, keepdims=True)
-        values = self._history[taps - self._base]
-        result: npt.NDArray[np.float64] = (kernel * values).sum(axis=1)
-        return result
+        converted: Pcm16 = np.clip(np.rint(out), -32768, 32767).astype(np.int16)
+        return converted
 
 
 class ToHarness:

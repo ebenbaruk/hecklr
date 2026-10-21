@@ -17,7 +17,7 @@ from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK, Web
 from hecklr_adapters.errors import AgentError, AgentTimeoutError
 from hecklr_adapters.voice.audio import SAMPLE_RATE, StreamResampler, ToHarness, pcm16
 from hecklr_adapters.voice.config import WebSocketVoiceAdapterConfig
-from hecklr_adapters.voice.playout import Mark, Playout, paced_frames
+from hecklr_adapters.voice.playout import Mark, Playout, Receiver
 from hecklr_adapters.voice.wire import (
     AgentAudio,
     AgentClear,
@@ -83,15 +83,17 @@ class WebSocketAudioLink:
         self._to_wire = StreamResampler(SAMPLE_RATE, wire_rate)
         self._to_harness = ToHarness()
         self._playout = Playout()
+        self._receiver = Receiver(self._playout, self._receive)
         self._send_timeout_s = send_timeout_s
         self._send_lock = anyio.Lock()
         self._agent_hung_up = False
         self._hung_up = False
 
     async def start(self) -> None:
-        """Send the format's opening messages."""
+        """Send the format's opening messages and start listening."""
         for message in self._wire.opening():
             await self._send(message)
+        self._receiver.start()
 
     async def send_frame(self, pcm: bytes, sample_rate: int) -> None:
         """Send one caller frame; after the agent hung up, frames go nowhere."""
@@ -115,17 +117,16 @@ class WebSocketAudioLink:
             for message in self._wire.closing():
                 await self._send(message)
         await self._socket.close()
+        await self._receiver.stop()
 
     async def _frames(self) -> AsyncIterator[TimedFrame]:
-        async for frame in paced_frames(self._playout, self._receive):
+        async for frame in self._receiver.frames():
             await self._report_marks(self._playout.played_marks())
             yield frame
 
-    async def _receive(self, timeout_s: float | None) -> bool:
-        message: Message | None = None
+    async def _receive(self) -> bool:
         try:
-            with anyio.move_on_after(timeout_s if timeout_s is not None else float("inf")):
-                message = await self._socket.recv()
+            message = await self._socket.recv()
         except ConnectionClosedOK:
             self._agent_hung_up = True
             return False
@@ -134,8 +135,7 @@ class WebSocketAudioLink:
             if self._hung_up:
                 return False
             raise AgentError(f"agent connection failed: {exc}") from exc
-        if message is not None:
-            await self._handle(message)
+        await self._handle(message)
         return True
 
     async def _handle(self, message: Message) -> None:

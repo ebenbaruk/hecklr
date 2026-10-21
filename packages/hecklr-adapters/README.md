@@ -41,3 +41,42 @@ Errors: `AgentError` / `AgentTimeoutError` when the agent fails (the driver repo
 memory, streaming shape, trial-id propagation, session isolation, cancellation, network timeout
 and agent errors. The reference agents run on 127.0.0.1 ephemeral ports. A new adapter is added by
 giving it a case in `tests/contract/conftest.py`; it must pass the suite before merge.
+
+## Voice adapters
+
+Build one from the `agent.adapters.voice` entry of `hecklr.yaml` (or a
+`WebSocketVoiceAdapterConfig`, until RFC 0010a adds it to the schema):
+
+```python
+from hecklr_adapters import make_voice_target
+
+target = make_voice_target(config.agent.adapters.voice)  # a hecklr_schemas.VoiceTarget
+link = await target.connect(ctx)  # an AudioLink
+await link.send_frame(pcm_20ms_16khz, 16_000)  # caller audio, paced by the driver
+async for frame in link.frames():  # agent audio: 16 kHz TimedFrames
+    ...
+await link.hangup()
+```
+
+| `type` | Reaches | Extra | Barge-in |
+| --- | --- | --- | --- |
+| `websocket`, `protocol: pcm` | binary PCM16 at `sample_rate` both ways; JSON `start` / `stop` from Hecklr, `{"type": "clear"}` from the agent | none | agent goes quiet or sends `clear` |
+| `websocket`, `protocol: twilio` | Twilio Media Streams: `connected`, `start` (trial id in `customParameters`), `media` (8 kHz mu-law), `stop`; the agent's `mark`s are echoed when played or cleared | none | `clear` |
+| `websocket`, `protocol: pipecat` | Pipecat's `ProtobufFrameSerializer` frames (`FastAPIWebsocketTransport`) | none | `InterruptionFrame` |
+| `pipecat` | Pipecat SmallWebRTC: offer POSTed to `url` (the runner's `/api/offer`) | `pipecat` (aiortc) | Pipecat drops its queued audio |
+| `livekit` | joins room `<room_prefix>-<trial_id>`, token signed with `api_key_env` / `api_secret_env` | `livekit` | the agent clears its source |
+
+Every adapter plays the agent's audio out in real time, as a phone would (a burst is heard over
+its length; `clear` cuts it where playback had got to), and delivers 16 kHz frames whose
+`sample_index` is the time they were heard (ADR 0010a). The trial id travels in
+`X-Hecklr-Trial-Id` wherever the transport has a handshake.
+
+### Voice contract suite
+
+`tests/contract/test_voice_contract.py` drives every voice adapter with the real `VoiceDriver`
+against a loopback reference agent with known timing (`voice_reference.py`): connect, caller
+audio at the agent's rate, real-time 16 kHz agent audio, SC4 (response latency and barge-in
+reaction within 20 ms of what the agent actually did), agent hang-up and failure, a silent agent,
+clean hang-up, and no event-loop stalls. Cases: WebSocket raw PCM (16 kHz paced, 24 kHz burst),
+Twilio, Pipecat protobuf; Pipecat SmallWebRTC against a real Pipecat pipeline; LiveKit against
+`livekit-server` in Docker (skipped, with the reason, when Docker is unavailable).

@@ -6,6 +6,7 @@ the caller's 20 ms 16 kHz frames. Build one from config with ``make_voice_target
 """
 
 from hecklr_adapters.voice.config import WebSocketVoiceAdapterConfig
+from hecklr_adapters.voice.factory import make_voice_target
 from hecklr_adapters.voice.playout import Playout
 from hecklr_adapters.voice.websocket import WebSocketAudioLink, WebSocketVoiceTarget
 
@@ -14,4 +15,5 @@ __all__ = [
     "WebSocketAudioLink",
     "WebSocketVoiceAdapterConfig",
     "WebSocketVoiceTarget",
+    "make_voice_target",
 ]
