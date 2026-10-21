@@ -95,13 +95,19 @@ def sse_events(reply: Reply) -> Iterator[str]:
             yield sse_frame(None, chunk.text)
 
 
-def create_app(agent: AcmeAgent, world: World) -> FastAPI:
-    """The FastAPI app serving ``agent``; ``world`` backs conversations without a sandbox."""
+def create_app(
+    agent: AcmeAgent, world: World, *, world_transport: httpx2.AsyncBaseTransport | None = None
+) -> FastAPI:
+    """The FastAPI app serving ``agent``; ``world`` backs conversations without a sandbox.
+
+    ``world_transport`` replaces the network between the agent and the world sandbox, for tests.
+    """
     clients: list[httpx2.AsyncClient] = []
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        async with httpx2.AsyncClient(timeout=agent.settings.tool_timeout_s) as client:
+        timeout = agent.settings.tool_timeout_s
+        async with httpx2.AsyncClient(timeout=timeout, transport=world_transport) as client:
             clients.append(client)
             yield
             clients.clear()

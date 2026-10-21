@@ -75,9 +75,26 @@ async def serving(app: FastAPI) -> AsyncIterator[str]:
     sock.close()
 
 
-def rules_app(world: World, world_base_url: str | None = None) -> FastAPI:
+def rules_app(
+    world: World,
+    world_base_url: str | None = None,
+    world_transport: httpx2.AsyncBaseTransport | None = None,
+) -> FastAPI:
     settings = AgentSettings(brain="rules", world_base_url=world_base_url)
-    return create_app(AcmeAgent(load_agent_files(), settings), world)
+    agent = AcmeAgent(load_agent_files(), settings)
+    return create_app(agent, world, world_transport=world_transport)
+
+
+def refusing_transport(seen: list[httpx2.Request]) -> httpx2.MockTransport:
+    """A world sandbox nobody can connect to, without a real socket: this machine's loopback is
+    shared with parallel test workers (and endpoint-security filtering), which made a real
+    refused port an unreliable way to fail."""
+
+    def refuse(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        raise httpx2.ConnectError("connection refused", request=request)
+
+    return httpx2.MockTransport(refuse)
 
 
 async def turn(session: ChatSession, text: str) -> list[AgentChunk]:
@@ -196,17 +213,22 @@ async def test_a_sandbox_agent_without_a_trial_id_is_a_client_error(world: World
 
 
 async def test_an_unreachable_sandbox_becomes_an_apology(world: World) -> None:
-    async with (
-        serving(rules_app(world, world_base_url="http://127.0.0.1:9")) as url,
-        httpx2.AsyncClient() as client,
-    ):
+    seen: list[httpx2.Request] = []
+    trial_id = new_id()
+    app = rules_app(world, world_transport=refusing_transport(seen))
+    async with serving(app) as url, httpx2.AsyncClient() as client:
         response = await client.post(
             f"{url}/chat",
             json={"message": "I smell gas", "session_id": "s"},
-            headers={TRIAL_ID_HEADER: new_id()},
+            headers={
+                TRIAL_ID_HEADER: trial_id,
+                WORLD_URL_HEADER: f"http://sandbox.test/t/{trial_id}",
+            },
         )
     assert response.status_code == 200
     assert "couldn't open a ticket" in response.json()["reply"]
+    [request] = seen
+    assert str(request.url) == f"http://sandbox.test/t/{trial_id}/tools/create_emergency_ticket"
 
 
 async def test_request_world_url_and_health(world: World) -> None:
