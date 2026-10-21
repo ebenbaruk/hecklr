@@ -256,6 +256,7 @@ async def test_request_world_url_and_health(world: World) -> None:
         "model": None,
         "fallback_tools": "local",
         "requests_by_world_source": {"body": 0, "header": 0, "base_url": 0, "local": 0},
+        "spent_usd": "0",
     }
     assert response.json()["tool_calls"] == []
     assert after["requests_by_world_source"] == {"body": 1, "header": 0, "base_url": 0, "local": 1}

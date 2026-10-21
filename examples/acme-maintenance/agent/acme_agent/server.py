@@ -5,7 +5,8 @@
 - ``POST /chat/stream``: the same request, answered as server-sent events: unnamed events carry
   text deltas; named events ``tool_call`` / ``tool_result`` (only when Hecklr cannot see the
   tools), ``handoff`` and ``end`` carry ``hecklr_schemas`` payloads (ADR 0006a).
-- ``GET /healthz``: brain, variant and where the tools went, for ``hecklr doctor`` and humans.
+- ``GET /healthz``: brain, variant, the agent's own model spend and where the tools went, for
+  ``hecklr doctor`` and humans.
 
 Which world the tools act on, per request (ADR 0007d), the first of:
 
@@ -21,6 +22,7 @@ the local copy shows up there.
 from collections import Counter
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
+from decimal import Decimal
 from typing import Literal
 
 import httpx2
@@ -71,6 +73,8 @@ class Health(BaseModel):
     """Where tools go when a request names no world: ``ACME_WORLD_BASE_URL`` or the local copy."""
     requests_by_world_source: dict[WorldSource, int]
     """Requests served so far per world source; a Hecklr run should only grow ``header``."""
+    spent_usd: Decimal
+    """What the agent's own model calls have cost so far; Hecklr's budget does not see it."""
 
 
 def sse_frame(event: str | None, data: str) -> str:
@@ -150,6 +154,7 @@ def create_app(
             model=agent.settings.model if agent.settings.brain == "llm" else None,
             fallback_tools="sandbox_base_url" if base_url else "local",
             requests_by_world_source={source: served[source] for source in WORLD_SOURCES},
+            spent_usd=agent.spent_usd,
         )
 
     return app
