@@ -1,0 +1,39 @@
+name: Throwaway baseline flow
+
+# Throwaway (WS7c): a push to this branch stores the clean run as the baseline artifact; the
+# pull_request run fetches it and gates fault F5 against it.
+on:
+  push:
+    branches: [selftest/hecklr-action-ws7c]
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          cp action/selftest/hecklr.yaml examples/acme-maintenance/hecklr.action.yaml
+          cp action/selftest/hecklr_action_agent.py examples/acme-maintenance/
+      - id: hecklr
+        uses: ./action
+        env:
+          ACME_FAULT: ${{ github.event_name == 'pull_request' && 'F5' || '' }}
+        with:
+          working-directory: examples/acme-maintenance
+          config: hecklr.action.yaml
+          suite: smoke-baseline
+          baseline-branch: selftest/hecklr-action-ws7c
+          install: uv sync --all-packages
+          hecklr: uv run hecklr
+      - if: always()
+        run: echo "exit=${{ steps.hecklr.outputs.exit-code }} run=${{ steps.hecklr.outputs.run-id }} baseline=${{ steps.hecklr.outputs.baseline-run-id }}"
