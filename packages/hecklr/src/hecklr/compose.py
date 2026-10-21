@@ -21,7 +21,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
-from hecklr.outcomes import trial_outcomes
 from hecklr_adapters import make_chat_target
 from hecklr_channels import ChatDriver
 from hecklr_core import (
@@ -42,14 +41,17 @@ from hecklr_core import (
 from hecklr_core.storage import RUN_JSON
 from hecklr_grade import build_graders, grade_trial
 from hecklr_llm import ProviderRouter
+from hecklr_report.outcomes import convert
 from hecklr_schemas import (
     Channel,
     ChannelDriver,
     Event,
     Grade,
     GradeContext,
+    JudgeCriterion,
     LLMProvider,
     ModelsConfig,
+    Persona,
     PythonAdapterConfig,
     Run,
     RunId,
@@ -58,8 +60,9 @@ from hecklr_schemas import (
     Trial,
     is_ulid,
 )
+from hecklr_schemas.common import ModelName
 from hecklr_sim import make_simulator
-from hecklr_stats import ScenarioCounts, allocate_trials
+from hecklr_stats import ScenarioCounts, TrialOutcome, allocate_trials
 from hecklr_world import Sandbox, load_world
 
 ADAPTIVE_EXTRA_SHARE: Final = 0.5
@@ -285,7 +288,8 @@ async def execute_run(
     """
     project = prepared.project
     config = project.config
-    await check_model_providers(config.models, llm_providers)
+    overridden = judge_overrides(prepared.plan.suite.scenarios)
+    await check_model_providers(config.models, llm_providers, criterion_models=overridden)
     async with (
         open_llm(config, project.output_dir, providers=llm_providers) as llm,
         Sandbox(tool_mode=config.agent.tool_mode) as sandbox,
@@ -302,28 +306,59 @@ async def execute_run(
         executor = RunExecutor(prepared.plan.suite, collaborators, store)
         run = await executor.execute(prepared.plan.run)
         if prepared.adaptive and run.status is RunStatus.COMPLETED:
-            run = await _adaptive_pass(executor, store, run, on_adaptive)
+            suite = prepared.plan.suite
+            reader = _OutcomeReader(store, suite.scenarios, suite.personas)
+            run = await _adaptive_pass(executor, reader, run, on_adaptive)
         return await store.load_run(run.id)
 
 
 async def check_model_providers(
-    models: ModelsConfig, llm_providers: Mapping[str, LLMProvider] | None = None
+    models: ModelsConfig,
+    llm_providers: Mapping[str, LLMProvider] | None = None,
+    *,
+    criterion_models: Sequence[ModelName] = (),
 ) -> None:
-    """Set up the simulator's and judge's providers once, so a missing key fails fast.
+    """Set up every model's provider once, so a missing key fails fast.
 
-    Without this, a missing API key surfaces as a harness error in every trial of a recorded run.
-    Creating a provider makes no network call.
+    Covers the simulator, the judge and ``criterion_models`` (judge criteria that override the
+    judge model). Without this, a missing API key surfaces as a harness error in every trial of a
+    recorded run. Creating a provider makes no network call.
     """
     async with ProviderRouter(
         models.providers, prices=models.prices, providers=llm_providers
     ) as router:
-        for model in (models.simulator, models.judge):
+        for model in dict.fromkeys((models.simulator, models.judge, *criterion_models)):
             router.provider_for(model)
+
+
+def judge_overrides(scenarios: Mapping[str, Scenario]) -> list[ModelName]:
+    """Models that judge criteria name instead of ``models.judge``, in first-seen order."""
+    named = (
+        criterion.model
+        for scenario in scenarios.values()
+        for criterion in scenario.success
+        if isinstance(criterion, JudgeCriterion) and criterion.model is not None
+    )
+    return list(dict.fromkeys(named))
+
+
+@dataclass(frozen=True, slots=True)
+class _OutcomeReader:
+    """Reads a stored run as statistics outcomes, by ``hecklr-report``'s trial verdict rule."""
+
+    store: ResultStore
+    scenarios: Mapping[str, Scenario]
+    personas: Mapping[str, Persona]
+
+    async def outcomes(self, run_id: str) -> list[TrialOutcome]:
+        """The analyzable trials of run ``run_id``."""
+        results = await self.store.load_run(run_id)
+        return convert(results, self.scenarios, self.personas).outcomes
 
 
 async def _adaptive_pass(
     executor: RunExecutor,
-    store: ResultStore,
+    reader: _OutcomeReader,
     run: Run,
     on_adaptive: Callable[[int], None] | None,
 ) -> Run:
@@ -332,16 +367,16 @@ async def _adaptive_pass(
     Without a baseline the run is compared with itself, so no scenario counts as flipped and the
     extra trials go to the widest intervals.
     """
-    first_pass = trial_outcomes(await store.load_run(run.id))
-    if not first_pass.outcomes:
+    first_pass = await reader.outcomes(run.id)
+    if not first_pass:
         return run
-    candidate = ScenarioCounts.from_outcomes(first_pass.outcomes)
+    candidate = ScenarioCounts.from_outcomes(first_pass)
     baseline = candidate
     if run.baseline_id is not None:
-        stored = trial_outcomes(await store.load_run(run.baseline_id))
-        if stored.outcomes:
-            baseline = ScenarioCounts.from_outcomes(stored.outcomes)
-    budget = math.ceil(ADAPTIVE_EXTRA_SHARE * len(first_pass.outcomes))
+        stored = await reader.outcomes(run.baseline_id)
+        if stored:
+            baseline = ScenarioCounts.from_outcomes(stored)
+    budget = math.ceil(ADAPTIVE_EXTRA_SHARE * len(first_pass))
     allocation = allocate_trials(baseline, candidate, budget)
     specs = [
         spec

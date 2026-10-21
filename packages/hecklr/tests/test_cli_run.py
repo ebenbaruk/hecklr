@@ -18,6 +18,7 @@ from hecklr.commands._common import CliOverrides
 from hecklr.commands.run import _exit_code
 from hecklr.testing import scripted_models
 from hecklr_core import ResultStore, RunResults
+from hecklr_llm import ProviderConfigError
 from hecklr_schemas import AgentRef, Budget, LLMRequest, Run, RunId, RunStatus, new_id
 
 Edit = Callable[[Path, str, str], None]
@@ -49,18 +50,18 @@ def test_us01_run_prints_suite_and_scenario_pass_rates_with_intervals(config_pat
 
     assert code == exit_codes.OK, output
     assert "Suite ci: 10 trials over 5 scenarios" in output
-    assert (
-        "Suite pass rate 100% [100%, 100%] (95% CI, cluster bootstrap over 5 scenarios)" in output
-    )
+    assert re.search(r"pass_rate\s+│\s+100\.0% \[100\.0%, 100\.0%\]\s+│\s+5 │", output), output
     assert "Scenarios (Wilson 95% CI)" in output
     assert output.count("2/2") == 5
-    assert "100% [34%, 100%]" in output  # Wilson interval of 2/2
-    assert "10 ok, 0 agent errors, 0 timeouts, 0 harness errors (excluded)" in output
-    assert "Simulator contradictions: 0/" in output
+    assert output.count("100.0% [34.2%, 100.0%]") == 5  # Wilson interval of 2/2
+    assert "10 of 10 trials analyzed · 0 harness errors" in output
+    assert "Simulator contradiction rate 0.0% [" in output
     run_id = _run_id(output)
     results_dir = config_path.parent / ".hecklr" / "runs" / run_id
     assert f"Results: {results_dir}" in output
+    assert f"Report: {results_dir / 'report.html'}" in output
     assert (results_dir / "results.duckdb").is_file()
+    assert "<html" in (results_dir / "report.html").read_text(encoding="utf-8")
 
 
 def test_failing_judges_lower_the_pass_rates_and_still_exit_zero(config_path: Path) -> None:
@@ -72,7 +73,7 @@ def test_failing_judges_lower_the_pass_rates_and_still_exit_zero(config_path: Pa
     )
 
     assert code == exit_codes.OK, output
-    assert re.search(r"saturday-visits\s+│\s+0/1\s+│\s+0% \[0%, 79%\]", output), output
+    assert re.search(r"saturday-visits\s+│\s+0/1\s+│\s+0\.0% \[0\.0%, 79\.3%\]", output), output
     store = ResultStore(config_path.parent / ".hecklr" / "runs")
     results = anyio.run(store.load_run, _run_id(output))
     store.close()
@@ -97,7 +98,7 @@ def test_init_and_run_against_a_real_http_agent(tmp_path: Path, http_agent_url: 
     # The fixture agent answers but has no tools, so only the FAQ scenario can pass.
     assert re.search(r"saturday-visits\s+│\s+1/1", output), output
     assert re.search(r"reschedule-visit\s+│\s+0/1", output), output
-    assert "5 ok, 0 agent errors" in output
+    assert "5 of 5 trials analyzed" in output
 
 
 def test_channels_option_accepts_commas_and_rejects_unknown_names(config_path: Path) -> None:
@@ -132,7 +133,7 @@ def test_every_trial_failing_to_run_is_a_harness_error(config_path: Path) -> Non
 
     assert code == exit_codes.HARNESS_ERROR
     assert "Every trial failed to run." in output
-    assert "No trial could be scored" in output
+    assert "Cannot gate: no trial of the candidate run could be analyzed" in output
 
 
 def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(
@@ -145,7 +146,39 @@ def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(
 
     assert code == exit_codes.CONFIG_ERROR, output
     assert "ANTHROPIC_API_KEY" in output
+    assert "; run " not in output  # no run id is shown for a run that is never recorded
     assert not (config_path.parent / ".hecklr" / "runs").exists()
+
+
+def test_a_judge_criterion_model_without_its_key_is_a_config_error(
+    config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    edit(
+        config_path.parent / "scenarios" / "saturday-visits.yaml",
+        "rubric: tone",
+        "rubric: tone\n    model: anthropic/claude-haiku-5-5",
+    )
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "ANTHROPIC_API_KEY" in output
+    assert not (config_path.parent / ".hecklr" / "runs").exists()
+
+
+def test_a_config_error_raised_mid_run_is_a_harness_error(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def misconfigured(*args: object, **kwargs: object) -> RunResults:
+        raise ProviderConfigError("key revoked mid-run")
+
+    monkeypatch.setattr(hecklr.commands.run, "execute_run", misconfigured)
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "the run failed: ProviderConfigError: key revoked mid-run" in output
 
 
 def test_a_crashed_run_is_a_harness_error_naming_every_cause(
@@ -172,6 +205,9 @@ def test_baseline_is_recorded_and_seed_is_reproducible(config_path: Path) -> Non
     baseline, candidate = runs[_run_id(first)], runs[_run_id(second)]
     assert candidate.baseline_id == baseline.id
     assert [s.seed for s in candidate.matrix] == [s.seed for s in baseline.matrix]
+    # The summary compares with the recorded baseline.
+    assert "Verdict: NO CHANGE" in second or "Verdict: INCONCLUSIVE" in second, second
+    assert "Comparisons (candidate" in second
 
 
 def test_adaptive_flag_announces_the_extra_trials(config_path: Path) -> None:
@@ -180,7 +216,7 @@ def test_adaptive_flag_announces_the_extra_trials(config_path: Path) -> None:
     assert code == exit_codes.OK, output
     assert "(adaptive)" in output
     assert "Adaptive pass: 5 more trials" in output
-    assert "15/15 finished" in output
+    assert "15 of 15 trials analyzed" in output
 
 
 def test_output_dir_option(config_path: Path, tmp_path: Path) -> None:

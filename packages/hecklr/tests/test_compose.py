@@ -15,11 +15,11 @@ from hecklr.compose import (
     execute_run,
     prepare_run,
 )
-from hecklr.outcomes import trial_outcomes
 from hecklr.testing import scripted_models
 from hecklr_adapters import AdapterConfigError
 from hecklr_core import BudgetEstimateError, ConfigError
 from hecklr_grade import InvalidCriterionError
+from hecklr_report.outcomes import convert
 from hecklr_schemas import Channel, Grade, LLMRequest, RunStatus, Trial
 
 Edit = Callable[[Path, str, str], None]
@@ -57,7 +57,10 @@ async def test_us01_run_stores_graded_trials_for_every_scenario(config_path: Pat
     criterion_grades = [g for g in results.grades if g.criterion_index is not None]
     assert criterion_grades
     assert all(g.status == "ok" and g.passed for g in criterion_grades)
-    assert all(outcome.passed for outcome in trial_outcomes(results).outcomes)
+    suite = prepared.plan.suite
+    outcomes = convert(results, suite.scenarios, suite.personas).outcomes
+    assert outcomes
+    assert all(outcome.passed for outcome in outcomes)
     assert (prepared.runs_dir / results.run.id / "results.duckdb").is_file()
 
 

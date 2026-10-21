@@ -1,4 +1,9 @@
-"""``hecklr run``: run a suite against the agent, store the results and summarize them (US-01)."""
+"""``hecklr run``: run a suite against the agent, store the results and summarize them (US-01).
+
+The summary is ``hecklr-report``'s terminal report (every number with its interval), compared with
+the recorded ``--baseline`` when there is one; the self-contained HTML report is written into the
+run directory.
+"""
 
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
@@ -10,13 +15,24 @@ import anyio
 import typer
 from rich.markup import escape
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.table import Table
+from rich.text import Text
 
 from hecklr import exit_codes
-from hecklr.commands._common import CONFIG_ERRORS, config_errors, fail, overrides, stderr, stdout
-from hecklr.compose import PreparedRun, RunRequest, execute_run, prepare_run
+from hecklr.commands._common import config_errors, fail, overrides, stderr, stdout
+from hecklr.compose import (
+    PreparedRun,
+    RunRequest,
+    check_model_providers,
+    execute_run,
+    judge_overrides,
+    prepare_run,
+)
 from hecklr.errors import describe_error
-from hecklr.summary import render_summary, summarize
+from hecklr.reports import FILE_NAMES, ReportFormat, write_report
+from hecklr.results import analyze_results, load_results
 from hecklr_core import BudgetEstimateError, RunResults
+from hecklr_report import Analysis, fmt, render_terminal
 from hecklr_schemas import Channel, Grade, LLMProvider, RunStatus, Trial
 
 _STATUS_STYLE = {
@@ -81,16 +97,19 @@ def run(
             prepared = prepare_run(request)
         except BudgetEstimateError as exc:
             raise fail(str(exc), exit_codes.BUDGET) from exc
+        providers = overrides(ctx).llm_providers
+        # Before the plan (and its run id) is shown: a missing key means no run is recorded.
+        anyio.run(
+            partial(
+                check_model_providers,
+                prepared.project.config.models,
+                providers or None,
+                criterion_models=judge_overrides(prepared.plan.suite.scenarios),
+            )
+        )
     _print_plan(prepared)
-    results = _execute(prepared, overrides(ctx).llm_providers)
-    config_model = prepared.project.config
-    summary = summarize(
-        results,
-        results_dir=prepared.runs_dir / results.run.id,
-        resamples=config_model.stats.bootstrap_resamples,
-        seed=config_model.stats.seed if config_model.stats.seed is not None else results.run.seed,
-    )
-    render_summary(summary, stdout)
+    results = _execute(prepared, providers)
+    _summarize(prepared, results)
     raise typer.Exit(code=_exit_code(results))
 
 
@@ -153,13 +172,52 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
                     on_adaptive=on_adaptive,
                 )
             )
-        except CONFIG_ERRORS as exc:
-            # A model provider that cannot be set up (e.g. a missing API key) is found before the
-            # run is recorded: a configuration problem, not a harness failure.
-            raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
         except Exception as exc:
             # The executor already recorded the run as failed; say why and stop.
             raise fail(f"the run failed: {describe_error(exc)}", exit_codes.HARNESS_ERROR) from exc
+
+
+def _summarize(prepared: PreparedRun, results: RunResults) -> None:
+    """Print the terminal report and write the HTML one next to the results."""
+    project = prepared.project
+    run = results.run
+    baseline = load_results(project, run.baseline_id) if run.baseline_id is not None else None
+    analyzed = analyze_results(project, results, baseline)
+    render_terminal(analyzed.analysis, stdout)
+    stdout.print(scenario_table(analyzed.analysis))
+    run_dir = prepared.runs_dir / run.id
+    report = write_report(
+        analyzed, ReportFormat.HTML, run_dir / FILE_NAMES[ReportFormat.HTML], run_dir=run_dir
+    )
+    # Never wrapped, so the run id and paths stay copyable on narrow terminals.
+    stdout.print(f"Spent: ${run.spent_usd:.4f} of budget {_budget(results)}", soft_wrap=True)
+    stdout.print(f"Run [bold]{run.id}[/] ({run.status.value})", soft_wrap=True)
+    stdout.print(f"Results: {escape(str(run_dir))}", soft_wrap=True)
+    stdout.print(f"Report: {escape(str(report))}", soft_wrap=True)
+
+
+def scenario_table(analysis: Analysis) -> Table:
+    """Every scenario's pass rate with its Wilson interval (US-01).
+
+    ``render_terminal`` lists only the scenarios that failed or flipped; a run's own summary
+    shows all of them.
+    """
+    table = Table(title="Scenarios (Wilson 95% CI)", title_justify="left")
+    for name in ("scenario", "passed", "pass rate [95% CI]"):
+        table.add_column(name, justify="left" if name == "scenario" else "right")
+    for result in analysis.scenarios:
+        rate = result.pass_rate
+        table.add_row(
+            Text(result.scenario_id),
+            f"{result.passes}/{result.trials}",
+            fmt.estimate(rate, "percent") if rate is not None else "not analyzable",
+        )
+    return table
+
+
+def _budget(results: RunResults) -> str:
+    usd = results.run.budget.usd
+    return f"${usd:.2f}" if usd is not None else "unlimited"
 
 
 def _exit_code(results: RunResults) -> int:

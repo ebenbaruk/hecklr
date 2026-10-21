@@ -4,6 +4,19 @@ Owner: WS7a (composition, run/init/doctor/replay, SDK, pytest plugin); WS7b owns
 and the compare/gate/report commands. Spec: `docs/SPEC.md` → "Developer experience", "Run
 lifecycle", "Agent adapters". Decisions: ADR 0007a.
 
+## Plan (WS7c, Wave 2a)
+
+1. `hecklr run` summarizes with `hecklr_report.analyze` + `render_terminal` (plus every scenario's
+   Wilson interval, US-01) and writes `report.html`; `summary.py` / `outcomes.py` deleted.
+2. `hecklr compare`, `hecklr gate`, `hecklr report` over stored runs (`results.py`: ids and the
+   `latest` / `baseline` aliases).
+3. `hecklr calibrate --aa` (two runs of the same agent + simulated A/A false-alarm rate at the
+   suite's size) and `--judges` (human labels file -> Cohen's kappa per rubric).
+4. `hecklr init` model defaults (OpenAI `gpt-6-luna`, Anthropic, Ollama, fake); `doctor` says which.
+   PR #11 round-2 nits: providers checked before the run id is shown, judge-criterion model
+   overrides checked, config-error mapping only before the run is recorded.
+5. `action/`: composite GitHub Action; proven on a throwaway draft PR.
+
 ## Done
 
 - **Composition** (`compose.py`): `prepare_run` / `execute_run` bind world sandbox, chat driver +
