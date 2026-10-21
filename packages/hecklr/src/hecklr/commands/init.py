@@ -10,7 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 from rich.markup import escape
 
 from hecklr import exit_codes
-from hecklr.commands._common import config_errors, fail, stdout
+from hecklr.commands._common import CONFIG_ERRORS, fail, stdout
 from hecklr.compose import load_run_project
 from hecklr.probe import ollama_models, probe_agent, reply_path
 from hecklr.scaffold import (
@@ -70,9 +70,15 @@ def init(
     _check(_MODEL_NAME, models.simulator, "simulator model")
     _check(_MODEL_NAME, models.judge, "judge model")
     written = write_project(root, name, choice, models)
-    with config_errors():
+    try:
         # Proves the written project loads and plans, so `hecklr run` cannot fail on it.
         resolve_suite(load_run_project(root / CONFIG_FILE), "ci")
+    except CONFIG_ERRORS as exc:
+        raise fail(
+            f"the project written to {root} does not load: {exc}. Fix the file named above, or "
+            "re-run `hecklr init` with --force to overwrite the files it wrote",
+            exit_codes.CONFIG_ERROR,
+        ) from exc
     stdout.print(f"Wrote {len(written)} files to {escape(str(root))}:", soft_wrap=True)
     for path in written:
         stdout.print(f"  {escape(str(path.relative_to(root)))}")
@@ -88,6 +94,12 @@ def _agent_choice(
     url: str | None, adapter: AdapterType | None, model: str | None, *, yes: bool
 ) -> AgentChoice:
     if adapter == "python":
+        if url is not None:
+            raise fail(
+                "--adapter python runs an in-process agent and takes no --agent-url; "
+                "drop one of the two",
+                exit_codes.CONFIG_ERROR,
+            )
         return AgentChoice("python")
     if url is None and adapter is None and not yes:
         url = (

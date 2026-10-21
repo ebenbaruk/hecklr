@@ -6,6 +6,7 @@ import click
 import pytest
 from typer.testing import CliRunner
 
+import hecklr.commands.init
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.compose import load_run_project
@@ -19,6 +20,7 @@ from hecklr.scaffold import (
 )
 from hecklr_core import resolve_suite
 from hecklr_schemas import HttpAdapterConfig, OpenAICompatibleAdapterConfig, PythonAdapterConfig
+from hecklr_world import WorldConfigError
 
 runner = CliRunner()
 FAKE = ["--simulator-model", "fake/customer", "--judge-model", "fake/judge"]
@@ -117,6 +119,31 @@ def test_adapter_without_url_is_refused(tmp_path: Path) -> None:
 
     assert code == exit_codes.CONFIG_ERROR
     assert "needs --agent-url" in output
+
+
+def test_python_adapter_with_a_url_is_refused(tmp_path: Path) -> None:
+    code, output = _init(
+        tmp_path, "--yes", "--adapter", "python", "--agent-url", "http://127.0.0.1:1", *FAKE
+    )
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert "takes no --agent-url" in output
+    assert not (tmp_path / "hecklr.yaml").exists()
+
+
+def test_a_written_project_that_does_not_load_says_how_to_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(path: Path) -> None:
+        raise WorldConfigError(f"{path}: invalid seed data")
+
+    monkeypatch.setattr(hecklr.commands.init, "load_run_project", broken)
+
+    code, output = _init(tmp_path, "--yes", *FAKE)
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert "does not load" in output
+    assert "--force" in output
 
 
 def test_interactive_init_prompts_for_agent_and_models(
