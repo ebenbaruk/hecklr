@@ -1,5 +1,6 @@
 """Synthetic trials for grader tests: an event log builder and a ``GradeContext`` factory."""
 
+import copy
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -123,13 +124,14 @@ class EventLog:
         return self.add("user", payload, t_ms)
 
 
-def snapshot(
-    collections: dict[str, dict[str, dict[str, JsonValue]]], t_ms: int = 0
-) -> WorldSnapshot:
+AcmeData = dict[str, dict[str, dict[str, JsonValue]]]
+
+
+def snapshot(collections: AcmeData, t_ms: int = 0) -> WorldSnapshot:
     return WorldSnapshot(world_id="acme-maintenance", taken_at_ms=t_ms, collections=collections)
 
 
-ACME: dict[str, dict[str, dict[str, JsonValue]]] = {
+ACME: AcmeData = {
     "customers": {
         "C-1042": {
             "customer_id": "C-1042",
@@ -218,3 +220,17 @@ def log() -> EventLog:
 @pytest.fixture
 def ctx_for() -> ContextFactory:
     return make_context
+
+
+SnapshotFactory = Callable[..., WorldSnapshot]
+
+
+@pytest.fixture
+def acme() -> AcmeData:
+    """A private copy of the acme-maintenance world data, free to modify."""
+    return copy.deepcopy(ACME)
+
+
+@pytest.fixture
+def snap() -> SnapshotFactory:
+    return snapshot
