@@ -35,6 +35,7 @@ from hecklr_core.planning import (
     plan_run,
 )
 from hecklr_core.sink import TrialEventSink
+from hecklr_core.storage import ResultStore, RunNotFoundError, RunResults
 from hecklr_core.yaml_files import YamlDocument, load_model, load_yaml
 
 __version__ = "0.1.0"
@@ -51,8 +52,11 @@ __all__ = [
     "Project",
     "ProviderLimit",
     "RateLimitedProvider",
+    "ResultStore",
     "RunBudget",
+    "RunNotFoundError",
     "RunPlan",
+    "RunResults",
     "Suite",
     "SuiteCell",
     "TokenBucket",
