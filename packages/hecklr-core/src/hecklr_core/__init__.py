@@ -6,6 +6,13 @@ from hecklr_core.errors import (
     ConfigError,
     ConfigIssue,
 )
+from hecklr_core.llm import (
+    DEFAULT_PROVIDER_LIMITS,
+    ProviderLimit,
+    RateLimitedProvider,
+    TokenBucket,
+    open_llm,
+)
 from hecklr_core.loading import (
     PERSONA_LIBRARY_GLOB,
     Project,
@@ -15,6 +22,7 @@ from hecklr_core.loading import (
     load_project,
     resolve_suite,
 )
+from hecklr_core.metering import MeteredProvider, RunBudget, TrialSpend
 from hecklr_core.planning import (
     CostEstimate,
     RunPlan,
@@ -26,21 +34,30 @@ from hecklr_core.planning import (
     make_spec,
     plan_run,
 )
+from hecklr_core.sink import TrialEventSink
 from hecklr_core.yaml_files import YamlDocument, load_model, load_yaml
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_PROVIDER_LIMITS",
     "PERSONA_LIBRARY_GLOB",
     "BudgetEstimateError",
     "BudgetExceededError",
     "ConfigError",
     "ConfigIssue",
     "CostEstimate",
+    "MeteredProvider",
     "Project",
+    "ProviderLimit",
+    "RateLimitedProvider",
+    "RunBudget",
     "RunPlan",
     "Suite",
     "SuiteCell",
+    "TokenBucket",
+    "TrialEventSink",
+    "TrialSpend",
     "YamlDocument",
     "check_estimate",
     "config_hash",
@@ -52,6 +69,7 @@ __all__ = [
     "load_project",
     "load_yaml",
     "make_spec",
+    "open_llm",
     "plan_run",
     "resolve_suite",
 ]
