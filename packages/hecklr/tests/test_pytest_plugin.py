@@ -13,6 +13,7 @@ import hecklr.compose
 import hecklr.pytest_plugin
 from hecklr.testing import scripted_models
 from hecklr_core import RunResults
+from hecklr_schemas import RunStatus
 
 pytest_plugins = ["pytester"]
 
@@ -147,9 +148,48 @@ def test_scenario_with_no_counted_trial_fails(
     result.stdout.fnmatch_lines(["*no trial could be run and graded*"])
 
 
-def _no_trials(config: Path, suite: str) -> RunResults:
+def test_a_crashing_suite_runs_once_and_fails_every_scenario(
+    project_dir: Path, pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def crash(config: Path, *, suite: str) -> RunResults:
+        calls.append(suite)
+        raise ExceptionGroup("trials", [RuntimeError("driver lost")])
+
+    monkeypatch.setattr(hecklr.api, "run", crash)
+    monkeypatch.chdir(project_dir)
+
+    result = pytester.runpytest_inprocess(
+        "--hecklr-suite", "ci", "--rootdir", str(project_dir), str(project_dir)
+    )
+
+    result.assert_outcomes(failed=5)
+    assert calls == ["ci"]
+    assert result.stdout.str().count("the suite run failed: RuntimeError: driver lost") == 5
+
+
+def test_a_run_that_did_not_complete_fails_every_scenario(
+    project_dir: Path, pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def stopped(config: Path, *, suite: str) -> RunResults:
+        return _no_trials(config, suite, RunStatus.BUDGET_EXCEEDED)
+
+    monkeypatch.setattr(hecklr.api, "run", stopped)
+    monkeypatch.chdir(project_dir)
+
+    result = pytester.runpytest_inprocess(
+        "--hecklr-suite", "ci", "--rootdir", str(project_dir), str(project_dir)
+    )
+
+    result.assert_outcomes(failed=5)
+    result.stdout.fnmatch_lines(["*ended budget_exceeded, so its results are partial*"])
+
+
+def _no_trials(config: Path, suite: str, status: RunStatus = RunStatus.COMPLETED) -> RunResults:
     plan = hecklr.compose.prepare_run(hecklr.compose.RunRequest(config_path=config, suite=suite))
-    return RunResults(run=plan.plan.run, trials=[], events=[], grades=[])
+    run = plan.plan.run.model_copy(update={"status": status})
+    return RunResults(run=run, trials=[], events=[], grades=[])
 
 
 def test_unknown_attribute_of_the_package() -> None:

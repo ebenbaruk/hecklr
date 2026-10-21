@@ -13,6 +13,11 @@ of the 95% Wilson interval of its pass rate is below ``--hecklr-min-pass-rate``:
 at 95% confidence, that the scenario passes less often than required. Few trials therefore fail a
 scenario only on strong evidence (3 trials at the default 0.8: 0/3 and 1/3 fail, 2/3 passes).
 Harness errors and grading errors are not counted; a scenario with no counted trial fails too.
+Every scenario fails when the run did not complete (it stopped at the budget, was cancelled or
+crashed): a truncated run is never a green build.
+
+The suite runs at most once per session, even when it raises: every scenario then fails with the
+same error instead of starting the suite again.
 
 Run the suite in one process: with ``pytest -n``, every worker would run the whole suite.
 """
@@ -81,6 +86,7 @@ class HecklrSuite(pytest.File):
         super().__init__(**kwargs)  # type: ignore[arg-type]  # pytest passes node arguments through
         self.suite = suite
         self._results: RunResults | None = None
+        self._error: str | None = None
 
     def collect(self) -> Iterator["ScenarioItem"]:
         """One item per scenario the suite selects."""
@@ -92,11 +98,22 @@ class HecklrSuite(pytest.File):
             yield ScenarioItem.from_parent(self, name=scenario_id, scenario_id=scenario_id)
 
     def results(self) -> "RunResults":
-        """The suite's results, running it the first time they are needed."""
-        if self._results is None:
-            from hecklr.api import run
+        """The suite's results, running it the first time they are needed.
 
-            self._results = run(self.path, suite=self.suite)
+        A run that raises is remembered too: re-running a crashing suite once per scenario would
+        multiply its wall time and its model spend (each attempt gets a fresh budget).
+        """
+        if self._error is None and self._results is None:
+            from hecklr.api import run
+            from hecklr.errors import describe_error
+
+            try:
+                self._results = run(self.path, suite=self.suite)
+            except Exception as exc:  # noqa: BLE001 -- any failure fails every scenario, below
+                self._error = f"the suite run failed: {describe_error(exc)}"
+        if self._results is None:
+            assert self._error is not None  # noqa: S101 -- one of the two is always set here
+            pytest.fail(self._error, pytrace=False)
         return self._results
 
 
@@ -110,11 +127,19 @@ class ScenarioItem(pytest.Item):
     def runtest(self) -> None:
         """Fail by the pass rule in the module docstring."""
         from hecklr.outcomes import trial_outcomes
+        from hecklr_schemas import RunStatus
 
         assert isinstance(self.parent, HecklrSuite)  # noqa: S101 -- created only by HecklrSuite
+        results = self.parent.results()
+        if results.run.status is not RunStatus.COMPLETED:
+            pytest.fail(
+                f"scenario {self.scenario_id}: the run {results.run.id} ended "
+                f"{results.run.status.value}, so its results are partial",
+                pytrace=False,
+            )
         counted = [
             outcome
-            for outcome in trial_outcomes(self.parent.results()).outcomes
+            for outcome in trial_outcomes(results).outcomes
             if outcome.scenario_id == self.scenario_id
         ]
         if not counted:
