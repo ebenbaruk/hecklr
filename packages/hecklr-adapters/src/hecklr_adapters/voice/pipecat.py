@@ -28,7 +28,7 @@ from aiortc.mediastreams import MediaStreamError
 from hecklr_adapters._http import agent_http_errors, check_status, parse_json
 from hecklr_adapters.errors import AgentError
 from hecklr_adapters.voice.audio import SAMPLE_RATE, ToHarness
-from hecklr_adapters.voice.playout import Playout, Receiver
+from hecklr_adapters.voice.playout import RELEASE_TIMEOUT_S, Playout, Receiver
 from hecklr_adapters.voice.websocket import check_caller_rate
 from hecklr_schemas import PipecatAdapterConfig, SessionContext, TimedFrame
 
@@ -79,9 +79,8 @@ class CallerTrack(MediaStreamTrack):
 class PipecatVoiceTarget:
     """Places each call as a new SmallWebRTC peer connection."""
 
-    def __init__(self, config: PipecatAdapterConfig, timeout_s: float = 10.0) -> None:
+    def __init__(self, config: PipecatAdapterConfig) -> None:
         self._url = str(config.url)
-        self._timeout_s = timeout_s
 
     async def connect(self, ctx: SessionContext) -> "PipecatAudioLink":
         """Offer, answer, and wait for the agent's audio track."""
@@ -99,8 +98,10 @@ class PipecatVoiceTarget:
         self, ctx: SessionContext, offer: RTCSessionDescription
     ) -> RTCSessionDescription:
         body = {"sdp": offer.sdp, "type": offer.type, "request_data": {"trial_id": ctx.trial_id}}
-        with agent_http_errors(self._url, self._timeout_s):
-            async with httpx2.AsyncClient(timeout=httpx2.Timeout(self._timeout_s)) as client:
+        # The schema's config has no timeout of its own; the trial's per-reply deadline is the
+        # longest a caller would wait for the line to pick up.
+        with agent_http_errors(self._url, ctx.timeout_s):
+            async with httpx2.AsyncClient(timeout=httpx2.Timeout(ctx.timeout_s)) as client:
                 response = await client.post(self._url, json=body, headers=ctx.headers())
                 await check_status(response)
         data = parse_json(response.text)
@@ -141,6 +142,8 @@ class PipecatAudioLink:
             await self._pc.setRemoteDescription(answer)
         except ValueError as exc:
             raise AgentError(f"agent's SmallWebRTC answer is invalid: {exc}") from exc
+        # No deadline here: ICE and DTLS have their own failure states, and the driver bounds
+        # the whole connect by the trial's timeout (as LiveKit's start() relies on too).
         await self._settled.wait()
         if self._agent is None or self._pc.connectionState != "connected":
             raise AgentError("the WebRTC connection failed before the agent answered")
@@ -158,13 +161,20 @@ class PipecatAudioLink:
         return self._receiver.frames()
 
     async def hangup(self) -> None:
-        """Close the peer connection; safe to call twice."""
+        """Close the peer connection; safe to call twice.
+
+        Every step runs even if an earlier one fails or the caller cancels the hang-up, so a
+        failed call never leaves a peer connection or reading task behind.
+        """
         if self._hung_up:
             return
         self._hung_up = True
-        await self._receiver.stop()
-        self._caller.stop()
-        await self._pc.close()
+        with anyio.move_on_after(RELEASE_TIMEOUT_S, shield=True):
+            try:
+                await self._receiver.stop()
+            finally:
+                self._caller.stop()
+                await self._pc.close()
 
     async def _receive(self) -> bool:
         track = self._agent

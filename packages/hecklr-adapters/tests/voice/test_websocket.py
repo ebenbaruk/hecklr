@@ -12,9 +12,12 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 from websockets.asyncio.server import ServerConnection, serve
+from websockets.exceptions import ConnectionClosedError
+from websockets.protocol import State
 
 from hecklr_adapters import AgentError, AgentTimeoutError
 from hecklr_adapters.voice import WebSocketVoiceAdapterConfig, WebSocketVoiceTarget
+from hecklr_adapters.voice.websocket import WebSocketAudioLink
 from hecklr_schemas import TRIAL_ID_HEADER, SessionContext, TrialId, new_id
 
 pytestmark = [pytest.mark.anyio, pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
@@ -168,3 +171,50 @@ async def test_a_pipecat_agent_that_sends_text_breaks_the_protocol() -> None:
             async for _ in link.frames():
                 pass
         await link.hangup()
+
+
+async def _assert_released(link: WebSocketAudioLink, closed: anyio.Event) -> None:
+    """The socket is closed on both ends and the reading task has finished."""
+    with anyio.fail_after(5):
+        await closed.wait()
+    assert link._socket.state is State.CLOSED
+    assert link._receiver._task is not None
+    assert link._receiver._task.done()
+
+
+async def test_hangup_releases_the_socket_when_the_goodbye_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = anyio.Event()
+
+    async def handler(connection: ServerConnection) -> None:
+        await connection.wait_closed()
+        closed.set()
+
+    async def broken_send(message: str | bytes) -> None:
+        raise ConnectionClosedError(None, None)
+
+    async with agent(handler) as url:
+        link = await WebSocketVoiceTarget(config(url, protocol="twilio")).connect(ctx())
+        assert isinstance(link, WebSocketAudioLink)
+        monkeypatch.setattr(link._socket, "send", broken_send)
+        with pytest.raises(AgentError, match="connection failed"):
+            await link.hangup()
+        await _assert_released(link, closed)
+        await link.hangup()  # already released: nothing left to do, no error
+
+
+async def test_a_cancelled_hangup_still_releases_the_socket() -> None:
+    closed = anyio.Event()
+
+    async def handler(connection: ServerConnection) -> None:
+        await connection.wait_closed()
+        closed.set()
+
+    async with agent(handler) as url:
+        link = await WebSocketVoiceTarget(config(url)).connect(ctx())
+        assert isinstance(link, WebSocketAudioLink)
+        with anyio.CancelScope() as scope:
+            scope.cancel()  # as when the driver's hang-up bound runs out mid-goodbye
+            await link.hangup()
+        await _assert_released(link, closed)

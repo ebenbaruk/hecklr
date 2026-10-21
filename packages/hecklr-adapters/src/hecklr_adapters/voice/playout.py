@@ -36,6 +36,13 @@ missed its slot by more than two frames means the line went quiet in between, as
 buffer would conclude.
 """
 
+RELEASE_TIMEOUT_S: Final = 5.0
+"""Bound on releasing a call's transport at hang-up, shielded from the caller's cancellation.
+
+Releasing must survive a cancelled hang-up, or the connection leaks; it must also end, or a
+stuck transport would hold the trial. Five seconds matches the driver's own hang-up bound.
+"""
+
 
 def monotonic_ms() -> float:
     """The adapter's clock: monotonic milliseconds with sub-millisecond resolution."""

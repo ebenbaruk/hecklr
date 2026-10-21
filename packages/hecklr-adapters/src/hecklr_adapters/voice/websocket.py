@@ -8,6 +8,7 @@ one, or a protocol violation, is an ``AgentError``.
 """
 
 from collections.abc import AsyncIterator
+from typing import Final
 
 import anyio
 import anyio.lowlevel
@@ -30,6 +31,13 @@ from hecklr_adapters.voice.wire import (
 )
 from hecklr_schemas import SessionContext, TimedFrame, new_id
 
+CLOSE_TIMEOUT_S: Final = 1.0
+"""How long the closing handshake may wait on the agent before the connection is dropped.
+
+websockets bounds ``close()`` by this itself (and advises against cancelling ``close()``), so a
+hang-up ends within a few seconds even when the agent never answers the close.
+"""
+
 
 def check_caller_rate(sample_rate: int) -> None:
     """Caller frames come from the harness at 16 kHz; anything else is a harness bug."""
@@ -51,6 +59,7 @@ class WebSocketVoiceTarget:
                 config.url,
                 additional_headers={**config.headers, **ctx.headers()},
                 open_timeout=config.connect_timeout_s,
+                close_timeout=CLOSE_TIMEOUT_S,
                 max_size=None,
             )
         except TimeoutError as exc:
@@ -109,15 +118,25 @@ class WebSocketAudioLink:
         return self._frames()
 
     async def hangup(self) -> None:
-        """Say goodbye in the wire's terms and close the socket; safe to call twice."""
+        """Say goodbye in the wire's terms and close the socket; safe to call twice.
+
+        The socket and the reading task are released even when the goodbye fails or the
+        caller cancels it (the driver bounds hang-ups): a misbehaving agent must not leave a
+        connection open behind each trial. ``CLOSE_TIMEOUT_S`` bounds the shielded close.
+        """
         if self._hung_up:
             return
         self._hung_up = True
-        if not self._agent_hung_up:
-            for message in self._wire.closing():
-                await self._send(message)
-        await self._socket.close()
-        await self._receiver.stop()
+        try:
+            if not self._agent_hung_up:
+                for message in self._wire.closing():
+                    await self._send(message)
+        finally:
+            with anyio.CancelScope(shield=True):
+                try:
+                    await self._socket.close()
+                finally:
+                    await self._receiver.stop()
 
     async def _frames(self) -> AsyncIterator[TimedFrame]:
         async for frame in self._receiver.frames():

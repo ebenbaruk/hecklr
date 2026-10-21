@@ -11,6 +11,7 @@ LiveKit resamples the agent's track to 16 kHz mono itself; frames still go throu
 receive clock, gaps included, exactly as with every other transport.
 """
 
+import contextlib
 import json
 import os
 from collections.abc import AsyncIterator, Mapping
@@ -22,7 +23,7 @@ from livekit import api, rtc
 
 from hecklr_adapters.errors import AdapterConfigError, AgentError
 from hecklr_adapters.voice.audio import SAMPLE_RATE, pcm16
-from hecklr_adapters.voice.playout import Playout, Receiver
+from hecklr_adapters.voice.playout import RELEASE_TIMEOUT_S, Playout, Receiver
 from hecklr_adapters.voice.websocket import check_caller_rate
 from hecklr_schemas import LiveKitAdapterConfig, SessionContext, TimedFrame
 
@@ -147,15 +148,23 @@ class LiveKitAudioLink:
         return self._receiver.frames()
 
     async def hangup(self) -> None:
-        """Leave the room; safe to call twice."""
+        """Leave the room; safe to call twice.
+
+        Every step runs even if an earlier one fails or the caller cancels the hang-up, so a
+        failed call never leaves a room connection (which would keep reconnecting) behind.
+        """
         if self._hung_up:
             return
         self._hung_up = True
-        await self._receiver.stop()
-        if self._stream is not None:
-            await self._stream.aclose()
-        await self._room.disconnect()
-        await self._source.aclose()
+        with anyio.move_on_after(RELEASE_TIMEOUT_S, shield=True):
+            async with contextlib.AsyncExitStack() as release:
+                # Run in reverse order of registration: stop reading, close the stream, leave
+                # the room, then free the source.
+                release.push_async_callback(self._source.aclose)
+                release.push_async_callback(self._room.disconnect)
+                if self._stream is not None:
+                    release.push_async_callback(self._stream.aclose)
+                release.push_async_callback(self._receiver.stop)
 
     async def _receive(self) -> bool:
         stream = self._stream

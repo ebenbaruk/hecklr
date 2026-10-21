@@ -13,7 +13,7 @@ from aiortc import MediaStreamTrack, RTCPeerConnection
 from aiortc.mediastreams import MediaStreamError
 
 from hecklr_adapters import AgentError
-from hecklr_adapters.voice.pipecat import CallerTrack, PipecatVoiceTarget
+from hecklr_adapters.voice.pipecat import CallerTrack, PipecatAudioLink, PipecatVoiceTarget
 from hecklr_schemas import PipecatAdapterConfig, SessionContext, TrialId, new_id
 from hecklr_voice.audio import speech_edges
 from hecklr_voice.testing import synthetic_reply
@@ -140,3 +140,18 @@ async def test_unreachable_endpoint_is_an_agent_error() -> None:
         pass
     with pytest.raises(AgentError):
         await target(url).connect(ctx())
+
+
+async def test_hangup_closes_the_peer_connection_even_when_a_step_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    link = PipecatAudioLink()
+
+    async def broken_stop() -> None:
+        raise RuntimeError("reader would not stop")
+
+    monkeypatch.setattr(link._receiver, "stop", broken_stop)
+    with pytest.raises(RuntimeError, match="would not stop"):
+        await link.hangup()
+    assert link._pc.connectionState == "closed"
+    assert link._caller.readyState == "ended"
