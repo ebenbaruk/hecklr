@@ -1,0 +1,19 @@
+[project]
+name = "hecklr-mine"
+version = "0.1.0"
+description = "Hecklr miner: log ingestion, PII scrubbing, failure clustering, scenario synthesis."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Eli Benbaruk" }]
+dependencies = [
+    "hecklr-schemas",
+    "hecklr-llm",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hecklr_mine"]

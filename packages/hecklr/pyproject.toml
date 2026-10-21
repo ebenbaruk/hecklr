@@ -1,0 +1,50 @@
+[project]
+name = "hecklr"
+version = "0.1.0"
+description = "The crash-test lab for conversational AI agents: simulated customers over voice, chat and email, with statistical verdicts."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Eli Benbaruk" }]
+keywords = ["llm", "agents", "evaluation", "voice", "testing", "ci"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+# The default install is text-only (chat + email). Audio and mining pull heavy native
+# dependencies, so they live behind extras.
+dependencies = [
+    "hecklr-schemas",
+    "hecklr-llm",
+    "hecklr-core",
+    "hecklr-sim",
+    "hecklr-world",
+    "hecklr-channels",
+    "hecklr-adapters",
+    "hecklr-grade",
+    "hecklr-stats",
+    "hecklr-report",
+    "hecklr-fix",
+    "rich>=14.0",
+    "typer>=0.20",
+]
+
+[project.optional-dependencies]
+voice = ["hecklr-voice"]
+local-voice = ["hecklr-voice[local]"]
+mine = ["hecklr-mine"]
+# The UI server dependencies arrive with WS16; the extra exists now so install docs stay stable.
+ui = []
+all = ["hecklr[voice,local-voice,mine,ui]"]
+
+[project.scripts]
+hecklr = "hecklr.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hecklr"]
