@@ -31,6 +31,7 @@ from hecklr_schemas import (
     ToolCalledCriterion,
 )
 from hecklr_schemas.scenario import SuccessCriterion
+from hecklr_sim.errors import ReplayExtractionError
 from hecklr_sim.seeds import derive_seed
 from hecklr_sim.tokens import mentions
 
@@ -97,7 +98,7 @@ async def extract_scenario(
 
     Raises:
         hecklr_llm.LLMOutputError: The model's reply did not match ``ReplayExtraction``.
-        ValueError: The extraction is unusable (an empty goal).
+        ReplayExtractionError: The extraction is unusable (an empty goal).
     """
     request = LLMRequest(
         model=model,
@@ -108,7 +109,9 @@ async def extract_scenario(
     )
     extraction, _ = await complete_structured(llm, request, ReplayExtraction)
     if not extraction.goal.strip():
-        raise ValueError(f"conversation {conversation.id!r}: the extractor returned no goal")
+        raise ReplayExtractionError(
+            f"conversation {conversation.id!r}: the extractor returned no goal"
+        )
     return Scenario(
         id=scenario_id_for(conversation.id),
         title=extraction.title.strip() or f"Replay of {conversation.id}",
@@ -230,7 +233,7 @@ async def transcripts_to_scenarios(
                 outcomes[index] = await extract_scenario(
                     conversation, llm, model=model, world=world, persona=persona, seed=seed
                 )
-            except (LLMOutputError, ValueError) as exc:
+            except (LLMOutputError, ReplayExtractionError) as exc:
                 outcomes[index] = ReplayFailure(conversation.id, str(exc))
 
     async with anyio.create_task_group() as group:

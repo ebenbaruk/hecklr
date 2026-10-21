@@ -26,6 +26,7 @@ from hecklr_schemas import (
 from hecklr_sim import (
     ExtractedFact,
     GuidedSimulator,
+    ReplayExtractionError,
     derive_seed,
     extract_scenario,
     grounded_facts,
@@ -176,6 +177,46 @@ async def test_us02_transcripts_to_scenarios_writes_the_rest_when_one_extraction
 
 
 @pytest.mark.anyio
+async def test_us02_transcripts_to_scenarios_reports_a_goalless_extraction(
+    tmp_path: Path,
+) -> None:
+    goalless = "prod-88230"
+
+    def respond(request: LLMRequest) -> dict[str, Any] | str:
+        match = _CONVERSATION_ID.match(request.messages[-1].content)
+        assert match is not None
+        reply = _extractor(request)
+        return {**reply, "goal": " "} if match.group(1) == goalless else reply
+
+    batch = await transcripts_to_scenarios(
+        TRANSCRIPTS, tmp_path, FakeLLM(responder=respond), model="fake/x", world="w", persona="p"
+    )
+
+    assert [(f.conversation_id, "no goal" in f.error) for f in batch.failures] == [(goalless, True)]
+
+
+@pytest.mark.anyio
+async def test_us02_transcripts_to_scenarios_lets_programming_errors_propagate(
+    tmp_path: Path,
+) -> None:
+    def respond(request: LLMRequest) -> str:
+        raise ValueError("a bug, not a bad transcript")
+
+    with pytest.raises(ExceptionGroup) as info:
+        await transcripts_to_scenarios(
+            TRANSCRIPTS,
+            tmp_path,
+            FakeLLM(responder=respond),
+            model="fake/x",
+            world="w",
+            persona="p",
+        )
+
+    assert info.group_contains(ValueError, match="a bug")
+    assert _listing(tmp_path) == {}
+
+
+@pytest.mark.anyio
 async def test_us02_transcripts_to_scenarios_writes_one_yaml_per_conversation(
     tmp_path: Path,
 ) -> None:
@@ -266,7 +307,7 @@ async def test_us02_extraction_falls_back_to_a_title_and_rejects_an_empty_goal()
     assert scenario.title == "Replay of c-1"
     assert scenario.tags == ["replay", "billing", "refund", "dispute"]
     assert scenario.success == [JudgeCriterion(type="judge", rubric="resolved")]
-    with pytest.raises(ValueError, match="no goal"):
+    with pytest.raises(ReplayExtractionError, match="no goal"):
         await extract_scenario(_conversation(), goalless, model="fake/x", world="w", persona="p")
 
 

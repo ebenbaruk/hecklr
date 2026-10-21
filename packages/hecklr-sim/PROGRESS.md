@@ -36,7 +36,8 @@ commit `fix(sim): tighten prompts and guard after live runs against Ollama`.
 - `make_simulator(model, *, max_regenerations=2, llm_consistency_check=False, temperature=None,
   max_tokens=512, strategies=BUILTIN_STRATEGIES, clock_factory=MonotonicClock) -> SimulatorFactory`
 - `transcripts_to_scenarios(path, out_dir, llm, *, model, world, persona, seed=0, concurrency=8)
-  -> ReplayBatch(written, failures)`; one failed extraction does not lose the batch. Also
+  -> ReplayBatch(written, failures)`; one failed extraction (`LLMOutputError` or
+  `ReplayExtractionError`) does not lose the batch, while any other error propagates. Also
   `extract_scenario`, `load_conversations`, `scenario_to_yaml`.
 - `AttackStrategy` (with optional `decoys`), `BUILTIN_STRATEGIES` (pass
   `{**BUILTIN_STRATEGIES, **pack}` to add a pack). Every tactic that names someone else's

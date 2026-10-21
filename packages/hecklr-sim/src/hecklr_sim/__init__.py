@@ -10,7 +10,7 @@ Wiring (done by the orchestrator, once per run)::
 """
 
 from hecklr_sim.decision import ConsistencyVerdict, SimDecision
-from hecklr_sim.errors import SimulatorError
+from hecklr_sim.errors import ReplayExtractionError, SimulatorError
 from hecklr_sim.factory import make_simulator
 from hecklr_sim.guard import ConsistencyGuard, GuardIssue
 from hecklr_sim.guided import GuidedSimulator, Patience, SimulatorSettings
@@ -51,6 +51,7 @@ __all__ = [
     "Patience",
     "ReplayBatch",
     "ReplayExtraction",
+    "ReplayExtractionError",
     "ReplayFailure",
     "ScriptedSimulator",
     "SimDecision",

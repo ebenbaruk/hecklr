@@ -9,3 +9,11 @@ class SimulatorError(Exception):
     ``harness_error`` so a broken simulation is excluded from statistics instead of being counted
     against the agent.
     """
+
+
+class ReplayExtractionError(Exception):
+    """The extractor's reply for one conversation cannot become a scenario (e.g. no goal).
+
+    A data problem with one conversation, so ``transcripts_to_scenarios`` reports it as a
+    ``ReplayFailure`` and keeps the batch; programming errors still propagate.
+    """
