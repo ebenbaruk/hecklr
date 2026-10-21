@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from hecklr_schemas import EndReason
+from hecklr_sim.brief import PROGRESS_RULE
 
 LLMEndReason = Literal["goal_achieved", "goal_abandoned", "handoff"]
 """End reasons the customer itself may choose; limits are enforced by the harness, not the LLM."""
@@ -31,9 +32,7 @@ class SimDecision(BaseModel):
     facts_revealed: list[str] = Field(
         description="Names of the facts from your brief that this message reveals; [] if none."
     )
-    agent_made_progress: bool = Field(
-        description="Whether the agent's latest message moved your goal forward."
-    )
+    agent_made_progress: bool = Field(description=PROGRESS_RULE)
     subject: str = Field(
         description="Email subject line for your very first email; empty string otherwise."
     )

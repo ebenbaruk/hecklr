@@ -12,6 +12,13 @@ from pydantic import JsonValue
 from hecklr_schemas import Channel, DialogueTurn, Persona, Scenario, Traits
 from hecklr_sim.strategies import AttackStrategy
 
+PROGRESS_RULE = (
+    "true if the agent's latest message moves toward your goal: asking for details it needs, "
+    "offering options or doing what you asked all count. False only if it ignored or "
+    "misunderstood you, repeated itself or refused without an alternative."
+)
+"""What counts as progress for patience; shared by the brief and the response schema."""
+
 _LOW = 1 / 3
 _HIGH = 2 / 3
 
@@ -23,7 +30,8 @@ def render_brief(
     sections = [
         _identity(persona, channel),
         "## How you behave\n" + "\n".join(f"- {line}" for line in _behavior_lines(persona)),
-        f"## Your goal\n{scenario.goal}",
+        f"## Your goal\n{scenario.goal}\n"
+        "Say it in your own words, as this person would; never copy this text.",
         _facts_section(scenario.facts),
     ]
     if strategy is not None:
@@ -171,7 +179,7 @@ def _output_section(channel: Channel) -> str:
         '"goal_abandoned".\n'
         "- facts_revealed: the names (from Facts you know) of facts your message gives; [] if "
         "none.\n"
-        "- agent_made_progress: true if the agent's latest message moved your goal forward.\n"
+        f"- agent_made_progress: {PROGRESS_RULE}\n"
         f"- {subject}"
     )
 

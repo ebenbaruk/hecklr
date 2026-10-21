@@ -10,7 +10,8 @@ The deterministic checks are cheap and run on every draft:
 - **Invented identifier:** an ID-like token (``ORD-5581``, ``4412345678``) found nowhere in the
   facts, the goal or what the agent said.
 - **Unknown fact:** ``facts_revealed`` names a fact the brief does not have.
-- **Malformed decision:** ``speak`` with no text, or ``end`` with no reason.
+- **Malformed decision:** ``speak`` with no text, ``end`` with no reason, or JSON spilled into
+  the text (seen with small local models).
 
 Tokens the agent itself said are never flagged, so "no, not C-1043, it's C-1042" passes. A changed
 goal cannot be detected by pattern matching; the optional LLM check (``ConsistencyVerdict``)
@@ -35,6 +36,10 @@ IssueKind = Literal[
 _ID_TOKEN = re.compile(r"(?<![A-Za-z\d])(?:[A-Za-z]{1,4}-?\d{3,}|\d{6,})(?![A-Za-z\d])")
 """ID-like tokens: letters then digits (``C-1042``, ``ORD5581``) or long digit runs (phones)."""
 _RUNS = re.compile(r"[A-Za-z]+|\d+|[^A-Za-z\d]+")
+_FORMAT_LEAK = re.compile(
+    r"[{}]|\b(?:end_reason|facts_revealed|agent_made_progress|goal_achieved|goal_abandoned)\b"
+)
+"""Braces or answer-format field names in the text: the model spilled its JSON into the message."""
 
 
 @dataclass(frozen=True)
@@ -100,10 +105,15 @@ class ConsistencyGuard:
 
     def _unknown_fact_issues(self, revealed: Iterable[str]) -> list[GuardIssue]:
         return [
-            GuardIssue("unknown_fact", f"{name!r} is not one of your facts; do not invent facts")
-            for name in revealed
-            if name.casefold() not in self._fact_names and name.casefold() not in self._fact_values
+            GuardIssue("unknown_fact", f"{entry!r} is not one of your facts; do not invent facts")
+            for entry in revealed
+            if not self._is_known_fact(entry)
         ]
+
+    def _is_known_fact(self, entry: str) -> bool:
+        # Models report a fact by name, by value, or as "name: value"; all name the same fact.
+        name = re.split(r"[:=]", entry, maxsplit=1)[0].strip().casefold()
+        return name in self._fact_names or entry.strip().casefold() in self._fact_values
 
 
 def _structural_issues(decision: SimDecision) -> list[GuardIssue]:
@@ -111,6 +121,8 @@ def _structural_issues(decision: SimDecision) -> list[GuardIssue]:
         return [GuardIssue("malformed", 'action "speak" needs a non-empty text')]
     if decision.action == "end" and decision.end_reason is None:
         return [GuardIssue("malformed", 'action "end" needs an end_reason')]
+    if _FORMAT_LEAK.search(decision.text):
+        return [GuardIssue("malformed", "text must be only your message: no JSON, no field names")]
     return []
 
 

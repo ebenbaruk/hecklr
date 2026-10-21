@@ -221,7 +221,7 @@ async def test_us02_extraction_falls_back_to_a_title_and_rejects_an_empty_goal()
     base: dict[str, Any] = {
         "facts": [],
         "resolving_tool": "issue_refund",
-        "tags": ["  ", "Billing!"],
+        "tags": ["  ", "Billing!", "billing", "refund", "dispute", "one-too-many"],
     }
     untitled = FakeLLM(script=[{**base, "title": " ", "goal": "Get a refund"}])
     goalless = FakeLLM(script=[{**base, "title": "t", "goal": "  "}])
@@ -231,7 +231,7 @@ async def test_us02_extraction_falls_back_to_a_title_and_rejects_an_empty_goal()
     )
 
     assert scenario.title == "Replay of c-1"
-    assert scenario.tags == ["replay", "billing"]
+    assert scenario.tags == ["replay", "billing", "refund", "dispute"]
     assert scenario.success == [JudgeCriterion(type="judge", rubric="resolved")]
     with pytest.raises(ValueError, match="no goal"):
         await extract_scenario(_conversation(), goalless, model="fake/x", world="w", persona="p")

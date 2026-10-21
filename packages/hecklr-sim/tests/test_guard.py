@@ -78,7 +78,10 @@ def test_ws2_guard_flags_facts_the_brief_does_not_have(guard: ConsistencyGuard) 
         draft = decision_reply("Here you go.", facts_revealed=revealed)
         return [issue.kind for issue in guard.check(draft, [])]
 
-    assert kinds(["customer_id", "Postcode", "92000"]) == []
+    assert (
+        kinds(["customer_id", "Postcode", "92000", "postcode: 92000", "customer_id=C-1042"]) == []
+    )
+    assert kinds(["date_of_birth: 1970-01-01"]) == ["unknown_fact"]
     assert kinds(["date_of_birth"]) == ["unknown_fact"]
 
 
@@ -90,12 +93,20 @@ def test_ws2_guard_flags_malformed_decisions(guard: ConsistencyGuard) -> None:
 
     assert [i.kind for i in guard.check(empty_speak, [])] == ["malformed"]
     assert [i.kind for i in guard.check(end_without_reason, [])] == ["malformed"]
+    # Seen live with qwen3:4b: the JSON answer spilled into the message text.
+    spilled = decision_reply("Why not now?','goal_achieved':false,'handoff':false}{")
+    assert [i.kind for i in guard.check(spilled, [])] == ["malformed"]
 
 
 def test_ws2_guard_handles_nested_and_free_text_facts(make_brief: BriefFactory) -> None:
     brief = make_brief(
         scenario={
-            "facts": {"name": "Jo Smith", "orders": ["ORD-1", {"ref": "ORD-77123"}], "vip": True}
+            "facts": {
+                "name": "Jo Smith",
+                "orders": ["ORD-1", {"ref": "ORD-77123"}],
+                "vip": True,
+                "note": None,
+            }
         }
     )
     guard = ConsistencyGuard(brief.scenario)

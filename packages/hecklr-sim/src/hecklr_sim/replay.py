@@ -35,17 +35,19 @@ from hecklr_sim.seeds import derive_seed
 _EXTRACTOR_SYSTEM = (
     "You turn a logged customer-support conversation into a test scenario for a customer "
     "simulator. Extract, from the customer's point of view:\n"
-    "- title: a short description of the situation, e.g. 'Customer moves a boiler visit'.\n"
+    "- title: a short title of this customer's situation, starting with 'Customer'.\n"
     "- goal: what the customer wanted to achieve, in one or two sentences, including "
     "constraints they stated (dates, preferences). Do not describe what the agent did.\n"
     "- facts: every concrete detail the customer gave (identifiers, postcodes, dates, names, "
     "amounts), as snake_case names with the value exactly as the customer wrote it. Only "
     "details the customer said, never ones only the agent said.\n"
     "- resolving_tool: the name of the agent tool call that fulfilled the goal, or null.\n"
-    "- tags: one to three short lowercase topic tags, e.g. scheduling, billing."
+    "- tags: one to three short lowercase topic tags."
 )
 _SLUG = re.compile(r"[^a-z0-9._-]+")
 _MAX_ID = 128
+_MAX_TAGS = 3
+"""Topic tags kept from the extractor, besides ``replay``; models tend to over-tag."""
 
 
 class ExtractedFact(BaseModel):
@@ -244,7 +246,7 @@ def _tags(raw: Sequence[str]) -> list[str]:
     tags = ["replay"]
     for tag in raw:
         slug = _SLUG.sub("-", tag.lower()).strip("-._")[:_MAX_ID]
-        if slug and slug not in tags:
+        if slug and slug not in tags and len(tags) <= _MAX_TAGS:
             tags.append(slug)
     return tags
 
