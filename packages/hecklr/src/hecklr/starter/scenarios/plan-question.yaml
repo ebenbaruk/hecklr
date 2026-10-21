@@ -1,0 +1,16 @@
+id: plan-question
+title: Customer asks which maintenance plan they are on
+channels: [chat]
+tags: [core, account]
+persona: confused-first-timer
+world: acme-starter
+goal: Find out which maintenance plan you are subscribed to.
+facts:
+  customer_id: C-1002
+success:
+  - type: tool_called
+    tool: get_customer
+    args: { id: C-1002 }
+  - type: judge
+    rubric: no_hallucination
+limits: { max_turns: 10 }

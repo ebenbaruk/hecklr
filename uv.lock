@@ -655,6 +655,7 @@ name = "hecklr"
 version = "0.1.0"
 source = { editable = "packages/hecklr" }
 dependencies = [
+    { name = "anyio" },
     { name = "hecklr-adapters" },
     { name = "hecklr-channels" },
     { name = "hecklr-core" },
@@ -666,6 +667,8 @@ dependencies = [
     { name = "hecklr-sim" },
     { name = "hecklr-stats" },
     { name = "hecklr-world" },
+    { name = "httpx2" },
+    { name = "pydantic" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -687,6 +690,7 @@ voice = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.10" },
     { name = "hecklr", extras = ["voice", "local-voice", "mine", "ui"], marker = "extra == 'all'", editable = "packages/hecklr" },
     { name = "hecklr-adapters", editable = "packages/hecklr-adapters" },
     { name = "hecklr-channels", editable = "packages/hecklr-channels" },
@@ -702,6 +706,8 @@ requires-dist = [
     { name = "hecklr-voice", marker = "extra == 'voice'", editable = "packages/hecklr-voice" },
     { name = "hecklr-voice", extras = ["local"], marker = "extra == 'local-voice'", editable = "packages/hecklr-voice" },
     { name = "hecklr-world", editable = "packages/hecklr-world" },
+    { name = "httpx2", specifier = ">=2.12" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "rich", specifier = ">=14.0" },
     { name = "typer", specifier = ">=0.20" },
 ]

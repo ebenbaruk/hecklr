@@ -32,7 +32,7 @@ from hecklr_schemas import (
 )
 from hecklr_schemas.scenario import SuccessCriterion
 from hecklr_sim.errors import ReplayExtractionError
-from hecklr_sim.seeds import derive_seed
+from hecklr_sim.seeds import derive_subseed
 from hecklr_sim.tokens import mentions
 
 _EXTRACTOR_SYSTEM = (
@@ -105,7 +105,7 @@ async def extract_scenario(
         system=_EXTRACTOR_SYSTEM,
         messages=[Message(role="user", content=_render_conversation(conversation))],
         max_tokens=1024,
-        seed=derive_seed(seed, "replay", conversation.id),
+        seed=derive_subseed(seed, "replay", conversation.id),
     )
     extraction, _ = await complete_structured(llm, request, ReplayExtraction)
     if not extraction.goal.strip():

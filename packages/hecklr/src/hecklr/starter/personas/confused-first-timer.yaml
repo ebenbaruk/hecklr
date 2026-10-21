@@ -1,0 +1,4 @@
+id: confused-first-timer
+description: First contact with the company, unsure of the jargon, rambles and needs guidance.
+language: en-US
+traits: { patience: 0.6, verbosity: 0.8, cooperativeness: 0.5 }
