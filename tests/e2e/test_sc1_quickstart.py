@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import anyio
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -43,13 +44,14 @@ def test_sc1_init_then_run_stores_a_graded_run(
     run = runner.invoke(app, ["run"], obj=CliOverrides(scripted_models()))
 
     elapsed = time.monotonic() - started
+    output = click.unstyle(run.output)  # CI forces color; read the plain text
     assert init.exit_code == exit_codes.OK, init.output
-    assert run.exit_code == exit_codes.OK, run.output
+    assert run.exit_code == exit_codes.OK, output
     assert elapsed < SC1_LIMIT_S
-    assert "Suite pass rate" in run.output
-    assert "Scenarios (Wilson 95% CI)" in run.output
-    match = re.search(r"Run ([0-9A-Z]{26}) \(completed\)", run.output)
-    assert match, run.output
+    assert "Suite pass rate" in output
+    assert "Scenarios (Wilson 95% CI)" in output
+    match = re.search(r"Run ([0-9A-Z]{26}) \(completed\)", output)
+    assert match, output
 
     store = ResultStore(tmp_path / ".hecklr" / "runs")
     results = anyio.run(store.load_run, match.group(1))

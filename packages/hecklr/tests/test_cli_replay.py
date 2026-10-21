@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import click
 from pydantic import JsonValue
 from typer.testing import CliRunner
 
@@ -48,7 +49,7 @@ def _replay(config_path: Path, transcripts: Path, *args: str) -> tuple[int, str]
         ["replay", str(transcripts), "--config", str(config_path), *args],
         obj=CliOverrides({"fake": FakeLLM(responder=_extractor)}),
     )
-    return result.exit_code, result.output
+    return result.exit_code, click.unstyle(result.output)
 
 
 def _transcripts(tmp_path: Path, conversations: list[dict[str, JsonValue]]) -> Path:

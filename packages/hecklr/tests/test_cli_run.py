@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import anyio
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -33,7 +34,7 @@ def _run(config_path: Path, *args: str, overrides: CliOverrides | None = None) -
         ["run", "--config", str(config_path), *args],
         obj=overrides or CliOverrides(scripted_models()),
     )
-    return result.exit_code, result.output
+    return result.exit_code, click.unstyle(result.output)
 
 
 def _run_id(output: str) -> str:
@@ -84,9 +85,10 @@ def test_init_and_run_against_a_real_http_agent(tmp_path: Path, http_agent_url: 
         app,
         ["init", str(root), "--yes", "--agent-url", http_agent_url, *FAKE_MODEL_FLAGS],
     )
-    assert init.exit_code == exit_codes.OK, init.output
-    assert "using the http adapter" in init.output
-    assert "answers in the JSON field reply" in init.output
+    init_output = click.unstyle(init.output)
+    assert init.exit_code == exit_codes.OK, init_output
+    assert "using the http adapter" in init_output
+    assert "answers in the JSON field reply" in init_output
 
     code, output = _run(root / "hecklr.yaml", "--trials", "1")
 

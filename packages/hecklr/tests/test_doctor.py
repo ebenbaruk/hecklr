@@ -4,6 +4,7 @@ import socket
 from collections.abc import Callable
 from pathlib import Path
 
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -27,8 +28,9 @@ def _checks(config_path: Path) -> dict[str, Check]:
 def test_starter_project_is_ready(config_path: Path) -> None:
     result = runner.invoke(app, ["doctor", "--config", str(config_path)])
 
-    assert result.exit_code == exit_codes.OK, result.output
-    assert "Ready to run." in result.output
+    output = click.unstyle(result.output)
+    assert result.exit_code == exit_codes.OK, output
+    assert "Ready to run." in output
     checks = _checks(config_path)
     assert checks["python"].status == "ok"
     assert checks["agent (chat)"].detail == "in-process agent hecklr_agent:reply imports"
@@ -47,8 +49,9 @@ def test_missing_api_key_fails_without_printing_any_secret(
     result = runner.invoke(app, ["doctor", "--config", str(config_path)])
 
     assert result.exit_code == exit_codes.CHECK_FAILED
-    assert "ANTHROPIC_API_KEY" in result.output
-    assert "sk-secret-value" not in result.output
+    output = click.unstyle(result.output)
+    assert "ANTHROPIC_API_KEY" in output
+    assert "sk-secret-value" not in output
     checks = _checks(config_path)
     assert checks["simulator model"].status == "fail"
     assert checks["judge model"].status == "ok"

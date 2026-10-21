@@ -1,5 +1,6 @@
 import logging
 
+import click
 import pytest
 import structlog
 import typer
@@ -25,7 +26,7 @@ def test_no_arguments_shows_help_listing_every_command() -> None:
     result = runner.invoke(app, [])
 
     for name in [*IMPLEMENTED, *PENDING_COMMANDS]:
-        assert name in result.output
+        assert name in click.unstyle(result.output)
 
 
 @pytest.mark.parametrize("command", sorted(PENDING_COMMANDS))
@@ -33,7 +34,7 @@ def test_pending_command_fails_loudly_until_implemented(command: str) -> None:
     result = runner.invoke(app, [command, "--some-flag", "value"])
 
     assert result.exit_code == exit_codes.NOT_IMPLEMENTED
-    assert "not implemented yet" in result.output
+    assert "not implemented yet" in click.unstyle(result.output)
 
 
 def test_spec_command_surface_is_complete() -> None:

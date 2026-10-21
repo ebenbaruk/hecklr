@@ -41,7 +41,17 @@ hecklr.api.run = _scripted
 
 def _pytest(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 -- runs this interpreter's pytest on a test project
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "hecklr", *args],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--color=no",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "hecklr",
+            *args,
+        ],
         cwd=project,
         capture_output=True,
         text=True,

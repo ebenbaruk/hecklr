@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -25,7 +26,7 @@ FAKE = ["--simulator-model", "fake/customer", "--judge-model", "fake/judge"]
 
 def _init(root: Path, *args: str, stdin: str | None = None) -> tuple[int, str]:
     result = runner.invoke(app, ["init", str(root), *args], input=stdin)
-    return result.exit_code, result.output
+    return result.exit_code, click.unstyle(result.output)
 
 
 def test_sc1_init_yes_writes_a_project_with_five_scenarios_and_three_personas(
