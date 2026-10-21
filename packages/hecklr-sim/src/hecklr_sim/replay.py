@@ -10,13 +10,14 @@ may hallucinate details and the simulator would then "know" something the real c
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import anyio
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
-from hecklr_llm import complete_structured
+from hecklr_llm import LLMOutputError, complete_structured
 from hecklr_schemas import (
     Conversation,
     JudgeCriterion,
@@ -48,6 +49,8 @@ _SLUG = re.compile(r"[^a-z0-9._-]+")
 _MAX_ID = 128
 _MAX_TAGS = 3
 """Topic tags kept from the extractor, besides ``replay``; models tend to over-tag."""
+_MIN_FACT_LENGTH = 2
+"""Shorter values ("1", "a") occur in almost any text, so their grounding proves nothing."""
 
 
 class ExtractedFact(BaseModel):
@@ -134,16 +137,27 @@ def grounded_facts(
 ) -> dict[str, JsonValue]:
     """Keep facts whose value the customer actually wrote; normalize names to snake_case.
 
-    The first fact wins when two normalize to the same name.
+    A value counts as written only as a whole token sequence (``C-26`` is not grounded by
+    ``C-2675``) and only if it has at least two characters. The first fact wins when two
+    normalize to the same name.
     """
     customer_text = " ".join(t.text for t in conversation.turns if t.role == "user").casefold()
     kept: dict[str, JsonValue] = {}
     for fact in facts:
         name = re.sub(r"[^a-z0-9]+", "_", fact.name.lower()).strip("_")
         value = fact.value.strip()
-        if name and value and name not in kept and value.casefold() in customer_text:
+        if (
+            name
+            and len(value) >= _MIN_FACT_LENGTH
+            and name not in kept
+            and _said(customer_text, value.casefold())
+        ):
             kept[name] = value
     return kept
+
+
+def _said(text: str, value: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(value)}(?!\w)", text) is not None
 
 
 def load_conversations(path: Path) -> list[Conversation]:
@@ -170,6 +184,22 @@ def scenario_to_yaml(scenario: Scenario) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=100)
 
 
+@dataclass(frozen=True)
+class ReplayFailure:
+    """A conversation whose extraction failed; the rest of the batch is still written."""
+
+    conversation_id: str
+    error: str
+
+
+@dataclass(frozen=True)
+class ReplayBatch:
+    """What ``transcripts_to_scenarios`` did: the files written and the conversations skipped."""
+
+    written: list[Path]
+    failures: list[ReplayFailure]
+
+
 async def transcripts_to_scenarios(
     path: Path,
     out_dir: Path,
@@ -180,11 +210,13 @@ async def transcripts_to_scenarios(
     persona: str,
     seed: int = 0,
     concurrency: int = 8,
-) -> list[Path]:
+) -> ReplayBatch:
     """Convert a JSONL transcript file into replay scenario YAML files (``hecklr replay FILE``).
 
-    One file per conversation, ``<out_dir>/<scenario id>.yaml``, in input order. Existing files
-    are never overwritten: scenarios are authored artifacts that people edit after extraction.
+    One file per conversation, ``<out_dir>/<scenario id>.yaml``, in input order. A conversation
+    whose extraction fails (an invalid model reply, an empty goal) is reported in
+    ``ReplayBatch.failures`` instead of losing the whole batch. Existing files are never
+    overwritten: scenarios are authored artifacts that people edit after extraction.
 
     Raises:
         ValueError: Invalid input, or two conversations map to the same scenario id.
@@ -192,20 +224,26 @@ async def transcripts_to_scenarios(
     """
     conversations = await anyio.to_thread.run_sync(load_conversations, path)
     _check_unique_ids(conversations)
-    scenarios: list[Scenario | None] = [None] * len(conversations)
+    outcomes: dict[int, Scenario | ReplayFailure] = {}
     limiter = anyio.CapacityLimiter(concurrency)
 
     async def extract(index: int, conversation: Conversation) -> None:
         async with limiter:
-            scenarios[index] = await extract_scenario(
-                conversation, llm, model=model, world=world, persona=persona, seed=seed
-            )
+            try:
+                outcomes[index] = await extract_scenario(
+                    conversation, llm, model=model, world=world, persona=persona, seed=seed
+                )
+            except (LLMOutputError, ValueError) as exc:
+                outcomes[index] = ReplayFailure(conversation.id, str(exc))
 
     async with anyio.create_task_group() as group:
         for index, conversation in enumerate(conversations):
             group.start_soon(extract, index, conversation)
-    done = [scenario for scenario in scenarios if scenario is not None]
-    return await anyio.to_thread.run_sync(_write_scenarios, done, out_dir)
+    ordered = [outcomes[index] for index in range(len(conversations))]
+    scenarios = [outcome for outcome in ordered if isinstance(outcome, Scenario)]
+    failures = [outcome for outcome in ordered if isinstance(outcome, ReplayFailure)]
+    written = await anyio.to_thread.run_sync(_write_scenarios, scenarios, out_dir)
+    return ReplayBatch(written=written, failures=failures)
 
 
 def _check_unique_ids(conversations: Sequence[Conversation]) -> None:

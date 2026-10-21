@@ -16,7 +16,9 @@ from hecklr_sim.guard import ConsistencyGuard, GuardIssue
 from hecklr_sim.guided import GuidedSimulator, Patience, SimulatorSettings
 from hecklr_sim.replay import (
     ExtractedFact,
+    ReplayBatch,
     ReplayExtraction,
+    ReplayFailure,
     extract_scenario,
     grounded_facts,
     load_conversations,
@@ -47,7 +49,9 @@ __all__ = [
     "GuardIssue",
     "GuidedSimulator",
     "Patience",
+    "ReplayBatch",
     "ReplayExtraction",
+    "ReplayFailure",
     "ScriptedSimulator",
     "SimDecision",
     "SimulatorError",

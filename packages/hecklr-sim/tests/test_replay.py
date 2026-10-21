@@ -144,16 +144,49 @@ def test_us02_grounding_drops_values_the_customer_never_said() -> None:
     assert grounded_facts(facts, conversation) == {"customer_id": "C-2675", "postcode": "92000"}
 
 
+def test_us02_grounding_needs_a_whole_token_of_at_least_two_characters() -> None:
+    conversation = _conversation(turns=[{"role": "user", "text": "Order ORD-5581, 1 boiler"}])
+    facts = [
+        ExtractedFact(name="partial_order", value="ORD-558"),
+        ExtractedFact(name="count", value="1"),
+        ExtractedFact(name="order", value="ord-5581"),
+    ]
+
+    assert grounded_facts(facts, conversation) == {"order": "ord-5581"}
+
+
+@pytest.mark.anyio
+async def test_us02_transcripts_to_scenarios_writes_the_rest_when_one_extraction_fails(
+    tmp_path: Path,
+) -> None:
+    broken = "prod-88230"
+
+    def respond(request: LLMRequest) -> dict[str, Any] | str:
+        match = _CONVERSATION_ID.match(request.messages[-1].content)
+        assert match is not None
+        return "not json" if match.group(1) == broken else _extractor(request)
+
+    batch = await transcripts_to_scenarios(
+        TRANSCRIPTS, tmp_path, FakeLLM(responder=respond), model="fake/x", world="w", persona="p"
+    )
+
+    assert [failure.conversation_id for failure in batch.failures] == [broken]
+    assert len(batch.written) == 19
+    assert f"{scenario_id_for(broken)}.yaml" not in _listing(tmp_path)
+
+
 @pytest.mark.anyio
 async def test_us02_transcripts_to_scenarios_writes_one_yaml_per_conversation(
     tmp_path: Path,
 ) -> None:
     out = tmp_path / "scenarios" / "replay"
 
-    paths = await transcripts_to_scenarios(
+    batch = await transcripts_to_scenarios(
         TRANSCRIPTS, out, FakeLLM(responder=_extractor), model="fake/x", world="w", persona="p"
     )
 
+    paths = batch.written
+    assert batch.failures == []
     assert [p.name for p in paths] == [
         f"{scenario_id_for(c.id)}.yaml" for c in load_conversations(TRANSCRIPTS)
     ]
