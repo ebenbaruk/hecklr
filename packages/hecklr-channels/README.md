@@ -31,3 +31,32 @@ to last token is `latency_ms + end_ms - t_ms`.
 | Simulator or sink fails | raised (harness error); the session is still closed | |
 
 One driver instance can serve many concurrent trials.
+
+## Email
+
+```python
+from hecklr_channels import make_email_driver
+
+driver = make_email_driver(config.agent.adapters.email)  # smtp-imap or webhook
+result = await driver.run(ctx, brief, simulator, sink)
+```
+
+`EmailDriver(target, agent_addr=...)` wraps any `EmailTarget`, e.g. the in-process
+`hecklr_adapters.email.PythonEmailTarget`. Each conversation writes from a fresh customer address,
+threads like a mail client (`In-Reply-To`, `References`, `Re:` subject) and quotes in the persona's
+style (`top_post`, `bottom_post` or `none`). Every customer and agent email is logged as an
+`email` event, headers and attachments included, for the `email_threading` grader. Reply time is
+the agent email's `t_ms` minus the customer email's (ADR 0012a).
+
+| Situation | `status` | `end_reason` |
+| --- | --- | --- |
+| Customer ends (`SimEnd`); a closing email is sent, no reply awaited | `ok` | the simulator's reason |
+| `max_turns` or `max_duration_s` reached between emails | `ok` | `max_turns` / `max_duration` |
+| No reply within `reply_timeout_s` (default `SessionContext.timeout_s`) | `timeout` | `error` |
+| Scenario time runs out awaiting, or before, a reply | `timeout` | `max_duration` |
+| Delivery or the reply stream raises `AgentError` | `agent_error` | `error` |
+| Simulator, sink or adapter bug | raised (harness error); the mailbox is still released | |
+
+To try the smtp-imap adapter by hand, start a local GreenMail with
+`docker compose -f tests/fixtures/email/compose.yaml up -d` (SMTP 1025, IMAP 1143, the adapter
+defaults).
