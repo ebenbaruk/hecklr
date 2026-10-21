@@ -33,8 +33,8 @@ Decisions: ADR 0004a (grading semantics).
 - **Live** (`tests/test_live_judges.py`, `-m live`): qwen3:4b-instruct on Ollama returns valid
   structured verdicts, catches an invented fee (F3), and a 3-judge majority yields 3 votes
   (2 passed in 121 s).
-- Evidence: 197 unit tests, 98% line+branch coverage of `hecklr_grade`, mypy --strict and ruff
-  clean.
+- Evidence: 195 unit tests (+2 live), 98% line+branch coverage of `hecklr_grade`, mypy --strict
+  and ruff clean; CI green on PR #6.
 
 ## Next
 
