@@ -1,10 +1,11 @@
 """Download-on-demand for local model files (Kokoro, Silero VAD), kept in ``.hecklr/models``."""
 
 import hashlib
+import importlib
 import importlib.util
 import os
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import anyio.to_thread
 import httpx2
@@ -12,6 +13,10 @@ import httpx2
 from hecklr_voice.errors import VoiceConfigError, VoiceProviderError
 
 DEFAULT_MODELS_DIR: Final = Path(".hecklr/models")
+MODEL_THREADS: Final = 2
+"""CPU threads per model inference. Each DSP worker runs one job at a time and half the cores
+run DSP, so libraries that default to one thread per core (onnxruntime, CTranslate2) would
+oversubscribe the machine many times over and starve the event loop of CPU."""
 _CHUNK: Final = 1 << 20
 
 
@@ -63,3 +68,20 @@ def require_extra(module: str, what: str) -> None:
     """Refuse a local-model provider when its optional dependency is not installed."""
     if importlib.util.find_spec(module) is None:
         raise VoiceConfigError(f"{what} needs the extra: pip install 'hecklr-voice[local]'")
+
+
+def onnx_session(path: Path, threads: int = MODEL_THREADS) -> Any:  # onnxruntime is untyped
+    """An onnxruntime CPU session limited to ``threads`` threads, without busy-wait spinning.
+
+    onnxruntime's default spins idle threads on every core, which steals CPU from the event
+    loop and the other workers even when no inference is running.
+    """
+    onnxruntime = importlib.import_module("onnxruntime")
+    options = onnxruntime.SessionOptions()
+    options.intra_op_num_threads = threads
+    options.inter_op_num_threads = 1
+    options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    options.add_session_config_entry("session.inter_op.allow_spinning", "0")
+    return onnxruntime.InferenceSession(
+        str(path), sess_options=options, providers=["CPUExecutionProvider"]
+    )

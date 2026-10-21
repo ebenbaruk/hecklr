@@ -1,4 +1,4 @@
-"""An in-process loopback voice agent with known timing, for unit tests and SC4 calibration.
+"""Test kit for voice: an in-process loopback agent with known timing, and trial-loop fakes.
 
 ``LoopbackVoiceTarget`` answers every caller utterance with a fixed reply exactly
 ``reply_after_ms`` after the caller's last speech sample, and when the caller speaks over a reply
@@ -7,11 +7,12 @@ measure both within 20 ms (SC4). Its stream is continuous and real-time, like We
 frames flow between replies, and every timing is placed at the sample, not the frame.
 
 The networked loopback agent for the calibration CI job lives in ``examples/loopback-voice``;
-this one needs no sockets.
+this one needs no sockets. ``RecordingSink``, ``ScriptedCaller`` and ``voice_trial`` are the
+trial-loop fakes for driving a ``VoiceDriver`` in tests (WS9 unit tests, WS10 contract tests).
 """
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -19,7 +20,31 @@ import anyio
 import numpy as np
 
 from hecklr_adapters import AgentError
-from hecklr_schemas import SessionContext, TimedFrame
+from hecklr_schemas import (
+    AudioSpanPayload,
+    Channel,
+    Clock,
+    DialogueTurn,
+    EndReason,
+    ErrorPayload,
+    Event,
+    EventId,
+    EventPayload,
+    InterruptPayload,
+    MonotonicClock,
+    Persona,
+    Scenario,
+    SessionContext,
+    SilencePayload,
+    SimEnd,
+    SimTurn,
+    TimedFrame,
+    TrialBrief,
+    TrialId,
+    UtterancePayload,
+    new_id,
+)
+from hecklr_schemas.common import Actor
 from hecklr_voice.audio import (
     FRAME_MS,
     FRAME_SAMPLES,
@@ -217,3 +242,138 @@ class LoopbackVoiceTarget:
 
 def _now_ms() -> float:
     return time.monotonic_ns() / 1e6
+
+
+# --- trial-loop fakes ------------------------------------------------------------------------
+
+
+class RecordingSink:
+    """An ``EventSink`` that keeps every event in memory, on a real monotonic clock.
+
+    Voice calls run in real time, so unlike chat tests there is no fake clock here.
+    """
+
+    def __init__(self, trial_id: TrialId | None = None, clock: Clock | None = None) -> None:
+        self.trial_id = trial_id or TrialId(new_id())
+        self.clock = clock or MonotonicClock()
+        self.events: list[Event] = []
+
+    def now_ms(self) -> int:
+        """Milliseconds since the sink was created."""
+        return self.clock.now_ms()
+
+    def emit(self, actor: Actor, payload: EventPayload, *, t_ms: int | None = None) -> Event:
+        """Append an event."""
+        event = Event(
+            id=EventId(new_id()),
+            trial_id=self.trial_id,
+            seq=len(self.events),
+            t_ms=self.now_ms() if t_ms is None else t_ms,
+            actor=actor,
+            payload=payload,
+        )
+        self.events.append(event)
+        return event
+
+    def utterances(self, actor: Actor) -> list[tuple[Event, UtterancePayload]]:
+        """``actor``'s utterance events with their payloads."""
+        return [
+            (event, event.payload)
+            for event in self.events
+            if event.actor == actor and isinstance(event.payload, UtterancePayload)
+        ]
+
+    def interrupts(self) -> list[tuple[Event, InterruptPayload]]:
+        """Interrupt events with their payloads."""
+        return [
+            (event, event.payload)
+            for event in self.events
+            if isinstance(event.payload, InterruptPayload)
+        ]
+
+    def silences(self) -> list[SilencePayload]:
+        """Silence payloads."""
+        return [event.payload for event in self.events if isinstance(event.payload, SilencePayload)]
+
+    def spans(self, actor: Actor) -> list[AudioSpanPayload]:
+        """``actor``'s audio spans."""
+        return [
+            event.payload
+            for event in self.events
+            if event.actor == actor and isinstance(event.payload, AudioSpanPayload)
+        ]
+
+    def errors(self, source: str) -> list[str]:
+        """Messages of error events from ``source`` (``agent``, ``harness``, ...)."""
+        return [
+            event.payload.message
+            for event in self.events
+            if isinstance(event.payload, ErrorPayload) and event.payload.source == source
+        ]
+
+
+class ScriptedCaller:
+    """A ``CustomerSimulator`` that says ``lines`` in order, then ends with ``end``.
+
+    The interjections a barge-in adds are user turns too, so the position in the script counts
+    only the script's own lines. ``seen`` keeps every dialogue it was shown.
+    """
+
+    def __init__(self, lines: Sequence[str], end: SimEnd | None = None) -> None:
+        self.lines = list(lines)
+        self.end = end or SimEnd(reason=EndReason.GOAL_ACHIEVED)
+        self.seen: list[list[DialogueTurn]] = []
+
+    @property
+    def contradictions(self) -> int:
+        """Always 0."""
+        return 0
+
+    async def next_turn(self, dialogue: Sequence[DialogueTurn]) -> SimTurn | SimEnd:
+        """The next scripted line, or the end."""
+        self.seen.append(list(dialogue))
+        said = sum(turn.speaker == "user" and turn.text in self.lines for turn in dialogue)
+        return SimTurn(text=self.lines[said]) if said < len(self.lines) else self.end
+
+
+def voice_trial(
+    *,
+    behaviors: Mapping[str, object] | None = None,
+    voice: Mapping[str, object] | None = None,
+    max_turns: int = 24,
+    max_duration_s: int = 120,
+    seed: int = 3,
+    with_voice: bool = True,
+) -> TrialBrief:
+    """A voice trial: a scheduling scenario and a caller on the ``synthetic`` TTS.
+
+    ``behaviors`` and ``voice`` override persona fields; the caller answers 200-300 ms after
+    the agent stops unless ``behaviors`` says otherwise. ``with_voice=False`` drops the voice
+    profile (a misconfigured persona).
+    """
+    scenario = Scenario.model_validate(
+        {
+            "id": "reschedule",
+            "title": "Move a visit",
+            "channels": ["voice"],
+            "persona": "caller",
+            "world": "acme",
+            "goal": "Move Thursday's visit",
+            "success": [{"type": "judge", "rubric": "resolved"}],
+            "limits": {"max_turns": max_turns, "max_duration_s": max_duration_s},
+        }
+    )
+    persona: dict[str, object] = {
+        "id": "caller",
+        "description": "calls about a visit",
+        "behaviors": {"response_gap_ms": [200, 300], **(behaviors or {})},
+    }
+    if with_voice:
+        persona["voice"] = {"tts": {"provider": "synthetic", "voice": "caller"}, **(voice or {})}
+    return TrialBrief(
+        trial_id=TrialId(new_id()),
+        scenario=scenario,
+        persona=Persona.model_validate(persona),
+        channel=Channel.VOICE,
+        seed=seed,
+    )

@@ -24,7 +24,9 @@ from hecklr_schemas import (
     SimEnd,
     TimedFrame,
     TrialBrief,
+    TrialId,
     UtterancePayload,
+    new_id,
 )
 from hecklr_schemas.common import Actor
 from hecklr_schemas.scenario import VoiceMetric
@@ -32,11 +34,21 @@ from hecklr_voice.asr import FakeASR
 from hecklr_voice.audio import SAMPLE_RATE, SPEECH_AMPLITUDE
 from hecklr_voice.call import CallStats, VoiceSettings
 from hecklr_voice.driver import VoiceDriver
-from hecklr_voice.testing import LoopbackVoiceTarget, synthetic_reply
+from hecklr_voice.testing import (
+    LoopbackVoiceTarget,
+    RecordingSink,
+    ScriptedCaller,
+    synthetic_reply,
+    voice_trial,
+)
 
-from .fakes import ListSink, ScriptedCustomer, brief, context
 
-pytestmark = pytest.mark.anyio
+def context(timeout_s: float = 10.0) -> SessionContext:
+    return SessionContext(trial_id=TrialId(new_id()), seed=3, timeout_s=timeout_s)
+
+
+# Real-time calls: keep pytest's own garbage collections from pausing the loop mid-call.
+pytestmark = [pytest.mark.anyio, pytest.mark.usefixtures("frozen_heap")]
 
 SHORT_REPLY_TEXT = "sure I can help with that"
 LONG_REPLY_TEXT = (
@@ -57,13 +69,13 @@ async def _call(
     ctx: SessionContext | None = None,
     run_dir: Path | None = None,
     end: SimEnd | None = None,
-) -> tuple[DriverResult, ListSink, list[CallStats]]:
-    sink = ListSink()
+) -> tuple[DriverResult, RecordingSink, list[CallStats]]:
+    sink = RecordingSink()
     stats: list[CallStats] = []
     driver = VoiceDriver(
         target, asr=FakeASR(), settings=settings, run_dir=run_dir, on_call_end=stats.append
     )
-    result = await driver.run(ctx or context(), trial, ScriptedCustomer(lines, end), sink)
+    result = await driver.run(ctx or context(), trial, ScriptedCaller(lines, end), sink)
     return result, sink, stats
 
 
@@ -79,10 +91,10 @@ async def test_ws9_voice_driver_satisfies_the_channel_driver_protocol() -> None:
 
 
 async def test_sc4_response_latency_within_20ms_of_injected_delay() -> None:
-    results: dict[int, ListSink] = {}
+    results: dict[int, RecordingSink] = {}
 
     async def measure_delay(delay_ms: int) -> None:
-        _, sink, _ = await _call(_loopback(reply_after_ms=delay_ms), brief())
+        _, sink, _ = await _call(_loopback(reply_after_ms=delay_ms), voice_trial())
         results[delay_ms] = sink
 
     async with anyio.create_task_group() as group:
@@ -98,13 +110,13 @@ async def test_sc4_response_latency_within_20ms_of_injected_delay() -> None:
 
 
 async def test_sc4_barge_in_reaction_within_20ms_of_injected_reaction() -> None:
-    results: dict[int, ListSink] = {}
+    results: dict[int, RecordingSink] = {}
 
     async def measure_reaction(reaction_ms: int) -> None:
         target = _loopback(
             text=LONG_REPLY_TEXT, reply_after_ms=300, barge_in_reaction_ms=reaction_ms
         )
-        trial = brief(behaviors={"interrupt_prob": 1.0}, max_turns=8)
+        trial = voice_trial(behaviors={"interrupt_prob": 1.0}, max_turns=8)
         _, sink, _ = await _call(target, trial, LINES[:2])
         results[reaction_ms] = sink
 
@@ -121,7 +133,7 @@ async def test_sc4_barge_in_reaction_within_20ms_of_injected_reaction() -> None:
 
 
 async def test_events_follow_adr_0006_timing_and_links() -> None:
-    result, sink, stats = await _call(_loopback(reply_after_ms=400), brief(), LINES[:2])
+    result, sink, stats = await _call(_loopback(reply_after_ms=400), voice_trial(), LINES[:2])
     assert (result.status, result.end_reason, result.turns) == ("ok", EndReason.GOAL_ACHIEVED, 4)
     ids = {event.id: event for event in sink.events}
     turns = sorted(sink.utterances("user") + sink.utterances("agent"), key=lambda e: e[1].turn)
@@ -150,10 +162,10 @@ async def test_events_follow_adr_0006_timing_and_links() -> None:
 
 
 async def test_simulator_hears_the_agent_through_asr() -> None:
-    sink = ListSink()
-    customer = ScriptedCustomer(LINES[:2])
+    sink = RecordingSink()
+    customer = ScriptedCaller(LINES[:2])
     driver = VoiceDriver(_loopback(reply_after_ms=300), asr=FakeASR(), settings=FAST)
-    await driver.run(context(), brief(), customer, sink)
+    await driver.run(context(), voice_trial(), customer, sink)
     last = customer.seen[-1]
     assert [(turn.speaker, turn.text) for turn in last] == [
         ("user", LINES[0]),
@@ -167,7 +179,7 @@ async def test_greeting_is_an_agent_turn_without_latency() -> None:
     target = _loopback(
         reply_after_ms=300, greeting=synthetic_reply("hello you are through to acme")
     )
-    _, sink, _ = await _call(target, brief(), LINES[:1], settings=VoiceSettings())
+    _, sink, _ = await _call(target, voice_trial(), LINES[:1], settings=VoiceSettings())
     [(_, greeting), (_, reply)] = sink.utterances("agent")
     assert greeting.turn == 0
     assert greeting.latency_ms is None
@@ -179,7 +191,7 @@ async def test_greeting_is_an_agent_turn_without_latency() -> None:
 
 async def test_hesitation_pause_exposes_premature_endpointing() -> None:
     target = _loopback(reply_after_ms=300, endpoint_ms=150, barge_in_reaction_ms=None)
-    trial = brief(behaviors={"mid_utterance_pause_s": [1.0, 1.0]}, seed=4)
+    trial = voice_trial(behaviors={"mid_utterance_pause_s": [1.0, 1.0]}, seed=4)
     lines = ["I would like to move my boiler visit to next week please."]
     _, sink, _ = await _call(target, trial, lines)
     hesitations = [gap for gap in sink.silences() if gap.reason == "hesitation"]
@@ -192,7 +204,7 @@ async def test_hesitation_pause_exposes_premature_endpointing() -> None:
 
 
 async def test_fillers_are_their_own_spans_and_not_in_the_transcript() -> None:
-    trial = brief(behaviors={"fillers": True}, seed=0)
+    trial = voice_trial(behaviors={"fillers": True}, seed=0)
     lines = [f"Line number {index} about my visit." for index in range(6)]
     _, sink, _ = await _call(_loopback(reply_after_ms=300), trial, lines, settings=FAST)
     fillers = [span for span in sink.spans("user") if span.content == "filler"]
@@ -204,8 +216,8 @@ async def test_backchannels_stopping_the_agent_are_flagged() -> None:
     # The loopback answers the "mm-hm" itself 800 ms later: past the hangover, so the cut shows.
     stopping = _loopback(text=LONG_REPLY_TEXT, reply_after_ms=800, barge_in_reaction_ms=200)
     ignoring = _loopback(text=LONG_REPLY_TEXT, reply_after_ms=300, barge_in_reaction_ms=None)
-    trial = brief(behaviors={"backchannel_prob": 1.0})
-    outcomes: dict[str, ListSink] = {}
+    trial = voice_trial(behaviors={"backchannel_prob": 1.0})
+    outcomes: dict[str, RecordingSink] = {}
 
     async def run(name: str, target: LoopbackVoiceTarget) -> None:
         outcomes[name] = (await _call(target, trial, LINES[:1]))[1]
@@ -228,7 +240,7 @@ async def test_backchannels_stopping_the_agent_are_flagged() -> None:
 
 async def test_ignored_barge_in_counts_until_the_agent_stops() -> None:
     target = _loopback(text=LONG_REPLY_TEXT, reply_after_ms=300, barge_in_reaction_ms=None)
-    trial = brief(behaviors={"interrupt_prob": 1.0}, max_turns=4)
+    trial = voice_trial(behaviors={"interrupt_prob": 1.0}, max_turns=4)
     result, sink, _ = await _call(target, trial, LINES[:1])
     assert result.status == "ok"
     barge_ins = [p for _, p in sink.interrupts() if p.style == "barge_in"]
@@ -238,7 +250,7 @@ async def test_ignored_barge_in_counts_until_the_agent_stops() -> None:
 
 @pytest.mark.slow
 async def test_re_engagement_silence_is_logged_as_the_callers() -> None:
-    trial = brief(behaviors={"silence_prob": 1.0})
+    trial = voice_trial(behaviors={"silence_prob": 1.0})
     result, sink, _ = await _call(_loopback(reply_after_ms=300), trial, LINES[:2])
     assert result.status == "ok"
     [silence] = [gap for gap in sink.silences() if gap.reason == "re_engagement"]
@@ -247,10 +259,10 @@ async def test_re_engagement_silence_is_logged_as_the_callers() -> None:
 
 
 async def test_limits_end_the_call_between_turns() -> None:
-    by_turns, _, _ = await _call(_loopback(reply_after_ms=300), brief(max_turns=3), LINES)
+    by_turns, _, _ = await _call(_loopback(reply_after_ms=300), voice_trial(max_turns=3), LINES)
     assert (by_turns.status, by_turns.end_reason, by_turns.turns) == ("ok", EndReason.MAX_TURNS, 2)
     target = _loopback(text=LONG_REPLY_TEXT, reply_after_ms=300)
-    by_time, sink, _ = await _call(target, brief(max_duration_s=4), LINES)
+    by_time, sink, _ = await _call(target, voice_trial(max_duration_s=4), LINES)
     assert by_time.status == "timeout"
     assert by_time.end_reason == EndReason.MAX_DURATION
     assert any("max_duration_s" in message for message in sink.errors("agent"))
@@ -258,14 +270,14 @@ async def test_limits_end_the_call_between_turns() -> None:
 
 async def test_closing_text_is_said_before_ending() -> None:
     end = SimEnd(reason=EndReason.GOAL_ABANDONED, closing_text="Forget it, bye.")
-    result, sink, _ = await _call(_loopback(reply_after_ms=300), brief(), LINES[:1], end=end)
+    result, sink, _ = await _call(_loopback(reply_after_ms=300), voice_trial(), LINES[:1], end=end)
     assert result.end_reason == EndReason.GOAL_ABANDONED
     assert [p.text for _, p in sink.utterances("user")] == [LINES[0], "Forget it, bye."]
 
 
 async def test_silent_agent_times_out_with_dead_air_logged() -> None:
     target = _loopback(reply_after_ms=60_000)
-    result, sink, _ = await _call(target, brief(), LINES, ctx=context(timeout_s=1.0))
+    result, sink, _ = await _call(target, voice_trial(), LINES, ctx=context(timeout_s=1.0))
     assert (result.status, result.end_reason) == ("timeout", EndReason.ERROR)
     assert result.error is not None
     assert "did not answer within 1.0 s" in result.error
@@ -278,13 +290,15 @@ async def test_silent_agent_times_out_with_dead_air_logged() -> None:
 
 async def test_agent_hanging_up_ends_the_call_normally() -> None:
     target = _loopback(reply_after_ms=300, hang_up_after_replies=1)
-    result, sink, _ = await _call(target, brief(), LINES)
+    result, sink, _ = await _call(target, voice_trial(), LINES)
     assert (result.status, result.end_reason) == ("ok", EndReason.AGENT_ENDED)
     assert not sink.errors("agent")
 
 
 async def test_recordings_hold_both_sides_on_the_trial_timeline(tmp_path: Path) -> None:
-    _, sink, _ = await _call(_loopback(reply_after_ms=300), brief(), LINES[:1], run_dir=tmp_path)
+    _, sink, _ = await _call(
+        _loopback(reply_after_ms=300), voice_trial(), LINES[:1], run_dir=tmp_path
+    )
     [directory] = (tmp_path / "audio").glob("*/*")
     tracks = {}
     for name in ("caller", "agent", "mix"):
@@ -323,7 +337,7 @@ async def test_noisy_impaired_persona_runs_and_sends_noise_between_turns() -> No
         on_call_end=stats.append,
     )
     result = await driver.run(
-        context(), brief(voice=voice), ScriptedCustomer(LINES[:1]), ListSink()
+        context(), voice_trial(voice=voice), ScriptedCaller(LINES[:1]), RecordingSink()
     )
     assert result.status == "ok"
     [call] = stats
@@ -398,7 +412,7 @@ class _BrokenLink:
 async def test_agent_failures_are_reported_not_raised(
     target: _Target, status: str, message: str
 ) -> None:
-    result, sink, _ = await _call(target, brief(), LINES, ctx=context(timeout_s=0.3))
+    result, sink, _ = await _call(target, voice_trial(), LINES, ctx=context(timeout_s=0.3))
     assert result.status == status
     assert result.end_reason == EndReason.ERROR
     assert result.error is not None
@@ -408,13 +422,13 @@ async def test_agent_failures_are_reported_not_raised(
 
 async def test_harness_failures_propagate() -> None:
     with pytest.raises(ValueError, match="16000 Hz"):
-        await _call(_Target(_BrokenLink(rate=48_000)), brief(), LINES)
+        await _call(_Target(_BrokenLink(rate=48_000)), voice_trial(), LINES)
     with pytest.raises(ValueError, match="no voice profile"):
-        await _call(_loopback(), brief(with_voice=False), LINES)
+        await _call(_loopback(), voice_trial(with_voice=False), LINES)
 
 
 async def test_agent_transcript_payloads_are_valid_utterances() -> None:
-    _, sink, _ = await _call(_loopback(reply_after_ms=300), brief(), LINES[:1])
+    _, sink, _ = await _call(_loopback(reply_after_ms=300), voice_trial(), LINES[:1])
     for event, payload in sink.utterances("agent"):
         assert isinstance(payload, UtterancePayload)
         UtterancePayload.model_validate(payload.model_dump())

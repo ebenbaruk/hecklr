@@ -1,5 +1,6 @@
 """Speech providers: synthetic TTS and its cache, cloud TTS over mocked HTTP, ASR, WER, VAD."""
 
+import importlib.util
 import json
 import time
 from collections.abc import Callable
@@ -162,14 +163,22 @@ def test_make_tts_builds_each_provider(tmp_path: Path) -> None:
     assert isinstance(make_tts("synthetic"), SyntheticTTS)
     assert isinstance(make_tts("synthetic", cache_dir=tmp_path), CachedTTS)
     assert isinstance(make_tts("cartesia", environ={"CARTESIA_API_KEY": "k"}), CartesiaTTS)
-    assert make_tts("kokoro", models_dir=tmp_path).name == "kokoro/v1.0"
+    if importlib.util.find_spec("kokoro_onnx") is None:
+        with pytest.raises(VoiceConfigError, match="extra"):
+            make_tts("kokoro", models_dir=tmp_path)
+    else:
+        assert make_tts("kokoro", models_dir=tmp_path).name == "kokoro/v1.0"
     with pytest.raises(VoiceConfigError, match="unknown TTS provider"):
         make_tts("piperish")
 
 
 def test_make_asr_builds_each_provider(tmp_path: Path) -> None:
     assert isinstance(make_asr("fake/tag"), FakeASR)
-    assert make_asr("faster-whisper/tiny", models_dir=tmp_path).name == "faster-whisper/tiny"
+    if importlib.util.find_spec("faster_whisper") is None:
+        with pytest.raises(VoiceConfigError, match="extra"):
+            make_asr("faster-whisper/tiny", models_dir=tmp_path)
+    else:
+        assert make_asr("faster-whisper/tiny", models_dir=tmp_path).name == "faster-whisper/tiny"
     deepgram = make_asr("deepgram/nova-3", environ={"DEEPGRAM_API_KEY": "k"})
     assert deepgram.name == "deepgram/nova-3"
     with pytest.raises(VoiceConfigError, match="provider/model"):
@@ -335,6 +344,7 @@ async def test_ensure_model_file_refuses_bad_downloads(tmp_path: Path) -> None:
     assert _listing(tmp_path) == []
 
 
+@pytest.mark.usefixtures("frozen_heap")
 async def test_dsp_pool_never_blocks_the_event_loop() -> None:
     """Rendering eight noisy 5 s clips at once must leave the loop free for 20 ms frames.
 

@@ -29,7 +29,7 @@ from hecklr_voice.audio import (
 )
 from hecklr_voice.errors import VoiceConfigError, VoiceProviderError
 from hecklr_voice.impair import ImpairmentChain, Segment, render_clip
-from hecklr_voice.models import DEFAULT_MODELS_DIR, require_extra
+from hecklr_voice.models import DEFAULT_MODELS_DIR, MODEL_THREADS, require_extra
 from hecklr_voice.pool import run_dsp
 from hecklr_voice.tag import extract_tag
 from hecklr_voice.tts import TTS, SpeechRequest
@@ -83,7 +83,11 @@ def _whisper(model: str, download_root: str) -> Any:
     # One model load per worker process, reused for every utterance it transcribes.
     module = importlib.import_module("faster_whisper")
     return module.WhisperModel(
-        model, device="cpu", compute_type="int8", download_root=download_root
+        model,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=MODEL_THREADS,
+        download_root=download_root,
     )
 
 

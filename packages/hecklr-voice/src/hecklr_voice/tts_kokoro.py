@@ -11,7 +11,7 @@ from typing import Any, Final
 
 from hecklr_voice.audio import Audio, resample
 from hecklr_voice.errors import VoiceConfigError
-from hecklr_voice.models import ensure_model_file, require_extra
+from hecklr_voice.models import ensure_model_file, onnx_session, require_extra
 from hecklr_voice.pool import run_dsp
 from hecklr_voice.tts import SpeechRequest
 
@@ -24,7 +24,8 @@ _RATE_RANGE: Final = (0.5, 2.0)
 @lru_cache(maxsize=2)
 def _kokoro(model_path: str, voices_path: str) -> Any:
     # One model load per worker process, reused by every utterance that worker synthesizes.
-    return importlib.import_module("kokoro_onnx").Kokoro(model_path, voices_path)
+    session = onnx_session(Path(model_path))
+    return importlib.import_module("kokoro_onnx").Kokoro.from_session(session, voices_path)
 
 
 def kokoro_speech(model_path: str, voices_path: str, request: SpeechRequest) -> Audio:

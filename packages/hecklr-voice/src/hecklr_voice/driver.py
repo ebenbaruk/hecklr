@@ -27,6 +27,7 @@ from hecklr_schemas import (
 )
 from hecklr_voice.asr import ASR
 from hecklr_voice.call import Call, CallParts, CallStats, Outcome, VoiceSettings, agent_failed
+from hecklr_voice.codec import line_available
 from hecklr_voice.pool import warm_dsp_pool
 from hecklr_voice.providers import make_tts
 from hecklr_voice.recording import RecordingPaths
@@ -108,8 +109,11 @@ class VoiceDriver:
             settings=self._settings,
             recordings=recordings,
         )
+        # Probing ffmpeg for codecs runs a subprocess: do it off the loop, before the chain does.
+        await anyio.to_thread.run_sync(line_available, voice.line)
         call = Call(parts, clock, start + brief.scenario.limits.max_duration_s * 1000)
         await warm_dsp_pool()
+        await parts.vad.prepare()
         link = await self._connect(ctx, sink)
         if isinstance(link, Outcome):
             return _result(link, turns=0)
