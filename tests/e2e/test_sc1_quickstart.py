@@ -13,6 +13,7 @@ from pathlib import Path
 import anyio
 import click
 import pytest
+import structlog
 from typer.testing import CliRunner
 
 from hecklr import exit_codes
@@ -36,12 +37,17 @@ def test_sc1_init_then_run_stores_a_graded_run(
     monkeypatch.delitem(sys.modules, STARTER_AGENT_MODULE, raising=False)
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
+    logging_config = structlog.get_config()  # the CLI configures logging for its process
     started = time.monotonic()
 
-    init = runner.invoke(
-        app, ["init", "--yes", "--simulator-model", "fake/customer", "--judge-model", "fake/judge"]
-    )
-    run = runner.invoke(app, ["run"], obj=CliOverrides(scripted_models()))
+    try:
+        init = runner.invoke(
+            app,
+            ["init", "--yes", "--simulator-model", "fake/customer", "--judge-model", "fake/judge"],
+        )
+        run = runner.invoke(app, ["run"], obj=CliOverrides(scripted_models()))
+    finally:
+        structlog.configure(**logging_config)
 
     elapsed = time.monotonic() - started
     output = click.unstyle(run.output)  # CI forces color; read the plain text

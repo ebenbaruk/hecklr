@@ -6,10 +6,19 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+import structlog
 
 from hecklr.scaffold import STARTER_AGENT_MODULE, AgentChoice, ModelChoice, write_project
 
 FAKE_MODELS = ModelChoice("fake/customer", "fake/judge", "tests")
+
+
+@pytest.fixture(autouse=True)
+def restored_logging() -> Iterator[None]:
+    """The CLI configures structlog for its process; give it back to the other tests."""
+    saved = structlog.get_config()
+    yield
+    structlog.configure(**saved)
 
 
 @pytest.fixture(autouse=True)
