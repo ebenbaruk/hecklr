@@ -9,6 +9,7 @@ import anthropic
 import httpx2
 import openai
 import pytest
+from pydantic import BaseModel, Field
 
 from hecklr_llm import (
     AnthropicProvider,
@@ -16,7 +17,10 @@ from hecklr_llm import (
     LLMRefusalError,
     LLMRequest,
     Message,
+    ModelPrice,
     OpenAIProvider,
+    UnknownPriceError,
+    complete_structured,
 )
 
 Handler = Callable[[httpx2.Request], httpx2.Response]
@@ -88,7 +92,9 @@ def _anthropic_message(
     }
 
 
-def _chat_completion(content: str | None, refusal: str | None = None) -> dict[str, Any]:
+def _chat_completion(
+    content: str | None, refusal: str | None = None, finish_reason: str = "stop"
+) -> dict[str, Any]:
     return {
         "id": "chatcmpl-1",
         "object": "chat.completion",
@@ -98,7 +104,7 @@ def _chat_completion(content: str | None, refusal: str | None = None) -> dict[st
             {
                 "index": 0,
                 "message": {"role": "assistant", "content": content, "refusal": refusal},
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
             }
         ],
         "usage": {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200},
@@ -163,6 +169,81 @@ async def test_anthropic_structured_output_uses_output_config() -> None:
     assert recorder.sent["output_config"] == {"format": {"type": "json_schema", "schema": schema}}
     assert "system" not in recorder.sent
     assert reply.parsed == {"resolved": True}
+
+
+class Verdict(BaseModel):
+    score: int = Field(ge=1, le=5)
+    rationale: str = Field(min_length=1)
+    evidence: list[str] = []
+
+
+@pytest.mark.anyio
+async def test_anthropic_structured_output_sends_a_schema_the_api_accepts() -> None:
+    reply_json = '{"score": 4, "rationale": "moved the visit", "evidence": []}'
+    recorder = Recorder(body=_anthropic_message([{"type": "text", "text": reply_json}]))
+
+    verdict, _ = await complete_structured(
+        _anthropic(recorder), _request("anthropic/claude-sonnet-5-5"), Verdict
+    )
+
+    sent_schema = recorder.sent["output_config"]["format"]["schema"]
+    assert sent_schema["additionalProperties"] is False
+    unsupported = {"minimum", "maximum", "minLength", "default"}
+    for prop in sent_schema["properties"].values():
+        assert not unsupported & prop.keys()
+    assert "minimum: 1" in sent_schema["properties"]["score"]["description"]
+    assert verdict == Verdict(score=4, rationale="moved the visit")
+
+
+@pytest.mark.anyio
+async def test_anthropic_rejects_an_untyped_schema_before_sending() -> None:
+    recorder = Recorder()
+
+    with pytest.raises(LLMProviderError, match="give every schema node a type") as error:
+        await _anthropic(recorder).complete(
+            _request("anthropic/claude-haiku-5-5", json_schema={"description": "anything"})
+        )
+
+    assert not error.value.retryable
+    assert recorder.requests == []
+
+
+@pytest.mark.anyio
+async def test_anthropic_flags_replies_cut_off_at_max_tokens() -> None:
+    recorder = Recorder(
+        body=_anthropic_message([{"type": "text", "text": "Tuesday at"}], stop_reason="max_tokens")
+    )
+
+    plain = await _anthropic(recorder).complete(_request("anthropic/claude-haiku-5-5"))
+    structured = await _anthropic(recorder).complete(
+        _request("anthropic/claude-haiku-5-5", json_schema={"type": "object"})
+    )
+
+    assert plain.truncated
+    assert plain.text == "Tuesday at"
+    assert (structured.truncated, structured.parsed) == (True, None)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("model", ["anthropic/claude-unpriced", "openai/gpt-unpriced"])
+async def test_unknown_price_is_refused_before_any_request(model: str) -> None:
+    recorder = Recorder()
+    provider = _anthropic(recorder) if model.startswith("anthropic") else _openai(recorder)
+
+    with pytest.raises(UnknownPriceError):
+        await provider.complete(_request(model))
+
+    assert recorder.requests == []
+
+
+@pytest.mark.anyio
+async def test_providers_use_their_injected_price_table() -> None:
+    prices = {"openai/gpt-5": ModelPrice(input_per_mtok=Decimal(1), output_per_mtok=Decimal(10))}
+    recorder = Recorder(body=_chat_completion("ok"))
+
+    reply = await _openai(recorder, prices=prices).complete(_request("openai/gpt-5"))
+
+    assert reply.cost_usd == Decimal("0.003")  # 1000 in x $1/M + 200 out x $10/M
 
 
 @pytest.mark.anyio
@@ -250,6 +331,17 @@ async def test_openai_compatible_servers_get_max_tokens_and_json_schema() -> Non
 
 
 @pytest.mark.anyio
+async def test_openai_flags_replies_cut_off_by_length() -> None:
+    recorder = Recorder(body=_chat_completion('{"resolved": tr', finish_reason="length"))
+
+    reply = await _openai(recorder).complete(
+        _request("openai/gpt-4.1", json_schema={"type": "object"})
+    )
+
+    assert (reply.truncated, reply.parsed) == (True, None)
+
+
+@pytest.mark.anyio
 async def test_openai_refusal_raises() -> None:
     recorder = Recorder(body=_chat_completion(None, refusal="I can't help with that."))
 
@@ -324,7 +416,10 @@ async def test_malformed_responses_are_non_retryable_client_errors() -> None:
         )
     )
 
-    for provider, model in ((strict_anthropic, "anthropic/x"), (strict_openai, "openai/x")):
+    for provider, model in (
+        (strict_anthropic, "anthropic/claude-haiku-5-5"),
+        (strict_openai, "openai/gpt-4.1"),
+    ):
         with pytest.raises(LLMProviderError, match="client error") as caught:
             await provider.complete(_request(model))
         assert not caught.value.retryable

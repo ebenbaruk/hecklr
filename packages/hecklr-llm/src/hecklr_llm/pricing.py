@@ -1,36 +1,33 @@
-"""Model prices for cost accounting and the orchestrator's pre-run budget check."""
+"""Model prices for cost accounting and the orchestrator's pre-run budget check.
 
-import functools
+Prices fail closed: a paid model with no known price raises ``UnknownPriceError`` instead of
+being counted as free, because a cost that reads zero would let a run silently overspend its
+budget. Declare missing models (or a free self-hosted ``openai-compatible`` one, at 0) under
+``models.prices`` in ``hecklr.yaml``.
+"""
+
 from collections.abc import Mapping
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-import structlog
-
+from hecklr_llm.errors import UnknownPriceError
 from hecklr_llm.model_names import split_model
 from hecklr_llm.tokens import estimate_input_tokens
-from hecklr_schemas import LLMRequest, LLMUsage
-
-_log = structlog.get_logger(__name__)
+from hecklr_schemas import LLMRequest, LLMUsage, ModelPrice
 
 _PER_TOKEN = Decimal(1) / Decimal(1_000_000)
 
 
-@dataclass(frozen=True, slots=True)
-class ModelPrice:
-    """List price in USD per million tokens."""
-
-    input_per_mtok: Decimal
-    output_per_mtok: Decimal
-
-
 def _price(input_per_mtok: str, output_per_mtok: str) -> ModelPrice:
-    return ModelPrice(Decimal(input_per_mtok), Decimal(output_per_mtok))
+    return ModelPrice(
+        input_per_mtok=Decimal(input_per_mtok), output_per_mtok=Decimal(output_per_mtok)
+    )
 
 
 PRICES: Final[Mapping[str, ModelPrice]] = {
-    # Anthropic first-party API list prices (2026-10).
+    # Anthropic first-party API list prices (2026-10), base tier. Haiku 5.5 bills prompts over
+    # 100K input tokens at $0.50/$2.50; Hecklr's simulator and judge prompts stay far below that,
+    # so the cheaper base tier is what applies in practice.
     "anthropic/claude-opus-5-5": _price("4.00", "20.00"),
     "anthropic/claude-opus-5": _price("5.00", "25.00"),
     "anthropic/claude-opus-4-8": _price("5.00", "25.00"),
@@ -51,24 +48,25 @@ PRICES: Final[Mapping[str, ModelPrice]] = {
 FREE_PROVIDERS: Final = frozenset({"fake", "ollama"})
 """Providers that run locally and cost nothing."""
 
-_FREE = ModelPrice(Decimal(0), Decimal(0))
-
-
-@functools.cache
-def _warn_unknown_price(model: str) -> None:
-    # Cached so a run with thousands of calls logs the warning once per model.
-    _log.warning("llm.price_unknown", model=model, assumed_usd_per_mtok=0)
+_FREE = ModelPrice(input_per_mtok=Decimal(0), output_per_mtok=Decimal(0))
 
 
 def price_for(model: str, prices: Mapping[str, ModelPrice] = PRICES) -> ModelPrice:
-    """Return the price of ``model``; zero for local providers and (with a warning) unknown ones."""
+    """Return the price of ``model``: zero for local providers, else from ``prices``.
+
+    Raises:
+        UnknownPriceError: ``model`` is served by a paid provider and has no entry in ``prices``.
+    """
     provider, _ = split_model(model)
     if provider in FREE_PROVIDERS:
         return _FREE
     price = prices.get(model)
     if price is None:
-        _warn_unknown_price(model)
-        return _FREE
+        raise UnknownPriceError(
+            f"no price is known for {model}, so its spend cannot be counted against the budget; "
+            f"add it under models.prices in hecklr.yaml (input_per_mtok and output_per_mtok, "
+            f"in USD; 0 for a free self-hosted model)"
+        )
     return price
 
 

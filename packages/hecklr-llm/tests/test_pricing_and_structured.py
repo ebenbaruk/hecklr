@@ -3,14 +3,15 @@ from decimal import Decimal
 
 import pytest
 from pydantic import BaseModel
-from structlog.testing import capture_logs
 
 from hecklr_llm import (
     FakeLLM,
     LLMOutputError,
     LLMRequest,
+    LLMResponse,
     LLMUsage,
     ModelPrice,
+    UnknownPriceError,
     complete_structured,
     cost_usd,
     estimate_input_tokens,
@@ -34,17 +35,18 @@ def test_local_providers_are_free(model: str) -> None:
     assert cost_usd(model, LLMUsage(input_tokens=10**9, output_tokens=10**9)) == 0
 
 
-def test_unknown_model_costs_zero_and_warns_once() -> None:
-    with capture_logs() as logs:
-        first = price_for("openai/gpt-unknown-test")
-        price_for("openai/gpt-unknown-test")
-
-    assert first == ModelPrice(Decimal(0), Decimal(0))
-    assert [entry["event"] for entry in logs] == ["llm.price_unknown"]
+@pytest.mark.parametrize(
+    "model", ["openai/gpt-unknown-test", "anthropic/claude-next", "openai-compatible/llama-70b"]
+)
+def test_unknown_paid_model_fails_closed(model: str, make_request: RequestFactory) -> None:
+    with pytest.raises(UnknownPriceError, match=r"models\.prices"):
+        price_for(model)
+    with pytest.raises(UnknownPriceError):
+        estimate_request_cost(make_request(model=model))
 
 
 def test_custom_price_table_is_honoured() -> None:
-    prices = {"openai/custom": ModelPrice(Decimal(1), Decimal(2))}
+    prices = {"openai/custom": ModelPrice(input_per_mtok=Decimal(1), output_per_mtok=Decimal(2))}
 
     cost = cost_usd("openai/custom", LLMUsage(input_tokens=10**6, output_tokens=10**6), prices)
 
@@ -100,3 +102,14 @@ async def test_complete_structured_rejects_mismatched_json(make_request: Request
 
     with pytest.raises(LLMOutputError, match="does not match Resolution"):
         await complete_structured(fake, make_request("judge"), Resolution)
+
+
+class TruncatingProvider:
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        return LLMResponse(model=request.model, text='{"resolved": tr', truncated=True)
+
+
+@pytest.mark.anyio
+async def test_complete_structured_reports_a_cut_off_reply(make_request: RequestFactory) -> None:
+    with pytest.raises(LLMOutputError, match="cut off at max_tokens"):
+        await complete_structured(TruncatingProvider(), make_request("judge"), Resolution)

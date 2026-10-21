@@ -15,17 +15,18 @@ from hecklr_llm.errors import (
     LLMProviderError,
     LLMRefusalError,
     ProviderConfigError,
+    UnknownPriceError,
     UnknownProviderError,
 )
 from hecklr_llm.fake import FakeLLM, FakeReply, Responder, minimal_instance
 from hecklr_llm.keys import request_key
 from hecklr_llm.model_names import split_model
 from hecklr_llm.openai_provider import OpenAIProvider
-from hecklr_llm.pricing import PRICES, ModelPrice, cost_usd, estimate_request_cost, price_for
+from hecklr_llm.pricing import PRICES, cost_usd, estimate_request_cost, price_for
 from hecklr_llm.router import KNOWN_PROVIDERS, ProviderRouter
 from hecklr_llm.structured import complete_structured
 from hecklr_llm.tokens import estimate_input_tokens, estimate_tokens
-from hecklr_schemas import LLMProvider, LLMRequest, LLMResponse, LLMUsage, Message
+from hecklr_schemas import LLMProvider, LLMRequest, LLMResponse, LLMUsage, Message, ModelPrice
 
 __version__ = "0.1.0"
 
@@ -52,6 +53,7 @@ __all__ = [
     "ProviderConfigError",
     "ProviderRouter",
     "Responder",
+    "UnknownPriceError",
     "UnknownProviderError",
     "complete_structured",
     "cost_usd",

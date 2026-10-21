@@ -10,7 +10,8 @@ from hecklr_llm.errors import ProviderConfigError, UnknownProviderError
 from hecklr_llm.fake import FakeLLM
 from hecklr_llm.model_names import split_model
 from hecklr_llm.openai_provider import OpenAIProvider
-from hecklr_schemas import LLMProvider, LLMRequest, LLMResponse, ProviderSettings
+from hecklr_llm.pricing import PRICES
+from hecklr_schemas import LLMProvider, LLMRequest, LLMResponse, ModelPrice, ProviderSettings
 
 DEFAULT_OLLAMA_BASE_URL: Final = "http://localhost:11434/v1"
 
@@ -36,17 +37,22 @@ class ProviderRouter:
 
     Providers are created on first use, so a run that only uses Ollama never needs an Anthropic
     key. ``providers`` pins an instance for a prefix (tests use it to inject ``FakeLLM`` or a
-    mocked client); ``settings`` mirrors ``models.providers`` in ``hecklr.yaml``.
+    mocked client); ``settings`` mirrors ``models.providers`` and ``prices`` mirrors
+    ``models.prices`` in ``hecklr.yaml`` (added to, and overriding, the built-in table). API keys
+    are read from ``env`` only and always passed explicitly, so the SDKs never fall back to the
+    process environment behind the router's back.
     """
 
     def __init__(
         self,
         settings: Mapping[str, ProviderSettings] | None = None,
         *,
+        prices: Mapping[str, ModelPrice] | None = None,
         providers: Mapping[str, LLMProvider] | None = None,
         env: Mapping[str, str] | None = None,
     ) -> None:
         self._settings = dict(settings or {})
+        self._prices: Mapping[str, ModelPrice] = {**PRICES, **(prices or {})}
         self._env = dict(os.environ if env is None else env)
         self._providers: dict[str, LLMProvider] = dict(providers or {})
         self._owned: list[AnthropicProvider | OpenAIProvider] = []
@@ -86,14 +92,23 @@ class ProviderRouter:
     def _create(self, prefix: str) -> LLMProvider:
         match prefix:
             case "anthropic":
-                return AnthropicProvider(api_key=self._api_key(prefix), base_url=self._url(prefix))
+                return AnthropicProvider(
+                    api_key=self._required_key(prefix),
+                    base_url=self._url(prefix),
+                    prices=self._prices,
+                )
             case "openai":
-                return OpenAIProvider(api_key=self._api_key(prefix), base_url=self._url(prefix))
+                return OpenAIProvider(
+                    api_key=self._required_key(prefix),
+                    base_url=self._url(prefix),
+                    prices=self._prices,
+                )
             case "ollama":
                 return OpenAIProvider(
                     api_key=_PLACEHOLDER_KEY,
                     base_url=self._url(prefix) or DEFAULT_OLLAMA_BASE_URL,
                     output_limit_param="max_tokens",
+                    prices=self._prices,
                 )
             case "openai-compatible":
                 base_url = self._url(prefix)
@@ -107,6 +122,7 @@ class ProviderRouter:
                     api_key=self._api_key(prefix) or _PLACEHOLDER_KEY,
                     base_url=base_url,
                     output_limit_param="max_tokens",
+                    prices=self._prices,
                 )
             case "fake":
                 return FakeLLM()
@@ -115,10 +131,21 @@ class ProviderRouter:
                     f"unknown model provider {prefix!r}; known: {', '.join(KNOWN_PROVIDERS)}"
                 )
 
-    def _api_key(self, prefix: str) -> str | None:
+    def _key_env(self, prefix: str) -> str:
         settings = self._settings.get(prefix)
-        env_name = (settings.api_key_env if settings else None) or _DEFAULT_KEY_ENV.get(prefix)
-        return self._env.get(env_name) if env_name else None
+        return (settings.api_key_env if settings else None) or _DEFAULT_KEY_ENV[prefix]
+
+    def _api_key(self, prefix: str) -> str | None:
+        return self._env.get(self._key_env(prefix)) or None
+
+    def _required_key(self, prefix: str) -> str:
+        key = self._api_key(prefix)
+        if key is None:
+            raise ProviderConfigError(
+                f"{prefix} models need an API key in the {self._key_env(prefix)} environment "
+                f"variable (or set models.providers.{prefix}.api_key_env in hecklr.yaml)"
+            )
+        return key
 
     def _url(self, prefix: str) -> str | None:
         settings = self._settings.get(prefix)

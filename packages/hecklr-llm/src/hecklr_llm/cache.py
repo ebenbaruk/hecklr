@@ -12,11 +12,14 @@ from typing import Final, Self
 
 import anyio
 import anyio.to_thread
+import structlog
 
 from hecklr_llm.keys import request_key
 from hecklr_schemas import LLMProvider, LLMRequest, LLMResponse
 
 DEFAULT_CACHE_PATH: Final = Path(".hecklr/cache/llm.sqlite3")
+
+_log = structlog.get_logger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS responses (
@@ -41,7 +44,11 @@ class CachedProvider:
     max tokens, seed). A hit returns the stored reply with ``cached=True`` and ``cost_usd=0``.
     Concurrent identical requests wait for the first one instead of paying twice. Only successful
     responses are stored, and rows are never updated (append-only). SQLite runs in WAL mode so
-    several processes can share one cache file.
+    several processes can share one cache file; the per-key wait is in-process only, so two
+    processes racing on the same new request may both pay for it (the first row stored wins).
+
+    The key holds the model string, not the endpoint behind it: two servers answering
+    ``ollama/<model>`` share entries. Point different endpoints at different cache files.
     """
 
     def __init__(self, inner: LLMProvider, path: Path = DEFAULT_CACHE_PATH) -> None:
@@ -63,14 +70,17 @@ class CachedProvider:
             stored = await anyio.to_thread.run_sync(self._get, key)
             if stored is not None:
                 self.hits += 1
+                _log.debug("llm.cache", hit=True, model=request.model, key=key[:12])
                 return stored.model_copy(update={"cached": True, "cost_usd": Decimal(0)})
             self.misses += 1
+            _log.debug("llm.cache", hit=False, model=request.model, key=key[:12])
             response = await self._inner.complete(request)
             await anyio.to_thread.run_sync(self._put, key, response)
             return response
 
     def close(self) -> None:
-        """Close the database connection."""
+        """Log the hit rate and close the database connection."""
+        _log.info("llm.cache_summary", hits=self.hits, misses=self.misses)
         with self._db_lock:
             self._db.close()
 

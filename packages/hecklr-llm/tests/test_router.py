@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from hecklr_llm import (
@@ -10,7 +12,7 @@ from hecklr_llm import (
     split_model,
 )
 from hecklr_llm.router import DEFAULT_OLLAMA_BASE_URL
-from hecklr_schemas import LLMRequest, Message, ProviderSettings
+from hecklr_schemas import LLMRequest, Message, ModelPrice, ProviderSettings
 
 
 @pytest.mark.parametrize(
@@ -62,6 +64,40 @@ def test_openai_and_ollama_use_the_openai_provider() -> None:
     assert isinstance(router.provider_for("openai/gpt-4.1"), OpenAIProvider)
     assert isinstance(router.provider_for("ollama/qwen3:8b"), OpenAIProvider)
     assert isinstance(router.provider_for("fake/x"), FakeLLM)
+
+
+@pytest.mark.parametrize(
+    ("model", "env_var"),
+    [("anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY"), ("openai/gpt-4.1", "OPENAI_API_KEY")],
+)
+def test_missing_api_key_is_a_config_error_naming_the_variable(model: str, env_var: str) -> None:
+    with pytest.raises(ProviderConfigError, match=env_var):
+        ProviderRouter(env={}).provider_for(model)
+
+
+def test_api_key_variable_can_be_renamed_in_settings() -> None:
+    settings = {"anthropic": ProviderSettings(api_key_env="ACME_CLAUDE_KEY")}
+
+    with pytest.raises(ProviderConfigError, match="ACME_CLAUDE_KEY"):
+        ProviderRouter(settings, env={"ANTHROPIC_API_KEY": "unused"}).provider_for(
+            "anthropic/claude-sonnet-5-5"
+        )
+    router = ProviderRouter(settings, env={"ACME_CLAUDE_KEY": "test-key"})
+    assert isinstance(router.provider_for("anthropic/claude-sonnet-5-5"), AnthropicProvider)
+
+
+def test_configured_prices_reach_the_providers() -> None:
+    price = ModelPrice(input_per_mtok=Decimal(0), output_per_mtok=Decimal(0))
+    router = ProviderRouter(
+        prices={"openai-compatible/llama-70b": price},
+        env={"OPENAI_COMPATIBLE_BASE_URL": "http://vllm:8000/v1"},
+    )
+
+    provider = router.provider_for("openai-compatible/llama-70b")
+
+    assert isinstance(provider, OpenAIProvider)
+    assert provider._prices["openai-compatible/llama-70b"] == price
+    assert "anthropic/claude-sonnet-5-5" in provider._prices
 
 
 def test_ollama_defaults_to_localhost() -> None:

@@ -17,6 +17,10 @@ class ProviderConfigError(LLMError):
     """A provider is missing configuration it needs, such as a base URL."""
 
 
+class UnknownPriceError(LLMError):
+    """A paid model has no known price, so its spend could not be held to the budget."""
+
+
 class LLMProviderError(LLMError):
     """The provider API call failed after the SDK's own retries."""
 

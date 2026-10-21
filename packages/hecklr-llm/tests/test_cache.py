@@ -4,6 +4,7 @@ from pathlib import Path
 
 import anyio
 import pytest
+from structlog.testing import capture_logs
 
 from hecklr_llm import CachedProvider, FakeLLM, LLMRequest, LLMResponse, request_key
 
@@ -139,3 +140,20 @@ async def test_failures_are_not_cached(tmp_path: Path, make_request: RequestFact
     with CachedProvider(healthy, path) as cache:
         await cache.complete(make_request("hi"))
     assert healthy.calls == 1
+
+
+@pytest.mark.anyio
+async def test_cache_logs_each_lookup_and_a_hit_rate_summary(
+    tmp_path: Path, make_request: RequestFactory
+) -> None:
+    with (
+        capture_logs() as logs,
+        CachedProvider(CountingProvider(), tmp_path / "llm.sqlite3") as cache,
+    ):
+        await cache.complete(make_request("hi"))
+        await cache.complete(make_request("hi"))
+
+    lookups = [entry["hit"] for entry in logs if entry["event"] == "llm.cache"]
+    summary = next(entry for entry in logs if entry["event"] == "llm.cache_summary")
+    assert lookups == [False, True]
+    assert (summary["hits"], summary["misses"]) == (1, 1)

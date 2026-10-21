@@ -23,20 +23,36 @@ refuse runs that would exceed the budget.
   `CachedProvider(ProviderRouter(...))`.
 - **Structured output** is a JSON Schema on the request (`json_schema`), mapped to each API's
   native mechanism (Anthropic `output_config.format`, OpenAI `response_format: json_schema`).
-  `complete_structured()` validates the reply into a Pydantic model. No provider-specific types leak.
-- **Sampling**: the OpenAI-compatible provider forwards `temperature` and `seed` when set; the
-  Anthropic provider never sends them (the 1.x SDK and current Claude models reject sampling
-  parameters, and there is no seed). Reproducibility comes from the cache, not from temperature 0.
+  Anthropic accepts only a subset of JSON Schema (`additionalProperties: false` on every object,
+  no numeric or length constraints), so the schema passes through the SDK's `transform_schema`
+  first, which moves unsupported keywords into descriptions. `complete_structured()` validates the
+  reply against the full Pydantic model. A reply cut off at `max_tokens` comes back with
+  `truncated=True`, and `complete_structured()` raises on it. No provider-specific types leak.
+- **Sampling**: the OpenAI-compatible provider forwards `temperature` and `seed` when set. The
+  Anthropic provider never sends them. The API has no seed, and Opus 4.7+ and the 5.x models reject
+  sampling parameters; Sonnet 4.6 and Haiku 4.5 still accept a temperature, but one code path is
+  simpler. On Anthropic, temperature and seed therefore only shape the cache key. Reproducibility
+  comes from the cache, not from temperature 0.
 - **Cache**: SQLite (stdlib) under `.hecklr/cache/llm.sqlite3`, keyed by SHA-256 of the canonical
-  JSON of the request. WAL mode for concurrent processes; SQLite calls run in a worker thread; a
-  per-key lock stops two concurrent identical calls from paying twice. A hit returns the stored
-  response with `cached=True` and `cost_usd=0`.
+  JSON of the request. SQLite calls run in a worker thread. A per-key lock stops two concurrent
+  identical calls in one process from paying twice. WAL mode and `INSERT OR IGNORE` make the file
+  safe for several processes, but two processes racing on the same new request may both pay (the
+  first stored row wins). A hit returns the stored response with `cached=True` and `cost_usd=0`.
+  The key names the model string, not the endpoint: two servers both serving `ollama/<model>`
+  share entries, so give different endpoints different cache files. Each lookup and the hit rate
+  on close are logged (`llm.cache`, `llm.cache_summary`).
 - **FakeLLM** is deterministic by construction: replies come from rules (regex on the last
   message), a pure responder function, or a script; otherwise it derives a reply from the request
   hash, and for JSON-schema requests it builds a minimal schema-valid object. It records every call
   and reports token counts estimated from text length, at zero cost.
-- **Pricing**: a small table of USD per million tokens for well-known models; local providers
-  (`ollama/`, `fake/`) cost zero; unknown models cost zero with a one-time warning.
+- **Pricing fails closed**: a small table of USD per million tokens for well-known models, extended
+  or overridden by `models.prices` in `hecklr.yaml`. Local providers (`ollama/`, `fake/`) cost zero.
+  Any other model without a price raises `UnknownPriceError`, both when the budget is estimated
+  and before a request is sent. A model that counted as free would bypass the budget cap. A
+  self-hosted `openai-compatible` model is declared at price 0.
+- **Keys**: the router reads API keys from its `env` mapping and always passes them explicitly. A
+  missing key is a `ProviderConfigError` that names the variable, never a raw SDK error, and the
+  SDKs never fall back to the process environment.
 
 ## Consequences
 

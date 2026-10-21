@@ -34,6 +34,11 @@ async def complete_structured[T: BaseModel](
         }
     )
     response = await provider.complete(structured_request)
+    if response.truncated:
+        raise LLMOutputError(
+            f"reply for {response_type.__name__} was cut off at max_tokens="
+            f"{request.max_tokens}; raise max_tokens"
+        )
     try:
         value = response_type.model_validate_json(response.text)
     except ValidationError as exc:

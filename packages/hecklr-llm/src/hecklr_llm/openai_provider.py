@@ -1,5 +1,6 @@
 """OpenAI Chat Completions provider, also used for any OpenAI-compatible endpoint."""
 
+from collections.abc import Mapping
 from typing import Literal
 
 import openai
@@ -8,9 +9,9 @@ from openai.types.shared_params import ResponseFormatJSONSchema
 
 from hecklr_llm.errors import LLMProviderError, LLMRefusalError, is_retryable_status
 from hecklr_llm.model_names import split_model
-from hecklr_llm.pricing import cost_usd
+from hecklr_llm.pricing import PRICES, cost_usd, price_for
 from hecklr_llm.structured import decode_json_reply
-from hecklr_schemas import LLMRequest, LLMResponse, LLMUsage
+from hecklr_schemas import LLMRequest, LLMResponse, LLMUsage, ModelPrice
 
 OutputLimitParam = Literal["max_tokens", "max_completion_tokens"]
 
@@ -32,11 +33,13 @@ class OpenAIProvider:
         output_limit_param: OutputLimitParam = "max_completion_tokens",
         max_retries: int = 2,
         timeout_s: float = 120.0,
+        prices: Mapping[str, ModelPrice] = PRICES,
     ) -> None:
         self._client = client or openai.AsyncOpenAI(
             api_key=api_key, base_url=base_url, max_retries=max_retries, timeout=timeout_s
         )
         self._output_limit_param = output_limit_param
+        self._prices = prices
 
     async def aclose(self) -> None:
         """Close the SDK client and its connection pool."""
@@ -44,6 +47,8 @@ class OpenAIProvider:
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """Send one chat completion request and map the reply."""
+        # Fail before spending money on a call whose cost could not be counted.
+        price_for(request.model, self._prices)
         _, model = split_model(request.model)
         messages: list[ChatCompletionMessageParam] = []
         if request.system is not None:
@@ -92,7 +97,8 @@ class OpenAIProvider:
 
         if not completion.choices:
             raise LLMProviderError(f"{request.model} returned no choices", retryable=True)
-        reply = completion.choices[0].message
+        choice = completion.choices[0]
+        reply = choice.message
         if reply.refusal:
             raise LLMRefusalError(f"{request.model} declined the request: {reply.refusal}")
         text = reply.content or ""
@@ -100,10 +106,17 @@ class OpenAIProvider:
             input_tokens=completion.usage.prompt_tokens if completion.usage else 0,
             output_tokens=completion.usage.completion_tokens if completion.usage else 0,
         )
+        truncated = choice.finish_reason == "length"
         return LLMResponse(
             model=request.model,
             text=text,
-            parsed=decode_json_reply(text) if request.json_schema is not None else None,
+            # A cut-off JSON reply cannot parse; complete_structured() reports it as truncated.
+            parsed=(
+                decode_json_reply(text)
+                if request.json_schema is not None and not truncated
+                else None
+            ),
             usage=usage,
-            cost_usd=cost_usd(request.model, usage),
+            cost_usd=cost_usd(request.model, usage, self._prices),
+            truncated=truncated,
         )
