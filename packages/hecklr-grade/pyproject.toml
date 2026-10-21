@@ -9,6 +9,8 @@ authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
     "hecklr-schemas",
     "hecklr-llm",
+    "anyio>=4.10",
+    "simpleeval>=1.0.7,<2",
 ]
 
 [build-system]
