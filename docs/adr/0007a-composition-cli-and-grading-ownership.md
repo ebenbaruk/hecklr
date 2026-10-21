@@ -22,7 +22,9 @@ rule for when a scenario "fails" under pytest, and an adaptive pass, none of whi
   dropped). Supersedes the `CriterionGrader` part of ADR 0001a.
 - **Composition in two steps.** `prepare_run` loads (world seed files inlined with
   `hecklr_world.load_world`), resolves the suite, builds graders and drivers, and plans; every
-  configuration error surfaces there. `execute_run` opens the model stack, the sandbox and the
+  configuration error surfaces there except the model providers' setup, which `execute_run`
+  checks first (providers can be injected there), before the run is recorded, so a missing API
+  key is a configuration error (78), not a run of harness errors. `execute_run` then opens the model stack, the sandbox and the
   store, runs, and returns `RunResults`. Voice and email suites fail in `prepare_run` with a
   message naming the missing driver and `--channels chat`. A python adapter's project directory
   is put on `sys.path`, as `python -m` would from the project.
@@ -46,7 +48,10 @@ rule for when a scenario "fails" under pytest, and an adaptive pass, none of whi
   of a scenario is one more trial index for each of its persona x channel cells.
 - **pytest plugin.** Registered as a `pytest11` entry point and inert without `--hecklr-suite`.
   The package `hecklr` imports its API lazily so the plugin costs nothing in unrelated runs. One
-  item per scenario; the suite runs once, on the first item. A scenario fails when every counted
+  item per scenario; the suite runs at most once, on the first item: a run that raises is
+  remembered and fails every item with its error rather than being retried per item (which would
+  multiply time and spend). Every item fails when the run did not complete (budget, cancelled,
+  failed), so a truncated run never makes CI green. Otherwise a scenario fails when every counted
   trial failed, or when the upper bound of its 95% Wilson interval is below
   `--hecklr-min-pass-rate` (default 0.8): failure needs evidence, not one unlucky trial.
 - **Starter project.** `hecklr init` writes 5 chat scenarios, 3 personas and a world; without an

@@ -28,7 +28,14 @@ lifecycle", "Agent adapters". Decisions: ADR 0007a.
   real `python -m pytest -p hecklr --hecklr-suite ci` subprocess run.
 - **E2E**: `tests/e2e/test_sc1_quickstart.py::test_sc1_init_then_run_stores_a_graded_run` (init
   `--yes` then run through the CLI, 15 graded trials, about 3 s).
-- Package: 114 tests, 97% line+branch coverage; `mypy --strict` and ruff clean.
+- Review round 1: the pytest plugin runs a suite at most once even when it raises
+  (`test_a_crashing_suite_runs_once_and_fails_every_scenario`) and fails every item of a run
+  that did not complete (`test_a_run_that_did_not_complete_fails_every_scenario`); a missing
+  provider key exits 78 before the run is recorded
+  (`test_a_missing_provider_key_is_a_config_error_before_the_run_starts`); a crashed run exits 3
+  naming every cause (`test_a_crashed_run_is_a_harness_error_naming_every_cause`); `init`
+  refuses `--adapter python --agent-url` and explains a failed validation.
+- Package: 120 tests, 98% line+branch coverage; `mypy --strict` and ruff clean.
 - Exercised for real on local Ollama (`qwen3:4b-instruct`, shared with other workstreams): init →
   doctor → run of the starter project (15 trials, 15 ok, suite 93% [73%, 100%]) took 8.3 min wall,
   over SC1's 5 min because the shared Ollama kept swapping models; against the fixture FastAPI
@@ -46,8 +53,9 @@ lifecycle", "Agent adapters". Decisions: ADR 0007a.
 - HTTP agents in sandbox mode cannot learn their trial's world URLs from the `http` adapter
   (no `{{world_http_url}}` placeholder or header). Needs a WS6 decision (adapter change, no
   schema change: `SessionContext` already carries the URLs).
-- SC1 on a laptop with a local model is model-bound; measure on an idle machine before the M1
-  gate, and consider `trials: 2` in the starter suite if it stays above 5 min.
+- SC1 on a laptop with a local model is model-bound (8.3 min measured): issue #13.
+- The suite pass rate's cluster-bootstrap interval collapses to [100%, 100%] when every trial
+  passes: issue #14 (WS5/WS7b).
 
 ## Decisions
 
