@@ -280,6 +280,57 @@ async def test_anthropic_connection_failure_is_retryable() -> None:
     assert caught.value.retryable
 
 
+# --- Reasoning models (luna) ----------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("model", ["openai/gpt-6-luna", "openai/gpt-5.6-luna"])
+async def test_ws7d_luna_with_a_temperature_turns_reasoning_off(model: str) -> None:
+    """Luna rejects any temperature but 1 while reasoning (live-probed 2026-10-21)."""
+    recorder = Recorder(body=_chat_completion("ok"))
+
+    await _openai(recorder).complete(_request(model, temperature=0.0, seed=3, max_tokens=50))
+
+    sent = recorder.sent
+    assert sent["reasoning_effort"] == "none"
+    assert sent["temperature"] == 0.0
+    assert sent["seed"] == 3
+    assert sent["max_completion_tokens"] == 50
+    assert "max_tokens" not in sent
+
+
+@pytest.mark.anyio
+async def test_ws7d_luna_without_a_temperature_keeps_its_default_reasoning() -> None:
+    recorder = Recorder(body=_chat_completion("ok"))
+
+    await _openai(recorder).complete(_request("openai/gpt-6-luna"))
+
+    assert "reasoning_effort" not in recorder.sent
+    assert "temperature" not in recorder.sent
+
+
+@pytest.mark.anyio
+async def test_ws7d_other_models_never_get_a_reasoning_effort() -> None:
+    recorder = Recorder(body=_chat_completion("ok"))
+
+    await _openai(recorder).complete(_request("openai/gpt-4.1", temperature=0.0))
+
+    assert "reasoning_effort" not in recorder.sent
+
+
+@pytest.mark.anyio
+async def test_ws7d_cached_prompt_tokens_are_billed_at_the_cached_rate() -> None:
+    body = _chat_completion("ok")
+    body["usage"]["prompt_tokens_details"] = {"cached_tokens": 800}
+    recorder = Recorder(body=body)
+
+    reply = await _openai(recorder).complete(_request("openai/gpt-6-luna"))
+
+    # 200 fresh input x $0.10 + 800 cached x $0.01 + 200 output x $0.50, per million tokens.
+    assert reply.cost_usd == Decimal("0.000128")
+    assert reply.usage.input_tokens == 1000
+
+
 # --- OpenAI-compatible ----------------------------------------------------------------------
 
 

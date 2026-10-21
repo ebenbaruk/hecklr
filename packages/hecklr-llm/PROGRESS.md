@@ -29,6 +29,16 @@ budget), "Testing strategy" (FakeLLM, live tests). Design: `docs/adr/0003-llm-pr
 - Tests: 90 unit tests (no network; SDKs run against `httpx2.MockTransport`), 100% line and branch
   coverage; 2 live tests against local Ollama (`uv run pytest packages/hecklr-llm -m live`), passing
   with `qwen3:4b-instruct`.
+- WS7d (luna switch, ADR 0007d): `openai/gpt-6-luna` ($0.10/$0.50, cached $0.01) and
+  `openai/gpt-5.6-luna` ($0.20/$1.20, cached $0.02) priced; cached prompt tokens billed at the
+  cached rate (`CACHED_INPUT_PER_MTOK`, `cost_usd(..., cached_input_tokens=)`). Live probe of both
+  models (2026-10-21): `max_tokens` rejected (HTTP 400), `max_completion_tokens` accepted,
+  `temperature` other than 1 rejected unless `reasoning_effort: none`, `seed` and JSON Schema
+  `response_format` accepted, function tools only with `reasoning_effort: none`, `minimal` not
+  supported. The provider sends `reasoning_effort: none` for these models when a request sets a
+  temperature. Tests: `test_ws7d_*` in `test_pricing_and_structured.py` and
+  `test_providers_http.py` (101 unit tests, 100% coverage); `test_live_openai.py` 3 passed on
+  `gpt-6-luna`.
 
 ## Next
 

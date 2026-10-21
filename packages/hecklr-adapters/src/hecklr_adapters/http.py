@@ -11,7 +11,9 @@ Streaming modes (``HttpAdapterConfig.stream``):
   body is newline-delimited JSON and each line's delta is read at that path.
 
 Hecklr names each session with a fresh ULID, sent through the ``{{session_id}}`` placeholder;
-the default template is ``{"message": "{{message}}", "session_id": "{{session_id}}"}``.
+the default template is ``{"message": "{{message}}", "session_id": "{{session_id}}"}``. Every
+request also tells the agent where its trial's world sandbox is: headers, and the
+``{{world_url}}`` / ``{{world_mcp_url}}`` placeholders (``hecklr_adapters.context``).
 """
 
 from collections.abc import AsyncIterator
@@ -26,6 +28,7 @@ from hecklr_adapters._http import (
     new_client,
     parse_json,
 )
+from hecklr_adapters.context import session_headers, template_values
 from hecklr_adapters.errors import AgentError
 from hecklr_adapters.templates import check_path, check_template, extract_text, render
 from hecklr_schemas import (
@@ -89,11 +92,9 @@ class HttpChatSession:
 
     async def send(self, text: str) -> AsyncIterator[AgentChunk]:
         """POST ``text`` and stream the reply."""
-        body = render(
-            self._template,
-            {"message": text, "session_id": self._session_id, "trial_id": self._ctx.trial_id},
-        )
-        headers = {**self._config.headers, **self._ctx.headers()}
+        values = template_values(self._ctx, message=text, session_id=self._session_id)
+        body = render(self._template, values)
+        headers = {**self._config.headers, **session_headers(self._ctx)}
         with agent_http_errors(self._url, self._config.timeout_s):
             if self._config.stream == "sse":
                 async for chunk in self._send_sse(body, headers):

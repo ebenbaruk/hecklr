@@ -12,7 +12,8 @@ from acme_agent.config import DEFAULT_MODEL, TODAY, ToolSpec, fault_overlay
 def test_defaults_run_the_clean_llm_agent() -> None:
     settings = AgentSettings.from_env({})
     assert settings.brain == "llm"
-    assert settings.model == DEFAULT_MODEL == "ollama/mistral:latest"
+    assert settings.model == DEFAULT_MODEL == "openai/gpt-6-luna"
+    assert settings.temperature is None
     assert settings.today == TODAY
     assert settings.overlay_dir() is None
     assert load_agent_files().variant == "clean"
@@ -27,10 +28,12 @@ def test_environment_overrides() -> None:
             "ACME_WORLD_BASE_URL": "http://127.0.0.1:8765",
             "ACME_TODAY": "2026-11-01",
             "ACME_SEED": "3",
+            "ACME_TEMPERATURE": "0",
             "ACME_TOOL_TIMEOUT_S": "2.5",
         }
     )
     assert settings.brain == "rules"
+    assert settings.temperature == 0.0
     assert settings.overlay_dir() == Path("/tmp/x")  # noqa: S108 -- as above
     assert settings.world_base_url == "http://127.0.0.1:8765"
     assert settings.today == date(2026, 11, 1)
@@ -43,6 +46,7 @@ def test_environment_overrides() -> None:
         ({"ACME_BRAIN": "magic"}, "ACME_BRAIN"),
         ({"ACME_TODAY": "tomorrow"}, "invalid ACME_"),
         ({"ACME_SEED": "x"}, "invalid ACME_"),
+        ({"ACME_TEMPERATURE": "warm"}, "invalid ACME_"),
     ],
 )
 def test_bad_environment_is_refused(env: dict[str, str], message: str) -> None:

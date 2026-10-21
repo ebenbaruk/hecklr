@@ -21,8 +21,9 @@ tests/                      world, suite, brains, faults, HTTP/SSE, live LLM
 ## Two brains
 
 - **LLM brain** (default, `--brain llm`): the real reference agent. A tool-calling loop over
-  `hecklr_llm` (`ACME_MODEL`, default `ollama/mistral:latest`): each step the model answers one JSON
-  object, either a tool call or the reply to the customer.
+  `hecklr_llm` (`ACME_MODEL`, default `openai/gpt-6-luna`, needs `OPENAI_API_KEY`): each step
+  the model answers one JSON object, either a tool call or the reply to the customer. For a free
+  local run use `ACME_MODEL=ollama/mistral:latest ACME_TEMPERATURE=0`.
 - **Rules brain** (`--brain rules`): a deterministic CI stand-in, **not** an example of agent
   design. It understands customers by keywords and runs one task at a time, calling the same
   tools. It reads the same `prompts/system.md` and `tools/descriptions.yaml`
@@ -45,7 +46,8 @@ curl -sN localhost:8000/chat/stream -H 'content-type: application/json' \
 
 Every flag has an environment variable: `ACME_BRAIN`, `ACME_MODEL`, `ACME_FAULT`,
 `ACME_OVERLAY`, `ACME_WORLD_BASE_URL`, `ACME_TODAY` (default 2026-10-21, the world's "today"),
-`ACME_SEED`, `ACME_TOOL_TIMEOUT_S`.
+`ACME_SEED`, `ACME_TEMPERATURE` (default: the model's own; on `gpt-6-luna` any value turns its
+reasoning off, see ADR 0007d), `ACME_TOOL_TIMEOUT_S`.
 
 ### HTTP API
 
@@ -53,24 +55,26 @@ Every flag has an environment variable: `ACME_BRAIN`, `ACME_MODEL`, `ACME_FAULT`
 | --- | --- | --- |
 | `POST /chat` | `{"message", "session_id", "trial_id"?, "world_url"?}` | `{"reply", "handoff", "ended", "tool_calls"}` |
 | `POST /chat/stream` | same | SSE: unnamed events are text deltas; `tool_call`, `tool_result`, `handoff`, `end` carry `hecklr_schemas` payloads |
-| `GET /healthz` | | `{"status", "brain", "variant", "tools"}` |
+| `GET /healthz` | | `{"status", "brain", "variant", "model", "fallback_tools", "requests_by_world_source"}` |
 
 Both routes match Hecklr's `http` adapter (`hecklr.yaml` uses `/chat/stream` with `stream: sse`).
 The conversation is keyed by `session_id`.
 
 ### Which world the tools act on
 
-Per conversation, the first of:
+Per request, the first of:
 
-1. `world_url` in the request body: the trial's world sandbox (`.../t/<trial id>`);
-2. `ACME_WORLD_BASE_URL` + `/t/<trial id>`, the trial id read from the `X-Hecklr-Trial-Id`
+1. `world_url` in the request body (a `{{world_url}}` request template placeholder);
+2. the `X-Hecklr-World-Url` header: the trial's world sandbox (`.../t/<trial id>`). Hecklr's
+   chat adapters send it with every request, so `hecklr run` needs no extra setup (ADR 0007d);
+3. `ACME_WORLD_BASE_URL` + `/t/<trial id>`, the trial id read from the `X-Hecklr-Trial-Id`
    header (Hecklr's sandbox routes every trial under `/t/<trial id>`, ADR 0003a);
-3. a private in-process copy of `worlds/acme-maintenance.yaml`, for manual runs. Hecklr cannot
+4. a private in-process copy of `worlds/acme-maintenance.yaml`, for manual runs. Hecklr cannot
    see these calls, so the agent then streams its `tool_call` / `tool_result` events itself.
 
-Today Hecklr's `http` adapter does not send the trial's world URL, so a `hecklr run` needs the
-sandbox on a known port and `ACME_WORLD_BASE_URL` pointing at it (see ADR 0008a and
-`PROGRESS.md`).
+`GET /healthz` counts the requests served from each source (`requests_by_world_source`): after
+a `hecklr run`, only `header` should have grown. A growing `local` count means the agent graded
+nothing Hecklr can see.
 
 ### In process
 
@@ -86,8 +90,13 @@ async with InProcessAgent(AcmeAgent(files, AgentSettings(brain="rules")), world)
 
 ```bash
 uv run pytest examples/acme-maintenance               # everything but the live test
-uv run pytest examples/acme-maintenance -m live       # LLM brain on local Ollama (mistral)
+uv run pytest examples/acme-maintenance -m live       # LLM brain on gpt-6-luna (~$0.002)
+ACME_LIVE_MODEL=ollama/mistral:latest uv run pytest examples/acme-maintenance -m live  # free
 ```
+
+The live tests need `OPENAI_API_KEY` and `HECKLR_TEST_BUDGET_USD` (e.g. `uv run --env-file .env
+pytest ...`); they book a visit, refund an invoice after verification, hand a gas smell to a
+human and check that the F4 overlay leaks an address the clean agent refuses.
 
 `tests/test_suite.py` runs the 33 scripted scenarios as graded trials in process (scripted
 customer, `python` adapter, chat driver, `TrialWorld`, `hecklr_grade`): the clean agent passes
