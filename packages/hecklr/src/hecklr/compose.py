@@ -41,6 +41,7 @@ from hecklr_core import (
 )
 from hecklr_core.storage import RUN_JSON
 from hecklr_grade import build_graders, grade_trial
+from hecklr_llm import ProviderRouter
 from hecklr_schemas import (
     Channel,
     ChannelDriver,
@@ -48,6 +49,7 @@ from hecklr_schemas import (
     Grade,
     GradeContext,
     LLMProvider,
+    ModelsConfig,
     PythonAdapterConfig,
     Run,
     RunId,
@@ -127,7 +129,9 @@ class PreparedRun:
 def prepare_run(request: RunRequest) -> PreparedRun:
     """Load, validate and plan a run, and build its drivers and graders; nothing runs yet.
 
-    Every configuration problem surfaces here, before a trial starts or a model is called.
+    Every configuration problem surfaces here, before a trial starts or a model is called,
+    except the model providers' setup (API keys, base URLs): ``execute_run`` checks that before
+    it records the run, because providers can be injected there.
 
     Raises:
         hecklr_core.ConfigError: an authored file is invalid or the suite selects nothing.
@@ -273,9 +277,15 @@ async def execute_run(
         llm_providers: Provider instances per model prefix (tests inject ``FakeLLM``).
         on_trial: Called after each trial is stored.
         on_adaptive: Called with the number of extra trials before an adaptive pass starts.
+
+    Raises:
+        hecklr_llm.ProviderConfigError: a model's provider lacks its API key or base URL; raised
+            before the run is recorded.
+        hecklr_llm.UnknownProviderError: a model names an unknown provider; idem.
     """
     project = prepared.project
     config = project.config
+    await check_model_providers(config.models, llm_providers)
     async with (
         open_llm(config, project.output_dir, providers=llm_providers) as llm,
         Sandbox(tool_mode=config.agent.tool_mode) as sandbox,
@@ -294,6 +304,21 @@ async def execute_run(
         if prepared.adaptive and run.status is RunStatus.COMPLETED:
             run = await _adaptive_pass(executor, store, run, on_adaptive)
         return await store.load_run(run.id)
+
+
+async def check_model_providers(
+    models: ModelsConfig, llm_providers: Mapping[str, LLMProvider] | None = None
+) -> None:
+    """Set up the simulator's and judge's providers once, so a missing key fails fast.
+
+    Without this, a missing API key surfaces as a harness error in every trial of a recorded run.
+    Creating a provider makes no network call.
+    """
+    async with ProviderRouter(
+        models.providers, prices=models.prices, providers=llm_providers
+    ) as router:
+        for model in (models.simulator, models.judge):
+            router.provider_for(model)
 
 
 async def _adaptive_pass(

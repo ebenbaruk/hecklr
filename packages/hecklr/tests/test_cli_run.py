@@ -11,6 +11,7 @@ import click
 import pytest
 from typer.testing import CliRunner
 
+import hecklr.commands.run
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
@@ -132,6 +133,33 @@ def test_every_trial_failing_to_run_is_a_harness_error(config_path: Path) -> Non
     assert code == exit_codes.HARNESS_ERROR
     assert "Every trial failed to run." in output
     assert "No trial could be scored" in output
+
+
+def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(
+    config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    edit(config_path, "simulator: fake/customer", "simulator: anthropic/claude-haiku-5-5")
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "ANTHROPIC_API_KEY" in output
+    assert not (config_path.parent / ".hecklr" / "runs").exists()
+
+
+def test_a_crashed_run_is_a_harness_error_naming_every_cause(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def crash(*args: object, **kwargs: object) -> RunResults:
+        raise ExceptionGroup("trials", [OSError("disk full"), RuntimeError("driver lost")])
+
+    monkeypatch.setattr(hecklr.commands.run, "execute_run", crash)
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.HARNESS_ERROR
+    assert "the run failed: OSError: disk full; RuntimeError: driver lost" in output
 
 
 def test_baseline_is_recorded_and_seed_is_reproducible(config_path: Path) -> None:

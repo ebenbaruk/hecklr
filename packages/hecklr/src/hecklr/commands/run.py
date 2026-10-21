@@ -12,8 +12,9 @@ from rich.markup import escape
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from hecklr import exit_codes
-from hecklr.commands._common import config_errors, fail, overrides, stderr, stdout
+from hecklr.commands._common import CONFIG_ERRORS, config_errors, fail, overrides, stderr, stdout
 from hecklr.compose import PreparedRun, RunRequest, execute_run, prepare_run
+from hecklr.errors import describe_error
 from hecklr.summary import render_summary, summarize
 from hecklr_core import BudgetEstimateError, RunResults
 from hecklr_schemas import Channel, Grade, LLMProvider, RunStatus, Trial
@@ -49,7 +50,10 @@ def run(
         bool | None,
         typer.Option(
             "--adaptive/--no-adaptive",
-            help="Add trials where results are uncertain or flipped vs the baseline.",
+            help=(
+                "Add up to 50% more trials where results are uncertain or flipped vs the "
+                "baseline; each extra trial of a scenario runs once per persona x channel."
+            ),
         ),
     ] = None,
     baseline: Annotated[
@@ -149,15 +153,13 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
                     on_adaptive=on_adaptive,
                 )
             )
+        except CONFIG_ERRORS as exc:
+            # A model provider that cannot be set up (e.g. a missing API key) is found before the
+            # run is recorded: a configuration problem, not a harness failure.
+            raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
         except Exception as exc:
             # The executor already recorded the run as failed; say why and stop.
-            raise fail(f"the run failed: {_describe(exc)}", exit_codes.HARNESS_ERROR) from exc
-
-
-def _describe(exc: BaseException) -> str:
-    if isinstance(exc, BaseExceptionGroup):
-        return "; ".join(sorted({_describe(inner) for inner in exc.exceptions}))
-    return f"{type(exc).__name__}: {exc}"
+            raise fail(f"the run failed: {describe_error(exc)}", exit_codes.HARNESS_ERROR) from exc
 
 
 def _exit_code(results: RunResults) -> int:
