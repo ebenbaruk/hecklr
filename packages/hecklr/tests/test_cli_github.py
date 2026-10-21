@@ -181,6 +181,60 @@ def test_latest_run_without_runs_is_a_harness_error(config_path: Path) -> None:
     assert "no finished run of suite 'ci'" in output
 
 
+def test_latest_run_since_keeps_only_runs_this_job_made(config_path: Path, store: StoreRun) -> None:
+    store({"s00": 1.0}, order=0)  # 09:00, the fetched baseline
+    made = store({"s00": 1.0}, order=5)  # 09:05
+
+    code, output = invoke(
+        FakeGh(), "latest-run", "--suite", "ci", "--since", "2026-10-21T09:03:00Z",
+        "--config", str(config_path),
+    )  # fmt: skip
+
+    assert code == exit_codes.OK, output
+    assert output == f"run-id={made.id}\nstatus=completed\n"
+
+
+@pytest.mark.parametrize("since", ["yesterday", "2026-10-21T09:03:00"])
+def test_latest_run_since_needs_an_iso_time_with_a_zone(config_path: Path, since: str) -> None:
+    code, output = invoke(
+        FakeGh(), "latest-run", "--suite", "ci", "--since", since, "--config", str(config_path)
+    )
+
+    assert code == 2
+    assert "--since" in output
+
+
+def test_us04_a_run_that_recorded_nothing_is_never_gated_against_the_fetched_baseline(
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
+) -> None:
+    """The Action's steps after `hecklr run` exits before recording (e.g. a missing API key)."""
+    uploaded = store({f"s{i:02d}": 1.0 for i in range(10)}, suite="ci", order=0)
+    artifact_dir = tmp_path / "artifact"
+    shutil.move(runs_dir / uploaded.id, artifact_dir)
+    gh = FakeGh(artifacts=[artifact(2, 12, "main", "2026-10-21T10:00:00Z")])
+    gh.downloads["12"] = artifact_dir
+    code, output = invoke(
+        gh, "fetch-baseline", "--repo", REPO, "--name", "hecklr-baseline-ci", "--branch", "main",
+        "--config", str(config_path),
+    )  # fmt: skip
+    assert code == exit_codes.OK, output
+
+    # The run step started after the baseline was made, then failed without recording a run.
+    code, output = invoke(
+        gh, "latest-run", "--suite", "ci", "--since", "2026-10-21T12:00:00+00:00",
+        "--config", str(config_path),
+    )  # fmt: skip
+    assert code == exit_codes.HARNESS_ERROR
+    assert "run-id=" not in output
+
+    # Even gated by hand, the fetched baseline cannot stand in for the candidate.
+    result = runner.invoke(
+        app, ["gate", "--suite", "ci", "--baseline", uploaded.id, "--config", str(config_path)]
+    )
+    assert result.exit_code == exit_codes.HARNESS_ERROR, result.output
+    assert "same run" in click.unstyle(result.output)
+
+
 # --- sticky comment ---------------------------------------------------------------------------
 
 

@@ -4,7 +4,8 @@ The composite action (``action/action.yml``) calls these through the same ``heck
 so the logic is typed and tested here rather than written in shell:
 
 - ``fetch-baseline``: download the newest baseline run artifact of a branch into the run store;
-- ``latest-run``: the id of the newest finished run of a suite (to store it as the baseline);
+- ``latest-run``: the id of the newest finished run of a suite made by this job (the one to gate
+  and to store as the baseline);
 - ``comment``: create or update the one sticky PR comment of a suite.
 
 GitHub is reached only through the ``gh`` CLI (authenticated by ``GH_TOKEN``), which runners ship.
@@ -17,7 +18,9 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final
 
@@ -148,9 +151,17 @@ def upsert_comment(gh: Gh, repo: str, pr: int, marker: str, body: str) -> str:
     return "created"
 
 
-def latest_finished(runs: Path, suite: str) -> Run | None:
-    """The newest finished run of ``suite`` under ``runs``."""
-    return ResultStore(runs).latest_run(suite=suite, statuses=FINISHED)
+def latest_finished(runs: Path, suite: str, since: datetime | None = None) -> Run | None:
+    """The newest finished run of ``suite`` under ``runs``, created at ``since`` or later."""
+    with closing(ResultStore(runs)) as store:
+        matching = [
+            run
+            for run in store.list_runs()
+            if run.suite == suite
+            and run.status in FINISHED
+            and (since is None or run.created_at >= since)
+        ]
+    return matching[-1] if matching else None
 
 
 def write_outputs(values: Mapping[str, str], env: Mapping[str, str] | None = None) -> None:
@@ -195,14 +206,34 @@ def fetch_baseline_command(
 @app.command("latest-run")
 def latest_run_command(
     suite: Annotated[str, typer.Option("--suite", "-s", help="Suite of the run.")],
+    since: Annotated[
+        str | None,
+        typer.Option(
+            help="Only runs created at this ISO 8601 time with a time zone or later, e.g. the "
+            "start of the job's `hecklr run`, so a fetched baseline is never taken for the run."
+        ),
+    ] = None,
     config: ConfigPath = DEFAULT_CONFIG,
 ) -> None:
     """Output ``run-id`` and ``status`` of the newest finished run of a suite."""
     project = load_project_or_exit(config)
-    run = latest_finished(runs_dir(project), suite)
+    start = _parse_since(since) if since is not None else None
+    run = latest_finished(runs_dir(project), suite, start)
     if run is None:
-        raise fail(f"no finished run of suite {suite!r}", exit_codes.HARNESS_ERROR)
+        scope = f" since {since}" if since is not None else ""
+        raise fail(f"no finished run of suite {suite!r}{scope}", exit_codes.HARNESS_ERROR)
     write_outputs({"run-id": run.id, "status": run.status.value})
+
+
+def _parse_since(value: str) -> datetime:
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError as exc:
+        message = f"{value!r} is not an ISO 8601 time"
+        raise typer.BadParameter(message, param_hint="--since") from exc
+    if moment.tzinfo is None:
+        raise typer.BadParameter(f"{value!r} has no time zone", param_hint="--since")
+    return moment
 
 
 @app.command("comment")

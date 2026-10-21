@@ -43,7 +43,11 @@ asked WS7a to handle the "no baseline yet" case explicitly.
   (typed and unit-tested, calling the runner's `gh` CLI): `fetch-baseline` downloads the newest
   unexpired `hecklr-baseline-<suite>` artifact uploaded from the baseline branch; `comment`
   creates or updates the comment whose first line is `<!-- hecklr-gate:<suite> -->`;
-  `latest-run` names the run a push to the baseline branch uploads as the next baseline.
+  `latest-run --since <start of the run step>` names the run this job recorded: the Action gates
+  that run (`--candidate`), never `latest`, which after a run that stopped before recording would
+  be the fetched baseline. Any non-zero `hecklr run` exit, or no recorded run, makes the Action
+  exit 3; `gate`, `compare` and `calibrate --aa` refuse to compare a run with itself (PR #22
+  review).
   Model providers are checked before the plan is printed, so a missing key exits 78 with no run
   id shown (PR #11 review).
 

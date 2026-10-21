@@ -41,7 +41,10 @@ inputs:
     description: Post or update the sticky PR comment.
     default: "true"
   install:
-    description: Shell command that installs Hecklr (run in working-directory).
+    description: >-
+      Shell command that installs Hecklr (run in working-directory). Hecklr is not on PyPI yet,
+      so override this until a release exists, e.g. `uv sync --all-packages` with
+      `hecklr: uv run hecklr` in a checkout of the Hecklr repository.
     default: uv tool install hecklr
   hecklr:
     description: Command that runs the Hecklr CLI after install.
@@ -52,10 +55,11 @@ inputs:
 
 outputs:
   exit-code:
-    description: "hecklr gate's exit code: 0 pass, 1 regression, 2 inconclusive, 3 harness error."
+    description: >-
+      0 pass, 1 regression, 2 inconclusive, 3 harness error (also whenever `hecklr run` failed).
     value: ${{ steps.gate.outputs.exit-code }}
   run-id:
-    description: Id of the run this job made.
+    description: Id of the run this job made (empty if it recorded none).
     value: ${{ steps.latest.outputs.run-id }}
   baseline-run-id:
     description: Id of the baseline run compared with (empty if none).
@@ -112,6 +116,10 @@ runs:
         BUDGET: ${{ inputs.budget-usd }}
         TRIALS: ${{ inputs.trials }}
       run: |
+        # Reports of an earlier step of this job must never stand in for this run's.
+        rm -rf hecklr-report hecklr-gate.md
+        # Runs created from now on are this step's; the fetched baseline is older.
+        echo "since=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
         args=(run --config "$CONFIG" --suite "$SUITE")
         [ -n "$BASELINE" ] && args+=(--baseline "$BASELINE")
         [ -n "$BUDGET" ] && args+=(--budget-usd "$BUDGET")
@@ -119,6 +127,20 @@ runs:
         set +e
         $HECKLR "${args[@]}"
         echo "exit-code=$?" >> "$GITHUB_OUTPUT"
+
+    - name: Find the run this job made
+      id: latest
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HECKLR: ${{ inputs.hecklr }}
+        CONFIG: ${{ inputs.config }}
+        SUITE: ${{ inputs.suite }}
+        SINCE: ${{ steps.run.outputs.since }}
+      run: |
+        $HECKLR github latest-run --config "$CONFIG" --suite "$SUITE" --since "$SINCE" \
+          || echo "status=" >> "$GITHUB_OUTPUT"
 
     - name: Gate
       id: gate
@@ -129,18 +151,32 @@ runs:
         CONFIG: ${{ inputs.config }}
         SUITE: ${{ inputs.suite }}
         BASELINE: ${{ steps.baseline.outputs.run-id }}
+        CANDIDATE: ${{ steps.latest.outputs.run-id }}
+        RUN_EXIT: ${{ steps.run.outputs.exit-code }}
         ON_INCONCLUSIVE: ${{ inputs.on-inconclusive }}
         MISSING_BASELINE: ${{ inputs.missing-baseline }}
         REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        args=(gate --config "$CONFIG" --suite "$SUITE" --out-dir hecklr-report
-              --missing-baseline "$MISSING_BASELINE" --report-url "$REPORT_URL")
+        if [ -z "$CANDIDATE" ]; then
+          # Gating `latest` here would compare the fetched baseline with itself and pass.
+          echo "::error::hecklr run exited ${RUN_EXIT:-?} without recording a run of suite $SUITE: harness error (exit 3)."
+          echo "exit-code=3" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        args=(gate --config "$CONFIG" --suite "$SUITE" --candidate "$CANDIDATE"
+              --out-dir hecklr-report --missing-baseline "$MISSING_BASELINE"
+              --report-url "$REPORT_URL")
         [ -n "$BASELINE" ] && args+=(--baseline "$BASELINE")
         [ -n "$ON_INCONCLUSIVE" ] && args+=(--on-inconclusive "$ON_INCONCLUSIVE")
         set +e
         $HECKLR "${args[@]}" > hecklr-gate.md
         code=$?
         cat hecklr-gate.md
+        if [ "${RUN_EXIT:-3}" != 0 ] && [ "$code" != 3 ]; then
+          # A run that failed (crashed, over budget, no trial ran) never passes the gate.
+          echo "::error::hecklr run exited $RUN_EXIT: harness error (exit 3) whatever the comparison says."
+          code=3
+        fi
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         if [ -f hecklr-report/report.md ]; then cat hecklr-report/report.md >> "$GITHUB_STEP_SUMMARY"; fi
 
@@ -151,6 +187,8 @@ runs:
         name: hecklr-report-${{ inputs.suite }}
         path: ${{ inputs.working-directory }}/hecklr-report
         if-no-files-found: warn
+        # A second gate of the same suite in one workflow run replaces the first one's report.
+        overwrite: true
 
     - name: Comment on the pull request
       if: >-
@@ -167,18 +205,6 @@ runs:
       run: |
         $HECKLR github comment --pr "$PR" --suite "$SUITE" --body-file hecklr-report/report.md \
           --fallback "hecklr run exited $RUN_EXIT and no report was written; see the workflow logs."
-
-    - name: Find the run to store as the baseline
-      id: latest
-      if: always()
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        HECKLR: ${{ inputs.hecklr }}
-        CONFIG: ${{ inputs.config }}
-        SUITE: ${{ inputs.suite }}
-      run: |
-        $HECKLR github latest-run --config "$CONFIG" --suite "$SUITE" || echo "status=" >> "$GITHUB_OUTPUT"
 
     - name: Store the run as the new baseline
       if: >-

@@ -40,6 +40,10 @@ jobs:
         run: |
           cp action/selftest/hecklr.yaml "$PROJECT/hecklr.action.yaml"
           cp action/selftest/hecklr_action_agent.py "$PROJECT/"
+          # The same project with a model it has neither a price nor an API key for: `hecklr run`
+          # exits 78 before it records a run.
+          sed 's#simulator: fake/customer#simulator: openai/gpt-6-luna#' \
+            action/selftest/hecklr.yaml > "$PROJECT/hecklr.unusable.yaml"
 
       - name: Baseline run (clean agent)
         id: baseline
@@ -80,11 +84,31 @@ jobs:
           hecklr: uv run hecklr
           comment: ${{ env.COMMENT }}
 
+      # The store now holds a finished `smoke` run (the clean candidate): the gate must not
+      # mistake it, or the baseline, for a run this step never recorded.
+      - name: Run that cannot start (must be a harness error)
+        id: nokey
+        continue-on-error: true
+        uses: ./action
+        env:
+          OPENAI_API_KEY: ""
+        with:
+          working-directory: ${{ env.PROJECT }}
+          config: hecklr.unusable.yaml
+          suite: smoke
+          baseline-run: ${{ steps.baseline.outputs.run-id }}
+          install: uv sync --all-packages
+          hecklr: uv run hecklr
+          comment: "false"
+
       - name: Check the gate's exit codes
         env:
           BASELINE: ${{ steps.baseline.outputs.exit-code }}
           CLEAN: ${{ steps.clean.outputs.exit-code }}
           FAULT: ${{ steps.fault.outputs.exit-code }}
+          NOKEY: ${{ steps.nokey.outputs.exit-code }}
+          NOKEY_RUN: ${{ steps.nokey.outputs.run-id }}
         run: |
-          echo "baseline=$BASELINE clean=$CLEAN fault=$FAULT"
-          [ "$BASELINE" = 0 ] && [ "$CLEAN" = 0 ] && [ "$FAULT" = 1 ]
+          echo "baseline=$BASELINE clean=$CLEAN fault=$FAULT nokey=$NOKEY nokey-run=$NOKEY_RUN"
+          [ "$BASELINE" = 0 ] && [ "$CLEAN" = 0 ] && [ "$FAULT" = 1 ] && [ "$NOKEY" = 3 ] \
+            && [ -z "$NOKEY_RUN" ]
