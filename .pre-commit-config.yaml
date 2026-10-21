@@ -25,7 +25,8 @@ repos:
         name: ruff format
         entry: uv run ruff format
         language: system
-        types_or: [python, pyi]
+        # Markdown too: ruff formats Python code blocks in docs, and CI checks them.
+        types_or: [python, pyi, markdown]
       - id: mypy
         name: mypy --strict (every package)
         entry: scripts/mypy-all.sh
