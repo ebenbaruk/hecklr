@@ -168,6 +168,68 @@ def test_a_judge_criterion_model_without_its_key_is_a_config_error(
     assert not (config_path.parent / ".hecklr" / "runs").exists()
 
 
+SCRIPTED_SCENARIO = """\
+id: scripted-appointment
+title: Scripted appointment lookup
+channels: [chat]
+persona: polite-regular
+world: acme-starter
+mode: scripted
+goal: Find out when the visit is.
+user_turns: ["Hi, when is the boiler visit of customer C-1001?"]
+success:
+  - type: tool_called
+    tool: get_appointment
+limits: { max_turns: 4 }
+"""
+
+
+def _keyless_scripted_suite(config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    edit(config_path, "simulator: fake/customer", "simulator: openai/gpt-6-luna")
+    edit(config_path, "judge: fake/judge", "judge: openai/gpt-6-luna")
+    smoke = '  smoke: { scenarios: "scripted/*.yaml", trials: 1 }\n'
+    edit(config_path, "suites:\n", f"suites:\n{smoke}")
+    scenario = config_path.parent / "scripted" / "lookup.yaml"
+    scenario.parent.mkdir()
+    scenario.write_text(SCRIPTED_SCENARIO)
+    return scenario
+
+
+def test_issue19_a_suite_that_calls_no_model_needs_no_key(
+    config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyless_scripted_suite(config_path, edit, monkeypatch)
+
+    code, output = _run(config_path, "--suite", "smoke", overrides=CliOverrides())
+
+    assert code == exit_codes.OK, output
+    assert "Spent: $0.0000" in output
+
+
+def test_issue19_a_judge_criterion_still_needs_the_judge_key(
+    config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _keyless_scripted_suite(config_path, edit, monkeypatch)
+    edit(scenario, "limits:", "  - type: judge\n    rubric: resolved\nlimits:")
+
+    code, output = _run(config_path, "--suite", "smoke", overrides=CliOverrides())
+
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "OPENAI_API_KEY" in output
+
+
+def test_issue19_a_guided_scenario_still_needs_the_simulator_key(
+    config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _keyless_scripted_suite(config_path, edit, monkeypatch)
+
+    code, output = _run(config_path, "--suite", "ci", "--trials", "1", overrides=CliOverrides())
+
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "OPENAI_API_KEY" in output
+
+
 def test_a_config_error_raised_mid_run_is_a_harness_error(
     config_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

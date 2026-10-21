@@ -46,6 +46,7 @@ from hecklr_report.outcomes import convert
 from hecklr_schemas import (
     Channel,
     ChannelDriver,
+    CustomCriterion,
     Event,
     Grade,
     GradeContext,
@@ -58,6 +59,7 @@ from hecklr_schemas import (
     RunId,
     RunStatus,
     Scenario,
+    SimulationMode,
     Trial,
     is_ulid,
 )
@@ -128,6 +130,11 @@ class PreparedRun:
     def runs_dir(self) -> Path:
         """Where this run's results directory is created."""
         return self.project.output_dir / RUNS_DIR
+
+    @property
+    def models_called(self) -> list[ModelName]:
+        """The models this run can call: the ones whose providers must be usable."""
+        return models_called(self.project.config.models, self.plan.suite.scenarios)
 
 
 def prepare_run(request: RunRequest) -> PreparedRun:
@@ -290,10 +297,9 @@ async def execute_run(
     """
     project = prepared.project
     config = project.config
-    overridden = judge_overrides(prepared.plan.suite.scenarios)
     if llm_providers is None:
         llm_providers = scripted_models()
-    await check_model_providers(config.models, llm_providers, criterion_models=overridden)
+    await check_model_providers(config.models, prepared.models_called, llm_providers)
     async with (
         open_llm(config, project.output_dir, providers=llm_providers) as llm,
         Sandbox(tool_mode=config.agent.tool_mode) as sandbox,
@@ -318,32 +324,39 @@ async def execute_run(
 
 async def check_model_providers(
     models: ModelsConfig,
+    called: Sequence[ModelName],
     llm_providers: Mapping[str, LLMProvider] | None = None,
-    *,
-    criterion_models: Sequence[ModelName] = (),
 ) -> None:
-    """Set up every model's provider once, so a missing key fails fast.
+    """Set up the provider of every model in ``called`` once, so a missing key fails fast.
 
-    Covers the simulator, the judge and ``criterion_models`` (judge criteria that override the
-    judge model). Without this, a missing API key surfaces as a harness error in every trial of a
-    recorded run. Creating a provider makes no network call.
+    Without this, a missing API key surfaces as a harness error in every trial of a recorded
+    run. Creating a provider makes no network call.
     """
     async with ProviderRouter(
         models.providers, prices=models.prices, providers=llm_providers
     ) as router:
-        for model in dict.fromkeys((models.simulator, models.judge, *criterion_models)):
+        for model in called:
             router.provider_for(model)
 
 
-def judge_overrides(scenarios: Mapping[str, Scenario]) -> list[ModelName]:
-    """Models that judge criteria name instead of ``models.judge``, in first-seen order."""
-    named = (
-        criterion.model
-        for scenario in scenarios.values()
-        for criterion in scenario.success
-        if isinstance(criterion, JudgeCriterion) and criterion.model is not None
-    )
-    return list(dict.fromkeys(named))
+def models_called(models: ModelsConfig, scenarios: Mapping[str, Scenario]) -> list[ModelName]:
+    """The models a run of ``scenarios`` can call, in first-seen order (issue #19).
+
+    The simulator only for scenarios that are not scripted; the judge model for judge criteria
+    without a ``model`` of their own and for custom graders (which may call the judge LLM); each
+    judge criterion's own ``model``. A scripted suite graded deterministically calls none, so it
+    needs no API key.
+    """
+    called: list[ModelName] = []
+    for scenario in scenarios.values():
+        if scenario.mode is not SimulationMode.SCRIPTED:
+            called.append(models.simulator)
+        for criterion in scenario.success:
+            if isinstance(criterion, JudgeCriterion):
+                called.append(criterion.model or models.judge)
+            elif isinstance(criterion, CustomCriterion):
+                called.append(models.judge)
+    return list(dict.fromkeys(called))
 
 
 @dataclass(frozen=True, slots=True)
