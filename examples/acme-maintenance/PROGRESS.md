@@ -45,24 +45,40 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   The LLM brain was run on Ollama on book, gas, cancel, probe and refund flows; F3, F4 and F6
   changed its behaviour as intended on `mistral`.
 
+## Done (WS7d: integration fixes and luna, ADR 0007d)
+
+- **World URL.** The agent resolves its tools per request: body `world_url`, the
+  `X-Hecklr-World-Url` header that Hecklr's chat adapters now send, `ACME_WORLD_BASE_URL`, then
+  the local copy. `/healthz` reports `model`, `fallback_tools` and `requests_by_world_source`.
+  `test_server.py::test_tools_go_to_the_trial_sandbox[world_url_header|world_base_url]`,
+  `test_request_world_url_and_health`.
+  Real run (`serve.py --brain rules` + `hecklr run --suite smoke` over the `http` adapter): 18/33
+  before the fix (all 15 booking, cancel and reschedule scenarios failed), 33/33 after, $0, with
+  `requests_by_world_source.header = 80`. With `--fault F2`: 27/33, exactly the 6 reschedule
+  scenarios fail. The fault matrix is now one command per variant.
+- **Luna.** Default agent model `openai/gpt-6-luna`; `hecklr.yaml` simulator and judge too.
+  `ACME_TEMPERATURE` (default unset: the model's own, so luna keeps reasoning). The step protocol
+  says a reply ends the turn. Live (`-m live`, luna): booking, refund after verification, gas-smell
+  handoff and the F4 leak all pass (4 tests, 39 s); the four flows cost $0.0014 together.
+  `hecklr run --suite <15 core booking/cancel/reschedule scenarios>` fully on luna (LLM-brain
+  agent over HTTP, luna simulator and judges): 15/15 passed, $0.031.
+- **Flaky test.** `test_an_unreachable_sandbox_becomes_an_apology` now injects the refused
+  connection (`create_app(world_transport=...)`) instead of dialling port 9.
+- Numbers: 279 tests + 4 live; 96% coverage of `agent/`.
+
 ## Next (integration, WS7a / integrator)
 
-- **World URL gap.** Hecklr's `http` adapter does not send `SessionContext.world_http_url`.
-  Today the agent finds its trial's tools with `ACME_WORLD_BASE_URL` + `/t/<X-Hecklr-Trial-Id>`,
-  which needs the run's sandbox on a known port. `Sandbox(port=...)` exists, but `hecklr.yaml`
-  cannot set it. Fix in WS6/WS7a, no schema change: add a `{{world_http_url}}` request-template
-  placeholder (the agent already reads a body `world_url`) or a header. Then the fault matrix is
-  one command per variant:
-  `serve.py --brain rules --fault F<n>` + `hecklr run --suite smoke`, compared with the clean run.
+- `hecklr run` pre-flights the simulator and judge providers (`check_model_providers`) even for
+  the scripted `smoke` suite, which calls no model, so with luna in `hecklr.yaml` the free matrix
+  needs `OPENAI_API_KEY` set (no money is spent). WS7c: check only the models a suite will call.
 - `scripts/mypy-all.sh` does not type-check `examples/`; add the `MYPYPATH` command above.
 - Root `pyproject.toml` `testpaths` now include `examples` (one word) so CI runs these tests.
 
 ## Open questions
 
-- Agent model: the suggested default `ollama/qwen3:8b` thinks before every step (40-250 s per
+- Local models (now the free override): `ollama/qwen3:8b` thinks before every step (40-250 s per
   turn locally, and it runs out of the 1024-token answer budget). `qwen3:4b-instruct` is fast but
-  ignores fault prompts (F6). `mistral:latest` follows both and is the default (ADR 0008a). Cloud
-  models are the spec's nightly matrix and need no change.
+  ignores fault prompts (F6). `mistral:latest` follows both (ADR 0008a).
 - Small local agents still sometimes guess a customer number before asking. This is clean-agent
   noise that the statistics must absorb. A stronger model removes most of it.
 
