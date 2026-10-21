@@ -99,6 +99,53 @@ async def test_timeout_holds_the_call_until_the_trial_ends(
 
 
 @pytest.mark.anyio
+async def test_a_slow_call_in_flight_at_close_is_recorded_and_never_writes(
+    example_world: World, make_brief: BriefFactory, make_sink: SinkFactory
+) -> None:
+    brief = make_brief(
+        faults=[{"tool": "reschedule_appointment", "kind": "slow", "delay_ms": 60_000}]
+    )
+    sink = make_sink(brief.trial_id)
+    trial = _open(example_world, brief, sink)
+    outcomes: list[Any] = []
+    args = {"appointment_id": "A-1", "slot": "2026-10-28T09:00"}
+
+    async def call() -> None:
+        outcomes.append(await trial.call_tool("reschedule_appointment", args))
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(call)
+        await anyio.wait_all_tasks_blocked()
+        sink.clock.advance(5_000)
+        await trial.close()
+        # Recorded by close() itself, so before the caller's "after" snapshot.
+        [result] = sink.results()
+        assert (result.fault, result.latency_ms) == (FaultKind.SLOW, 5_000)
+        assert result.error == "timeout: no response before the trial ended"
+
+    assert outcomes[0].http_status == 504
+    assert len(sink.results()) == 1
+    assert trial.snapshot().collections["appointments"]["A-1"]["slot"] == "2026-10-23T09:00"
+
+
+@pytest.mark.anyio
+async def test_a_held_call_cancelled_right_after_close_is_recorded_once(
+    example_world: World, make_brief: BriefFactory, make_sink: SinkFactory
+) -> None:
+    brief = make_brief(faults=[{"tool": "get_customer", "kind": "timeout"}])
+    sink = make_sink(brief.trial_id)
+    trial = _open(example_world, brief, sink)
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(trial.call_tool, "get_customer", GET)
+        await anyio.wait_all_tasks_blocked()
+        await trial.close()
+        # The server shutting down cancels the waiting request before it resumes.
+        tg.cancel_scope.cancel()
+    [result] = sink.results()
+    assert result.error == "timeout: no response before the trial ended"
+
+
+@pytest.mark.anyio
 async def test_a_cancelled_held_call_is_still_recorded_once(
     example_world: World, make_brief: BriefFactory, make_sink: SinkFactory
 ) -> None:

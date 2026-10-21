@@ -1,12 +1,13 @@
 """One trial's world: its store, its fault schedule and the events of every tool call."""
 
+import math
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 import anyio
 import structlog
-from pydantic import JsonValue
+from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from hecklr_schemas.events import ErrorPayload, ToolCallPayload, ToolResultPayload
 from hecklr_schemas.ids import new_id
@@ -18,6 +19,7 @@ from hecklr_world.store import Store
 from hecklr_world.tools import Toolbox
 
 _log = structlog.get_logger(__name__)
+_JSON: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 
 
 class SessionClosedError(RuntimeError):
@@ -63,8 +65,23 @@ class ObservedToolCall:
 
 @dataclass(slots=True)
 class _HeldCall:
+    """A call waiting on a ``timeout`` or ``slow`` fault; ``close()`` releases it."""
+
     tool: str
     start_ms: int
+    fault: FaultKind
+    released: bool = False
+
+
+class _ReleasedByCloseError(Exception):
+    """A held call that ``close()`` already recorded as timed out."""
+
+    def __init__(self, error: ToolTimeoutError) -> None:
+        super().__init__(error.message)
+        self.error = error
+
+
+_RELEASED_MESSAGE = "no response before the trial ended"
 
 
 class TrialWorld:
@@ -97,6 +114,8 @@ class TrialWorld:
         self._on_close = on_close
         self._closed = anyio.Event()
         self._held: dict[str, _HeldCall] = {}
+        # OTLP exporters retry failed exports, so the same span can arrive more than once.
+        self._observed_call_ids: set[str] = set()
         # Observed spans carry wall-clock (Unix) times; this pair maps them onto the trial clock.
         self._opened_unix_ns = time.time_ns()
         self._opened_ms = sink.now_ms()
@@ -130,14 +149,20 @@ class TrialWorld:
         )
 
     async def close(self) -> None:
-        """Release held (``timeout``) calls, recording them as timed out, and stop serving."""
+        """Stop serving and release held calls, recording each as timed out.
+
+        A call held by a ``timeout`` fault, or still sleeping through a ``slow`` one, gets its
+        ``tool_result`` (error ``timeout``) here, before the caller takes the "after" snapshot, and
+        never touches the store. The ``WorldSession`` Protocol calls these calls "dropped"; they
+        are recorded rather than silently lost so every ``tool_call`` has its ``tool_result``.
+        """
         if self._closed.is_set():
             return
         self._closed.set()
-        for call_id, held in list(self._held.items()):
-            del self._held[call_id]
-            error = ToolTimeoutError("no response before the trial ended")
-            self._emit_result(call_id, held.tool, held.start_ms, None, error, FaultKind.TIMEOUT)
+        for call_id, held in self._held.items():
+            held.released = True
+            error = ToolTimeoutError(_RELEASED_MESSAGE)
+            self._emit_result(call_id, held.tool, held.start_ms, None, error, held.fault)
         if self._on_close is not None:
             self._on_close(self)
 
@@ -152,20 +177,11 @@ class TrialWorld:
         kind = fault.kind if fault is not None else None
         try:
             result = await self._execute(call_id, name, args, fault, start_ms)
-        except ToolTimeoutError as exc:
-            # close() already recorded the held call's result.
-            return ToolOutcome(call_id, None, exc, kind)
+        except _ReleasedByCloseError as released:
+            return ToolOutcome(call_id, None, released.error, kind)
         except ToolError as exc:
             self._emit_result(call_id, name, start_ms, None, exc, kind)
             return ToolOutcome(call_id, None, exc, kind)
-        except anyio.get_cancelled_exc_class():
-            # The caller went away (agent-side timeout, server shutdown): still close the record.
-            held = self._held.pop(call_id, None)
-            recorded_by_close = kind is FaultKind.TIMEOUT and held is None
-            if not recorded_by_close:
-                error = ToolTimeoutError("the call was abandoned before it completed")
-                self._emit_result(call_id, name, start_ms, None, error, kind)
-            raise
         self._emit_result(call_id, name, start_ms, result, None, kind)
         return ToolOutcome(call_id, result, None, kind)
 
@@ -177,31 +193,61 @@ class TrialWorld:
         fault: ToolFault | None,
         start_ms: int,
     ) -> JsonValue:
-        kind = fault.kind if fault is not None else None
-        if kind is FaultKind.HTTP_500:
-            raise InternalToolError("Internal Server Error")
-        if kind is FaultKind.TIMEOUT:
-            self._held[call_id] = _HeldCall(name, start_ms)
-            await self._closed.wait()
-            raise ToolTimeoutError("no response before the trial ended")
-        if fault is not None and fault.delay_ms is not None:
-            await anyio.sleep(fault.delay_ms / 1000)
+        if fault is not None:
+            if fault.kind is FaultKind.HTTP_500:
+                raise InternalToolError("Internal Server Error")
+            if fault.kind is FaultKind.TIMEOUT:
+                await self._hold(call_id, name, start_ms, fault.kind, None)
+            elif fault.delay_ms is not None:
+                await self._hold(call_id, name, start_ms, fault.kind, fault.delay_ms / 1000)
         result = self._run(name, args)
         if fault is not None and fault.patch is not None:
             return apply_stale_patch(result, fault.patch)
         return result
 
+    async def _hold(
+        self, call_id: str, tool: str, start_ms: int, fault: FaultKind, delay_s: float | None
+    ) -> None:
+        """Wait ``delay_s`` (forever when ``None``) unless the trial ends first.
+
+        This is the only await of a tool call, so cancellation (agent-side timeout, server
+        shutdown) is recorded here too.
+        """
+        held = _HeldCall(tool, start_ms, fault)
+        self._held[call_id] = held
+        try:
+            with anyio.move_on_after(math.inf if delay_s is None else delay_s):
+                await self._closed.wait()
+        except anyio.get_cancelled_exc_class():
+            if not held.released:
+                error = ToolTimeoutError("the call was abandoned before it completed")
+                self._emit_result(call_id, tool, start_ms, None, error, fault)
+            raise
+        finally:
+            del self._held[call_id]
+        if held.released:
+            raise _ReleasedByCloseError(ToolTimeoutError(_RELEASED_MESSAGE))
+
     def _run(self, name: str, args: Mapping[str, JsonValue]) -> JsonValue:
         try:
-            return self._toolbox.execute(self._store, name, args)
+            result = self._toolbox.execute(self._store, name, args)
         except ToolError:
             raise
         except Exception as exc:
-            # A crashing tool is a backend 500 to the agent; it is logged and recorded below.
-            message = f"tool {name!r} crashed: {type(exc).__name__}: {exc}"
-            _log.exception("world_tool_crashed", trial_id=self.trial_id, tool=name)
-            self._sink.emit("tool", ErrorPayload(source="world", message=message))
+            self._crashed(name, f"{type(exc).__name__}: {exc}")
             raise InternalToolError("Internal Server Error") from exc
+        try:
+            # Python tools may return anything; only JSON can reach the agent and the event log.
+            return _JSON.validate_python(result, strict=True)
+        except ValidationError as exc:
+            self._crashed(name, f"returned a value that is not JSON: {exc.errors()[0]['msg']}")
+            raise InternalToolError("Internal Server Error") from exc
+
+    def _crashed(self, tool: str, reason: str) -> None:
+        # A broken tool is a backend 500 to the agent; the harness sees why in the log and events.
+        message = f"tool {tool!r} crashed: {reason}"
+        _log.exception("world_tool_crashed", trial_id=self.trial_id, tool=tool, reason=reason)
+        self._sink.emit("tool", ErrorPayload(source="world", message=message))
 
     def _emit_result(
         self,
@@ -224,9 +270,15 @@ class TrialWorld:
         self._sink.emit("tool", payload)
 
     def record_observed(self, call: ObservedToolCall) -> None:
-        """Record a tool call the agent made against its own backend (observed mode)."""
+        """Record a tool call the agent made against its own backend (observed mode).
+
+        A ``call_id`` already recorded (an exporter retrying the same span) is ignored.
+        """
         if self.closed:
             raise SessionClosedError(f"trial {self.trial_id} world is closed")
+        if call.call_id in self._observed_call_ids:
+            return
+        self._observed_call_ids.add(call.call_id)
         start_ms = self._trial_ms(call.start_unix_ns)
         end_ms = max(self._trial_ms(call.end_unix_ns), start_ms)
         self._sink.emit(

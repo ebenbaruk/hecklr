@@ -1,8 +1,10 @@
 """Python tools of the example world (``PythonOp`` entry points)."""
 
+from datetime import UTC, datetime
+
 from pydantic import JsonValue
 
-from hecklr_world import NotFoundError, Store, ToolError
+from hecklr_world import NotFoundError, Store, ToolError, ToolTimeoutError
 
 
 class NotAnEmergencyError(ToolError):
@@ -25,6 +27,16 @@ def crash(world: Store) -> JsonValue:
 def missing_record(world: Store) -> JsonValue:
     """A tool that reports a not-found error of its own."""
     raise NotFoundError("nothing here")
+
+
+def upstream_timeout(world: Store) -> JsonValue:
+    """A tool whose own upstream timed out."""
+    raise ToolTimeoutError("upstream timed out")
+
+
+def returns_a_datetime(world: Store) -> JsonValue:
+    """A tool with a bug: it returns a value that is not JSON."""
+    return {"when": datetime(2026, 10, 23, 9, tzinfo=UTC)}  # type: ignore[dict-item]  # the bug under test
 
 
 not_callable = 42

@@ -219,6 +219,44 @@ async def test_a_crashing_python_tool_is_a_500_and_an_error_event(
 
 
 @pytest.mark.anyio
+async def test_a_python_tool_returning_non_json_is_a_500_with_both_events(
+    example_world: World, brief: TrialBrief, sink: Any
+) -> None:
+    world = _with_python_tool(example_world, "when", "example_tools:returns_a_datetime")
+    trial = TrialWorld(brief, world, sink)
+    outcome = await trial.call_tool("when", {})
+    assert outcome.http_status == 500
+    assert outcome.body() == {
+        "error": {"code": "internal_error", "message": "Internal Server Error"}
+    }
+    [call] = sink.calls()
+    [result] = sink.results()
+    assert result.call_id == call.call_id
+    assert result.error == "internal_error: Internal Server Error"
+    [error] = [e.payload for e in sink.events if isinstance(e.payload, ErrorPayload)]
+    assert error.source == "world"
+    assert error.message.startswith("tool 'when' crashed: returned a value that is not JSON")
+
+
+@pytest.mark.anyio
+async def test_a_python_tool_raising_a_timeout_records_its_result(
+    example_world: World, brief: TrialBrief, sink: Any
+) -> None:
+    world = _with_python_tool(example_world, "slow_upstream", "example_tools:upstream_timeout")
+    trial = TrialWorld(brief, world, sink)
+    outcome = await trial.call_tool("slow_upstream", {})
+    assert outcome.http_status == 504
+    assert outcome.body() == {"error": {"code": "timeout", "message": "upstream timed out"}}
+    [call] = sink.calls()
+    [result] = sink.results()
+    assert (result.call_id, result.error, result.fault) == (
+        call.call_id,
+        "timeout: upstream timed out",
+        None,
+    )
+
+
+@pytest.mark.anyio
 async def test_a_python_tool_may_raise_its_own_tool_errors(
     example_world: World, make_brief: BriefFactory, make_sink: SinkFactory
 ) -> None:

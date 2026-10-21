@@ -75,7 +75,7 @@ class InternalToolError(ToolError):
 
 
 class ToolTimeoutError(ToolError):
-    """An injected ``timeout`` call was released because the trial ended."""
+    """No response in time: a held fault call released at trial end, or a Python tool's own."""
 
     code = "timeout"
     http_status = 504

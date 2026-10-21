@@ -193,6 +193,26 @@ async def test_spans_join_trials_by_header_resource_or_captured_header(
 
 
 @pytest.mark.anyio
+async def test_a_re_exported_span_is_recorded_once(
+    sandbox: Sandbox, example_world: World, make_brief: BriefFactory, make_sink: SinkFactory
+) -> None:
+    brief = make_brief()
+    sink = make_sink(brief.trial_id)
+    await sandbox.open(brief, example_world, sink)
+    span = _span("get_customer", start_ns=time.time_ns(), duration_ms=1)
+    async with httpx2.AsyncClient() as http:
+        for _ in range(2):  # an OTLP exporter retrying after a lost response
+            response = await http.post(
+                f"{sandbox.base_url}/v1/traces",
+                json=_export([span]),
+                headers={TRIAL_ID_HEADER: brief.trial_id},
+            )
+            assert response.json() == {}
+    assert [c.call_id for c in sink.calls()] == ["a1b2c3d4e5f60718"]
+    assert len(sink.results()) == 1
+
+
+@pytest.mark.anyio
 async def test_unattributed_or_unknown_spans_are_reported_as_rejected(
     sandbox: Sandbox, example_world: World, make_brief: BriefFactory, make_sink: SinkFactory
 ) -> None:
