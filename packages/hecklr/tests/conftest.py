@@ -108,6 +108,7 @@ def store_run(
     seed: int = 0,
     status: RunStatus = RunStatus.COMPLETED,
     baseline_id: str | None = None,
+    grader: str = "tool_called",
 ) -> Run:
     """Store a run whose scenario ``s`` passes each of ``trials`` trials with ``pass_rates[s]``.
 
@@ -133,7 +134,7 @@ def store_run(
             for scenario_id, rate in pass_rates.items():
                 for index in range(trials):
                     trial = _trial(run, scenario_id, index)
-                    grade = _grade(trial.id, passed=rng.random() < rate)
+                    grade = _grade(trial.id, grader, passed=rng.random() < rate)
                     await store.append_trial_result(trial, (), (grade,))
 
     anyio.run(write)
@@ -159,12 +160,13 @@ def _trial(run: Run, scenario_id: str, index: int) -> Trial:
     )
 
 
-def _grade(trial_id: TrialId, *, passed: bool) -> Grade:
+def _grade(trial_id: TrialId, grader: str, *, passed: bool) -> Grade:
     return Grade.model_validate(
         {
             "id": GradeId(new_id()),
             "trial_id": trial_id,
-            "grader": "tool_called",
+            "grader": grader,
+            "judge_model": "fake/judge" if grader.startswith("judge:") else None,
             "grader_version": "1",
             "criterion_index": 0,
             "status": "ok",

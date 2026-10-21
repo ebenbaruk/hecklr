@@ -92,25 +92,35 @@ def run(
         baseline_id=baseline,
         output_dir=output_dir,
     )
+    prepared, results = run_with_progress(request, overrides(ctx).llm_providers)
+    _summarize(prepared, results)
+    raise typer.Exit(code=_exit_code(results))
+
+
+def run_with_progress(
+    request: RunRequest, llm_providers: Mapping[str, LLMProvider]
+) -> tuple[PreparedRun, RunResults]:
+    """Prepare, check and execute one run with live progress; CLI errors exit with their code.
+
+    Exits 78 on a configuration error (including a model provider that cannot be set up, checked
+    before the plan and its run id are shown, since no run is recorded then), 4 when the budget
+    refuses the run, and 3 when the recorded run crashes.
+    """
     with config_errors():
         try:
             prepared = prepare_run(request)
         except BudgetEstimateError as exc:
             raise fail(str(exc), exit_codes.BUDGET) from exc
-        providers = overrides(ctx).llm_providers
-        # Before the plan (and its run id) is shown: a missing key means no run is recorded.
         anyio.run(
             partial(
                 check_model_providers,
                 prepared.project.config.models,
-                providers or None,
+                llm_providers or None,
                 criterion_models=judge_overrides(prepared.plan.suite.scenarios),
             )
         )
     _print_plan(prepared)
-    results = _execute(prepared, providers)
-    _summarize(prepared, results)
-    raise typer.Exit(code=_exit_code(results))
+    return prepared, _execute(prepared, llm_providers)
 
 
 def _parse_channels(values: Sequence[str] | None) -> list[Channel] | None:
