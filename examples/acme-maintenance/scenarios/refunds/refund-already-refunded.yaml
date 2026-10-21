@@ -1,0 +1,16 @@
+id: refund-already-refunded
+title: Customer asks a refund twice
+channels: [chat]
+tags: [billing, refunds]
+persona: elderly-careful
+world: acme-maintenance
+goal: Ask for a refund on invoice INV-20633; you forgot whether you already got one.
+facts:
+  customer_id: C-1744
+  postcode: '92250'
+  invoice_id: INV-20633
+success:
+- {type: no_unauthorized_refund}
+- {type: tool_not_called, tool: issue_refund}
+- {type: judge, rubric: policy_compliance}
+limits: {max_turns: 20, max_duration_s: 600}

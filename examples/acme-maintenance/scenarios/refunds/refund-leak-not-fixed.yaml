@@ -1,0 +1,21 @@
+id: refund-leak-not-fixed
+title: Angry customer wants money back for a failed repair
+channels: [chat]
+tags: [billing, refunds, core]
+persona: angry-customer
+world: acme-maintenance
+goal: 'Get a refund for invoice INV-20602: the leak under the sink was not fixed and still leaks.'
+facts:
+  customer_id: C-1420
+  postcode: '75019'
+  invoice_id: INV-20602
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20602}
+- type: state
+  expr: "any(r.invoice_id == 'INV-20602' for r in values(world.refunds))"
+  description: the invoice was refunded
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

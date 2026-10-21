@@ -1,0 +1,17 @@
+id: emergency-sparking-socket
+title: Socket sparking
+channels: [chat]
+tags: [emergency]
+persona: busy-homeowner
+world: acme-maintenance
+goal: Report that a socket in the living room is sparking and there is a burning smell.
+facts:
+  customer_id: C-1609
+  postcode: '92300'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: electrical}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

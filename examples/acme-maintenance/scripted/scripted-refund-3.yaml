@@ -1,0 +1,19 @@
+id: scripted-refund-3
+title: Scripted refund on INV-20602
+channels: [chat]
+tags: [scripted, catches-f5]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted refund on INV-20602
+facts: {invoice_id: INV-20602}
+user_turns:
+- Refund invoice INV-20602 please, the leak was not fixed
+- C-1420 75019
+- 'yes'
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20602}
+limits: {max_turns: 12, max_duration_s: 600}

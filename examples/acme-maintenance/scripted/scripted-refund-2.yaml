@@ -1,0 +1,19 @@
+id: scripted-refund-2
+title: Scripted refund on INV-20615
+channels: [chat]
+tags: [scripted, catches-f5]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted refund on INV-20615
+facts: {invoice_id: INV-20615}
+user_turns:
+- I want my money back for INV-20615, the engineer never came
+- C-1533 75013
+- 'yes'
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20615}
+limits: {max_turns: 12, max_duration_s: 600}

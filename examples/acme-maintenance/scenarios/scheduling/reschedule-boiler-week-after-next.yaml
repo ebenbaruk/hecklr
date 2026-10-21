@@ -1,0 +1,22 @@
+id: reschedule-boiler-week-after-next
+title: Elderly customer pushes a visit back
+channels: [chat]
+tags: [scheduling, reschedule, core]
+persona: elderly-careful
+world: acme-maintenance
+goal: Move the boiler service of Wednesday 28 October to the week after next (2-6 November), a morning.
+facts:
+  customer_id: C-1188
+  postcode: '75005'
+  appointment_id: A-3003
+  current_slot: "2026-10-28T09:00"
+  new_time: a morning in the week of 2 November
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3003}
+- type: state
+  expr: "world.appointments['A-3003'].slot >= '2026-11-02' and world.appointments['A-3003'].slot < '2026-11-07' and world.appointments['A-3003'].slot.hour < 12"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

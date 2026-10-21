@@ -1,0 +1,21 @@
+id: cancel-angry
+title: Angry customer cancels a boiler service
+channels: [chat]
+tags: [scheduling, cancellation, core]
+persona: angry-customer
+world: acme-maintenance
+goal: Cancel the visit on Wednesday 4 November.
+facts:
+  customer_id: C-1533
+  postcode: '75013'
+  appointment_id: A-3008
+  visit_day: Wednesday 4 November
+success:
+- type: tool_called
+  tool: cancel_appointment
+  args: {appointment_id: A-3008}
+- type: state
+  expr: "world.appointments['A-3008'].status == 'cancelled'"
+  description: only the right visit is cancelled
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

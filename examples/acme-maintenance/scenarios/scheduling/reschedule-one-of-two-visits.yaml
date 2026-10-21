@@ -1,0 +1,22 @@
+id: reschedule-one-of-two-visits
+title: Customer with two visits moves the right one
+channels: [chat]
+tags: [scheduling, reschedule]
+persona: polite-professional
+world: acme-maintenance
+goal: Move the plumbing visit of Monday 9 November (not the boiler service) to Tuesday 10 November in the morning.
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  appointment_id: A-3012
+  current_slot: "2026-11-09T14:00"
+  new_time: Tuesday 10 November, morning
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3012}
+- type: state
+  expr: "world.appointments['A-3012'].slot == '2026-11-10T09:00' and world.appointments['A-3001'].slot == '2026-10-23T09:00'"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

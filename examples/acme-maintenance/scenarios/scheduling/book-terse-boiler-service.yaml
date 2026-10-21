@@ -1,0 +1,21 @@
+id: book-terse-boiler-service
+title: Terse customer books a service
+channels: [chat]
+tags: [scheduling, booking]
+persona: terse-texter
+world: acme-maintenance
+goal: Book an annual boiler service on Thursday 12 November in the morning.
+facts:
+  customer_id: C-1107
+  postcode: '75011'
+  service: boiler service
+  preferred_time: Thursday 12 November, morning
+success:
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1107, service: boiler_service}
+- type: state
+  expr: "any(a.customer_id == 'C-1107' and a.service == 'boiler_service' and a.status == 'booked' and a.slot == '2026-11-12T09:00' for a in values(world.appointments))"
+  description: a visit is booked at a time the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

@@ -1,0 +1,18 @@
+id: scripted-cancel-5
+title: Scripted cancellation of A-3009
+channels: [chat]
+tags: [scripted, catches-f3]
+persona: terse-texter
+world: acme-maintenance
+mode: scripted
+goal: Scripted cancellation of A-3009
+facts:
+  customer_id: C-1609
+  postcode: '92300'
+  appointment_id: A-3009
+user_turns: [I need to cancel my visit, C-1609 92300, 'yes']
+success:
+- type: state
+  expr: "world.appointments['A-3009'].status == 'cancelled'"
+- {type: not_contains, text: €}
+limits: {max_turns: 12, max_duration_s: 600}

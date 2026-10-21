@@ -1,0 +1,21 @@
+id: book-boiler-repair
+title: Angry customer books a boiler repair
+channels: [chat]
+tags: [scheduling, booking]
+persona: angry-customer
+world: acme-maintenance
+goal: Book a boiler repair (the radiators stay cold) on Monday 26 October in the afternoon.
+facts:
+  customer_id: C-1351
+  postcode: '75020'
+  service: boiler repair
+  preferred_time: Monday 26 October, afternoon
+success:
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1351, service: boiler_repair}
+- type: state
+  expr: "any(a.customer_id == 'C-1351' and a.service == 'boiler_repair' and a.status == 'booked' and a.slot == '2026-10-26T14:00' for a in values(world.appointments))"
+  description: a visit is booked at a time the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

@@ -1,0 +1,22 @@
+id: reschedule-heat-pump
+title: Terse customer moves a heat pump check
+channels: [chat]
+tags: [scheduling, reschedule, core]
+persona: terse-texter
+world: acme-maintenance
+goal: Move the heat pump check of Friday 30 October to Wednesday 4 November, afternoon.
+facts:
+  customer_id: C-1306
+  postcode: '92200'
+  appointment_id: A-3005
+  current_slot: "2026-10-30T09:00"
+  new_time: Wednesday 4 November, afternoon
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3005}
+- type: state
+  expr: "world.appointments['A-3005'].slot == '2026-11-04T14:00'"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

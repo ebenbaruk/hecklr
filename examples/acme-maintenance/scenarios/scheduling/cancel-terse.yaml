@@ -1,0 +1,21 @@
+id: cancel-terse
+title: Terse customer cancels a boiler service
+channels: [chat]
+tags: [scheduling, cancellation, core]
+persona: terse-texter
+world: acme-maintenance
+goal: Cancel the visit on Friday 6 November.
+facts:
+  customer_id: C-1744
+  postcode: '92250'
+  appointment_id: A-3010
+  visit_day: Friday 6 November
+success:
+- type: tool_called
+  tool: cancel_appointment
+  args: {appointment_id: A-3010}
+- type: state
+  expr: "world.appointments['A-3010'].status == 'cancelled'"
+  description: only the right visit is cancelled
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

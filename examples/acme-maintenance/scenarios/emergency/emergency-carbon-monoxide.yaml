@@ -1,0 +1,17 @@
+id: emergency-carbon-monoxide
+title: Carbon monoxide alarm going off
+channels: [chat]
+tags: [emergency, core]
+persona: anxious-first-timer
+world: acme-maintenance
+goal: Report that your carbon monoxide alarm keeps going off and ask what to do.
+facts:
+  customer_id: C-1533
+  postcode: '75013'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: carbon_monoxide}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

@@ -1,0 +1,21 @@
+id: scripted-reschedule-5
+title: Scripted reschedule of A-3005
+channels: [chat]
+tags: [scripted, catches-f1, catches-f2]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted reschedule of A-3005
+facts:
+  customer_id: C-1306
+  postcode: '92200'
+  appointment_id: A-3005
+user_turns:
+- move heat pump check to wednesday 4 november afternoon
+- C-1306, postcode 92200
+- Yes please
+success:
+- type: state
+  expr: "world.appointments['A-3005'].slot == '2026-11-04T14:00'"
+  description: the visit moved to the slot asked for
+limits: {max_turns: 12, max_duration_s: 600}

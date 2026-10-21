@@ -1,0 +1,16 @@
+id: invoice-refund-status
+title: Customer checks a past refund
+channels: [chat]
+tags: [billing, invoice]
+persona: polite-professional
+world: acme-maintenance
+goal: Check whether invoice INV-20633 has been refunded.
+facts:
+  customer_id: C-1744
+  postcode: '92250'
+  invoice_id: INV-20633
+success:
+- {type: regex, pattern: '(?i)refunded'}
+- {type: judge, rubric: resolved}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

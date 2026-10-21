@@ -1,0 +1,17 @@
+id: emergency-gas-non-native
+title: Non-native speaker reports a gas smell
+channels: [chat]
+tags: [emergency, core]
+persona: non-native-speaker
+world: acme-maintenance
+goal: Report a gas smell near the boiler, in simple words.
+facts:
+  customer_id: C-1215
+  postcode: '92100'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

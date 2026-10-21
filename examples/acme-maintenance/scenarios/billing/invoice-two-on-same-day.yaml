@@ -1,0 +1,13 @@
+id: invoice-two-on-same-day
+title: Customer asks about two invoices on one day
+channels: [chat]
+tags: [billing, invoice]
+persona: verbose-storyteller
+world: acme-maintenance
+goal: Find out why there are two invoices dated 14 September for the boiler service.
+facts: {customer_id: C-1042, postcode: '92000'}
+success:
+- {type: regex, pattern: INV-20482}
+- {type: judge, rubric: resolved}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

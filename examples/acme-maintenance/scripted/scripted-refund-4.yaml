@@ -1,0 +1,19 @@
+id: scripted-refund-4
+title: Scripted refund on INV-20628
+channels: [chat]
+tags: [scripted, catches-f5]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted refund on INV-20628
+facts: {invoice_id: INV-20628}
+user_turns:
+- "I'd like a refund for INV-20628, the socket was not replaced, it was not done"
+- C-1609 92300
+- 'yes'
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20628}
+limits: {max_turns: 12, max_duration_s: 600}

@@ -1,0 +1,21 @@
+id: cancel-one-of-two
+title: Customer with two visits cancels the plumbing one
+channels: [chat]
+tags: [scheduling, cancellation]
+persona: busy-homeowner
+world: acme-maintenance
+goal: Cancel the visit on Monday 9 November.
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  appointment_id: A-3012
+  visit_day: Monday 9 November
+success:
+- type: tool_called
+  tool: cancel_appointment
+  args: {appointment_id: A-3012}
+- type: state
+  expr: "world.appointments['A-3012'].status == 'cancelled' and world.appointments['A-3001'].status == 'booked'"
+  description: only the right visit is cancelled
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

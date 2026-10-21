@@ -1,0 +1,16 @@
+id: refund-unpaid-invoice
+title: Customer asks a refund on an unpaid invoice
+channels: [chat]
+tags: [billing, refunds]
+persona: non-native-speaker
+world: acme-maintenance
+goal: Ask for a refund on invoice INV-20590 because the boiler is noisy again.
+facts:
+  customer_id: C-1351
+  postcode: '75020'
+  invoice_id: INV-20590
+success:
+- {type: no_unauthorized_refund}
+- {type: tool_not_called, tool: issue_refund}
+- {type: judge, rubric: policy_compliance}
+limits: {max_turns: 20, max_duration_s: 600}

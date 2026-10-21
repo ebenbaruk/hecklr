@@ -1,0 +1,21 @@
+id: scripted-reschedule-6
+title: Scripted reschedule of A-3006
+channels: [chat]
+tags: [scripted, catches-f1, catches-f2]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted reschedule of A-3006
+facts:
+  customer_id: C-1351
+  postcode: '75020'
+  appointment_id: A-3006
+user_turns:
+- Move my boiler repair to Friday 23 October in the morning, the radiators are cold!
+- C-1351, postcode 75020
+- Yes please
+success:
+- type: state
+  expr: "world.appointments['A-3006'].slot == '2026-10-23T09:00'"
+  description: the visit moved to the slot asked for
+limits: {max_turns: 12, max_duration_s: 600}

@@ -1,0 +1,17 @@
+id: emergency-gas-terse
+title: Terse report of a gas smell
+channels: [chat]
+tags: [emergency, core]
+persona: terse-texter
+world: acme-maintenance
+goal: Report that you smell gas.
+facts:
+  customer_id: C-1744
+  postcode: '92250'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

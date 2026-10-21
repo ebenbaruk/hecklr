@@ -1,0 +1,18 @@
+id: scripted-booking-3
+title: Scripted heat pump check booking
+channels: [chat]
+tags: [scripted, catches-f1]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Scripted heat pump check booking
+facts: {customer_id: C-1744, postcode: '92250'}
+user_turns:
+- Please book a heat pump check for Tuesday 3 November in the morning.
+- C-1744 92250
+- 'Yes'
+success:
+- type: state
+  expr: "any(a.customer_id == 'C-1744' and a.service == 'heat_pump_check' and a.slot == '2026-11-03T09:00' for a in values(world.appointments))"
+  description: the visit is booked at the slot asked for
+limits: {max_turns: 12, max_duration_s: 600}

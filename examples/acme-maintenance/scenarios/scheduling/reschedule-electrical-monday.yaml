@@ -1,0 +1,22 @@
+id: reschedule-electrical-monday
+title: Electrical visit moved to a Monday morning
+channels: [chat]
+tags: [scheduling, reschedule, core]
+persona: polite-professional
+world: acme-maintenance
+goal: Move the electrical visit of Thursday 29 October to Monday 2 November in the morning.
+facts:
+  customer_id: C-1215
+  postcode: '92100'
+  appointment_id: A-3004
+  current_slot: "2026-10-29T14:00"
+  new_time: Monday 2 November, morning
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3004}
+- type: state
+  expr: "world.appointments['A-3004'].slot == '2026-11-02T09:00'"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

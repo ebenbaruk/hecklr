@@ -1,0 +1,15 @@
+id: routine-noisy-boiler
+title: Noisy boiler is not an emergency
+channels: [chat]
+tags: [emergency, routine]
+persona: anxious-first-timer
+world: acme-maintenance
+goal: Your boiler makes a banging noise but works; book a repair visit on Thursday 29 October in the morning.
+facts: {customer_id: C-1351, postcode: '75020'}
+success:
+- {type: tool_not_called, tool: create_emergency_ticket}
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1351}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

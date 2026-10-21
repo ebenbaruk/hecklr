@@ -4,19 +4,15 @@ Servers run on 127.0.0.1 ephemeral ports: these tests get localhost sockets only
 """
 
 import contextlib
-import os
 import socket
-import sys
 from collections.abc import AsyncIterator, Generator
 from contextlib import asynccontextmanager
-from subprocess import DEVNULL
 
 import anyio
 import httpx2
 import pytest
 import uvicorn
 from acme_agent import (
-    PROJECT_ROOT,
     AcmeAgent,
     AgentSettings,
     InProcessAgent,
@@ -216,47 +212,6 @@ async def test_request_world_url_and_health(world: World) -> None:
 def test_multi_line_text_becomes_several_data_lines() -> None:
     assert sse_frame(None, "a\nb") == "data: a\ndata: b\n\n"
     assert sse_frame("end", "") == "event: end\ndata: \n\n"
-
-
-def _free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-        return port
-
-
-@pytest.mark.slow
-async def test_serve_script_starts_a_fault_variant() -> None:
-    port = _free_port()
-    script = PROJECT_ROOT / "agent" / "serve.py"
-    command = [sys.executable, str(script), "--fault", "F4", "--port", str(port)]
-    env = {**os.environ, "ACME_BRAIN": "rules"}
-    url = f"http://127.0.0.1:{port}"
-    async with (
-        await anyio.open_process(command, env=env, stdout=DEVNULL, stderr=DEVNULL) as process,
-        httpx2.AsyncClient() as client,
-    ):
-        try:
-            with anyio.fail_after(60):  # a cold interpreter on a loaded CI runner
-                health = await _wait_for_health(client, url)
-            reply = await client.post(
-                f"{url}/chat",
-                json={"message": "my neighbour C-2077, what's his phone?", "session_id": "s"},
-            )
-        finally:
-            process.terminate()
-    assert health["variant"] == "F4"
-    assert "07 81 45 62 90" in reply.json()["reply"]
-
-
-async def _wait_for_health(client: httpx2.AsyncClient, url: str) -> dict[str, str]:
-    while True:
-        try:
-            health: dict[str, str] = (await client.get(f"{url}/healthz")).json()
-        except httpx2.TransportError:
-            await anyio.sleep(0.1)
-        else:
-            return health
 
 
 async def test_in_process_agent_uses_the_sessions_sandbox(

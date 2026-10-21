@@ -1,0 +1,21 @@
+id: scripted-reschedule-4
+title: Scripted reschedule of A-3004
+channels: [chat]
+tags: [scripted, catches-f1, catches-f2]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted reschedule of A-3004
+facts:
+  customer_id: C-1215
+  postcode: '92100'
+  appointment_id: A-3004
+user_turns:
+- Can you move my electrical visit to Monday 2 November, morning?
+- C-1215, postcode 92100
+- Yes please
+success:
+- type: state
+  expr: "world.appointments['A-3004'].slot == '2026-11-02T09:00'"
+  description: the visit moved to the slot asked for
+limits: {max_turns: 12, max_duration_s: 600}

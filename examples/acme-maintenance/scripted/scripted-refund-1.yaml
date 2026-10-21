@@ -1,0 +1,20 @@
+id: scripted-refund-1
+title: Scripted refund on INV-20482
+channels: [chat]
+tags: [scripted, catches-f5]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted refund on INV-20482
+facts: {invoice_id: INV-20482}
+user_turns:
+- I was charged twice for my boiler service, I want a refund
+- C-1042 92000
+- INV-20482
+- 'yes'
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20482}
+limits: {max_turns: 12, max_duration_s: 600}
