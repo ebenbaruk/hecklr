@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hecklr report · {{ a.candidate.agent.name }}</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
+  --accent: #3a5bd9; --user: #3a5bd9; --agent: #d9822b; --bad: #c0362c; --good: #2f8a4c;
+  --warn: #b7791f; --code: #f1f0ec;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --panel: #1f1f1d; --text: #ecebe6; --muted: #a3a29b; --line: #34332f;
+    --accent: #7d97ff; --user: #7d97ff; --agent: #f0a65a; --bad: #f2766b; --good: #6fcf8f;
+    --warn: #e8b55a; --code: #2a2a27;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 32px 0 10px; }
+h3 { font-size: 14px; margin: 16px 0 6px; }
+.meta { color: var(--muted); }
+nav { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+nav a { color: var(--accent); text-decoration: none; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .03em; border: 1px solid currentColor; }
+.v-regression, .bad { color: var(--bad); }
+.v-improvement, .good { color: var(--good); }
+.v-no_change { color: var(--good); }
+.v-inconclusive, .warn { color: var(--warn); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.problems { border-color: var(--bad); color: var(--bad); margin-top: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.card .label { color: var(--muted); font-size: 12px; }
+.card .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .ci { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; background: var(--panel); }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+pre { background: var(--code); padding: 8px; border-radius: 6px; margin: 4px 0; white-space: pre-wrap;
+  word-break: break-word; max-height: 260px; overflow: auto; }
+.flip { margin: 6px 0; }
+.rationale { color: var(--muted); font-style: italic; }
+svg text { fill: var(--muted); font-size: 11px; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 10px; }
+.controls input[type=search] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel); color: var(--text); min-width: 240px; }
+details.trial { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  margin: 8px 0; }
+details.trial > summary { cursor: pointer; padding: 10px 14px; display: flex; gap: 12px; flex-wrap: wrap;
+  align-items: baseline; }
+details.trial[open] > summary { border-bottom: 1px solid var(--line); }
+.trial-body { padding: 4px 16px 16px; }
+.bubbles { display: flex; flex-direction: column; gap: 6px; }
+.bubble { max-width: 78%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+.bubble.user { align-self: flex-start; background: color-mix(in srgb, var(--user) 14%, var(--panel)); }
+.bubble.agent { align-self: flex-end; background: color-mix(in srgb, var(--agent) 16%, var(--panel)); }
+.bubble .who { font-size: 11px; color: var(--muted); display: block; }
+.timeline td.t { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timeline tr:target, .timeline tr.hl { outline: 2px solid var(--accent); }
+.wave { width: 100%; height: 110px; display: block; background: var(--code); border-radius: 6px; cursor: pointer; }
+.legend span { margin-right: 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+audio { width: 100%; margin-top: 6px; }
+.hidden { display: none; }
+footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Hecklr report · {{ a.candidate.agent.name }}{% if a.candidate.agent.version %} <span class="meta">{{ a.candidate.agent.version }}</span>{% endif %}</h1>
+  <div class="meta">
+    run <code>{{ a.candidate.id }}</code>
+    {% if a.candidate.suite %} · suite <code>{{ a.candidate.suite }}</code>{% endif %}
+    {% if a.candidate.git_sha %} · commit <code>{{ a.candidate.git_sha[:12] }}</code>{% endif %}
+    · {{ a.candidate.created_at.strftime("%Y-%m-%d %H:%M UTC") }} · status {{ a.candidate.status.value }}
+    {% if a.baseline %} · baseline <code>{{ a.baseline.id }}</code>{% endif %}
+  </div>
+  <p>
+  {% if a.verdict %}<span class="badge v-{{ a.verdict.value }}">{{ a.verdict.value.replace("_", " ") }}</span>
+  {% else %}<span class="badge">single run</span>{% endif %}
+  </p>
+  {% if a.problems %}
+  <div class="panel problems"><strong>Cannot gate on this run:</strong>
+    <ul>{% for p in a.problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
+  {% endif %}
+  <nav>
+    <a href="#overview">Overview</a>
+    {% if a.comparisons %}<a href="#comparisons">Comparisons</a>{% endif %}
+    {% if a.flips %}<a href="#flips">Flipped scenarios</a>{% endif %}
+    <a href="#scenarios">Scenarios</a>
+    {% if a.voice %}<a href="#voice">Voice</a>{% endif %}
+    {% if a.judges %}<a href="#judges">Judges</a>{% endif %}
+    <a href="#trials">Trials</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>Overview</h2>
+  <div class="cards">
+  {% for metric in run_metrics %}
+    {% set e = a.summary(metric) %}{% set unit = fmt.unit_of(metric) %}
+    <div class="panel card">
+      <div class="label">{{ metric }}</div>
+      <div class="value">{{ fmt.value(e.value, unit) }}</div>
+      <div class="ci">{{ fmt.confidence(e) }} {{ fmt.interval(e, unit) }} · n={{ e.n }}</div>
+      {% set b = a.baseline_summary(metric) %}
+      {% if b %}<div class="ci">baseline {{ fmt.estimate(b, unit) }}</div>{% endif %}
+    </div>
+  {% endfor %}
+    <div class="panel card">
+      <div class="label">trials analyzed</div>
+      <div class="value">{{ a.counts.analyzed }} / {{ a.counts.total }}</div>
+      <div class="ci">{{ a.counts.harness_error }} harness errors · {{ a.counts.undecided }} undecided ({{ a.counts.grade_errors }} grade errors)</div>
+      <div class="ci">{{ a.counts.agent_error }} agent errors · {{ a.counts.timeout }} timeouts</div>
+    </div>
+    {% if a.counts.contradiction_rate %}
+    <div class="panel card">
+      <div class="label">simulator contradiction rate</div>
+      <div class="value">{{ fmt.value(a.counts.contradiction_rate.value, "percent") }}</div>
+      <div class="ci">{{ fmt.confidence(a.counts.contradiction_rate) }} {{ fmt.interval(a.counts.contradiction_rate, "percent") }}</div>
+    </div>
+    {% endif %}
+    <div class="panel card">
+      <div class="label">model spend (total)</div>
+      <div class="value">${{ "%.4f"|format(a.candidate.spent_usd) }}</div>
+      <div class="ci">simulator {{ a.candidate.simulator_model or "n/a" }} · judge {{ a.candidate.judge_model or "n/a" }}</div>
+    </div>
+  </div>
+</section>
+
+{% if a.comparisons %}
+<section id="comparisons">
+  <h2>Comparisons <span class="meta">(candidate − baseline, α={{ a.stats.alpha }}, δ={{ a.stats.min_effect }})</span></h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Metric</th><th>Slice</th><th>Baseline</th><th>Candidate</th><th>Δ [CI]</th><th>p</th><th>q</th><th>Verdict</th></tr></thead>
+    <tbody>
+    {% for c in a.comparisons %}{% set unit = fmt.unit_of(c.metric) %}
+      <tr><td>{{ c.metric }}</td><td>{{ fmt.slice_label(c.slice) }}</td>
+        <td class="num">{{ fmt.estimate(c.baseline_estimate, unit) }}</td>
+        <td class="num">{{ fmt.estimate(c.candidate_estimate, unit) }}</td>
+        <td class="num">{{ fmt.delta(c) }}</td>
+        <td class="num">{{ fmt.p_value(c.p_value) }}</td><td class="num">{{ fmt.p_value(c.q_value) }}</td>
+        <td class="v-{{ c.verdict.value }}">{{ c.verdict.value.replace("_", " ") }}{% if c.trials_needed %} <span class="meta">(~{{ c.trials_needed }} more trials/scenario)</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if a.flips %}
+<section id="flips">
+  <h2>Flipped scenarios, grouped by cause</h2>
+  {% for g in a.flips %}
+  <div class="panel flip">
+    <strong class="{{ 'bad' if g.direction == 'pass_to_fail' else 'good' }}">{{ "pass → fail" if g.direction == "pass_to_fail" else "fail → pass" }}</strong>
+    · <code>{{ g.cause }}</code> · {{ g.scenario_ids|length }} scenario{{ "s" if g.scenario_ids|length != 1 }}:
+    {% for s in g.scenario_ids %}<a href="#s-{{ s }}"><code>{{ s }}</code></a>{{ ", " if not loop.last }}{% endfor %}
+    {% if g.rationale %}<div class="rationale">“{{ g.rationale }}”</div>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section id="scenarios">
+  <h2>Scenarios</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Scenario</th><th>Tags</th><th>Pass rate (Wilson CI)</th>{% if a.baseline %}<th>Baseline</th><th>Flip</th>{% endif %}<th>Main failure cause</th></tr></thead>
+    <tbody>
+    {% for s in a.scenarios %}
+      <tr id="s-{{ s.scenario_id }}"><td><code>{{ s.scenario_id }}</code><div class="meta">{{ s.title }}</div></td>
+        <td>{{ s.tags|join(", ") }}</td>
+        <td class="num">{% if s.pass_rate %}{{ fmt.estimate(s.pass_rate, "percent") }} <span class="meta">{{ s.passes }}/{{ s.trials }}</span>{% else %}no analyzable trial{% endif %}</td>
+        {% if a.baseline %}
+        <td class="num">{% if s.baseline_pass_rate %}{{ fmt.estimate(s.baseline_pass_rate, "percent") }}{% else %}—{% endif %}</td>
+        <td class="{{ 'bad' if s.flip == 'pass_to_fail' else 'good' }}">{{ (s.flip or "").replace("_", " ") }}</td>
+        {% endif %}
+        <td>{% if s.cause %}<code>{{ s.cause.cause }}</code>{% if s.cause.rationale %}<div class="rationale">{{ s.cause.rationale }}</div>{% endif %}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{% if a.voice %}
+<section id="voice">
+  <h2>Voice</h2>
+  {% if chart %}
+  <h3>Degradation curve: success rate by SNR (US-07)</h3>
+  <div class="panel scroll">
+  <svg viewBox="0 0 560 240" width="560" height="240" role="img" aria-label="Success rate by SNR bucket">
+    <line x1="36" y1="36" x2="36" y2="184" stroke="currentColor" stroke-opacity=".25"/>
+    <line x1="36" y1="184" x2="524" y2="184" stroke="currentColor" stroke-opacity=".25"/>
+    <text x="4" y="40">100%</text><text x="10" y="188">0%</text>
+    {% for p in chart %}
+      <line x1="{{ p.x }}" y1="{{ p.y_low }}" x2="{{ p.x }}" y2="{{ p.y_high }}" stroke="var(--accent)" stroke-width="2"/>
+      {% if not loop.last %}{% set n = chart[loop.index] %}<line x1="{{ p.x }}" y1="{{ p.y }}" x2="{{ n.x }}" y2="{{ n.y }}" stroke="var(--accent)" stroke-width="2"/>{% endif %}
+      <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="var(--accent)"><title>{{ p.label }}: {{ p.text }}</title></circle>
+      {% if p.base_y is not none %}<circle cx="{{ p.x }}" cy="{{ p.base_y }}" r="4" fill="none" stroke="var(--muted)"><title>baseline</title></circle>{% endif %}
+      <text x="{{ p.x - 14 }}" y="204">{{ p.label }}</text>
+    {% endfor %}
+    <text x="200" y="230">SNR bucket (dB) · bars: 95% CI · hollow: baseline</text>
+  </svg>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>SNR bucket</th><th>Trials</th><th>Pass rate (95% CI)</th><th>Baseline</th></tr></thead>
+    <tbody>{% for p in a.voice.degradation %}<tr><td>{{ p.label }}</td><td class="num">{{ p.trials }}</td><td class="num">{{ fmt.estimate(p.pass_rate, "percent") }}</td><td class="num">{% if p.baseline_pass_rate %}{{ fmt.estimate(p.baseline_pass_rate, "percent") }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if a.voice.by_accent %}
+  <h3>Success rate by accent</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Accent</th><th>Trials</th><th>Pass rate (95% CI)</th><th>Baseline</th></tr></thead>
+    <tbody>{% for p in a.voice.by_accent %}<tr><td>{{ p.label }}</td><td class="num">{{ p.trials }}</td><td class="num">{{ fmt.estimate(p.pass_rate, "percent") }}</td><td class="num">{% if p.baseline_pass_rate %}{{ fmt.estimate(p.baseline_pass_rate, "percent") }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  <h3>Turn-taking by noise level and accent (US-06, 95% CI)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Slice</th>{% for _, label in voice_columns %}<th>{{ label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row in voice_rows %}
+      <tr><td>{{ row.label }}</td>
+      {% for e in row.cells %}{% set metric = voice_columns[loop.index0][0] %}
+        <td class="num">{% if e %}{{ fmt.value(e.value, fmt.unit_of(metric)) }}<div class="meta">{{ fmt.interval(e, fmt.unit_of(metric)) }}</div>{% else %}—{% endif %}</td>
+      {% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if a.judges %}
+<section id="judges">
+  <h2>Judge agreement with human labels</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Rubric</th><th>Version</th><th>Model</th><th>n</th><th>κ (95% CI)</th><th>Trust</th></tr></thead>
+    <tbody>{% for j in a.judges %}<tr><td><code>{{ j.grader }}</code></td><td><code>{{ j.grader_version }}</code></td><td>{{ j.judge_model or "—" }}</td><td class="num">{{ j.n }}</td><td class="num">{{ fmt.estimate(j.kappa, "number") }}</td><td class="{{ 'good' if j.trusted else 'bad' }}">{{ "trusted" if j.trusted else "untrusted (κ < 0.70)" }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section id="trials">
+  <h2>Trials</h2>
+  <div class="controls">
+    <input type="search" id="trial-filter" placeholder="Filter by scenario, persona or channel">
+    <label><input type="checkbox" id="failed-only"> failed only</label>
+    <span class="meta" id="trial-count">{{ trials|length }} trials</span>
+  </div>
+  {% for t in trials %}{% set r = t.row %}
+  <details class="trial" id="t-{{ r.trial_id }}" data-failed="{{ 'yes' if r.passed is false else 'no' }}" data-search="{{ r.scenario_id }} {{ r.persona_id }} {{ r.channel.value }}">
+    <summary>
+      {% if r.passed is true %}<strong class="good">PASS</strong>{% elif r.passed is false %}<strong class="bad">FAIL</strong>{% else %}<strong class="warn">EXCLUDED ({{ r.excluded.replace("_", " ") }})</strong>{% endif %}
+      <code>{{ r.scenario_id }}</code> <span>{{ t.title }}</span>
+      <span class="meta">{{ r.persona_id }} · {{ r.channel.value }} · trial {{ r.index }} · {{ r.status }} · {{ r.duration_ms }} ms{% for k, v in r.labels.items() if k in ("snr_db", "accent") %} · {{ k }} {{ v }}{% endfor %}</span>
+    </summary>
+    <div class="trial-body">
+      {% if r.causes %}<h3>Why it failed</h3><ul>{% for c in r.causes %}<li><code>{{ c.cause }}</code>{% if c.rationale %} — <span class="rationale">{{ c.rationale }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+
+      {% if t.audio %}<h3>Audio</h3>
+        <div class="legend"><span><i style="background:var(--user)"></i>caller speech</span><span><i style="background:var(--agent)"></i>agent speech</span><span><i style="background:var(--bad)"></i>interruption</span></div>
+        {% for au in t.audio %}
+        <div class="meta"><code>{{ au.recording }}</code>{% if not au.src %} · recording not found next to the report; markers only{% endif %}</div>
+        <canvas class="wave" data-audio="{{ au.index }}" width="1100" height="110"></canvas>
+        {% if au.src %}<audio controls preload="none" id="audio-{{ au.index }}" src="{{ au.src }}"></audio>{% endif %}
+        {% endfor %}
+      {% endif %}
+
+      <h3>Transcript</h3>
+      {% if t.transcript %}<div class="bubbles">
+      {% for u in t.transcript %}<div class="bubble {{ u.actor }}"><span class="who">{{ u.actor }} · {{ u.t_ms }} ms{% if u.note %} · {{ u.note }}{% endif %}</span>{{ u.text }}</div>{% endfor %}
+      </div>{% else %}<p class="meta">No messages.</p>{% endif %}
+
+      {% set tools = t.timeline|selectattr("kind", "in", ["tool_call", "tool_result"])|list %}
+      <h3>Tool calls</h3>
+      {% if tools %}<div class="scroll"><table class="timeline"><tbody>
+      {% for e in tools %}<tr><td class="t">{{ e.t_ms }} ms</td><td><strong>{{ e.text }}</strong>{% if e.note %} <span class="meta">{{ e.note }}</span>{% endif %}{% if e.detail %}<pre>{{ e.detail }}</pre>{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<p class="meta">No tool calls.</p>{% endif %}
+
+      <h3>World diff (before → after)</h3>
+      {% if t.world %}<div class="scroll"><table><thead><tr><th>Record</th><th>Change</th><th>Before</th><th>After</th></tr></thead><tbody>
+      {% for w in t.world %}<tr><td><code>{{ w.collection }}/{{ w.key }}</code></td><td>{{ w.change }}</td><td>{% if w.before %}<pre>{{ w.before }}</pre>{% else %}—{% endif %}</td><td>{% if w.after %}<pre>{{ w.after }}</pre>{% else %}—{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<p class="meta">The world did not change.</p>{% endif %}
+
+      <h3>Grades</h3>
+      {% if t.grades %}<div class="scroll"><table><thead><tr><th>Grader</th><th>Result</th><th>Rationale and evidence</th></tr></thead><tbody>
+      {% for g in t.grades %}<tr>
+        <td><code>{{ g.grader }}</code>{% if g.criterion_index is none %} <span class="meta">diagnostic</span>{% endif %}<div class="meta">v{{ g.grader_version }}{% if g.judge_model %} · {{ g.judge_model }}{% endif %}</div></td>
+        <td>{% if g.status != "ok" %}<span class="warn">{{ g.status }}</span>{% elif g.passed %}<span class="good">pass</span>{% else %}<span class="bad">fail</span>{% endif %}</td>
+        <td>{% if g.rationale %}<div>{{ g.rationale }}</div>{% endif %}
+          {% if g.evidence %}<div class="meta">evidence: {% for ev in g.evidence %}<a class="evidence" href="#ev-{{ ev.event_id }}">{{ ev.event_id[-6:] }}</a>{{ ", " if not loop.last }}{% endfor %}</div>{% endif %}
+          {% if g.votes %}<div class="meta">votes: {% for v in g.votes %}{{ "pass" if v.passed else "fail" }}{{ ", " if not loop.last }}{% endfor %}</div>{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<p class="meta">No grades (harness error).</p>{% endif %}
+
+      <details><summary>Full event timeline ({{ t.timeline|length }} events)</summary>
+      <div class="scroll"><table class="timeline"><tbody>
+      {% for e in t.timeline %}<tr id="ev-{{ e.id }}"><td class="t">{{ e.t_ms }} ms</td><td>{{ e.actor }}</td><td>{{ e.kind }}</td><td>{{ e.text }}{% if e.note %} <span class="meta">{{ e.note }}</span>{% endif %}{% if e.detail %}<pre>{{ e.detail }}</pre>{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div></details>
+    </div>
+  </details>
+  {% endfor %}
+</section>
+
+<footer>Generated by Hecklr · analysis schema v{{ a.schema_version }} · seed {{ a.seed }} · {{ a.stats.bootstrap_resamples }} bootstrap resamples · every interval is a {{ (100 * (1 - a.stats.alpha))|round|int }}% (comparisons) or 95% (run metrics) confidence interval.</footer>
+</main>
+<script type="application/json" id="hecklr-audio">{{ audio|tojson }}</script>
+<script>
+(function () {
+  "use strict";
+  var audio = JSON.parse(document.getElementById("hecklr-audio").textContent);
+  var css = getComputedStyle(document.documentElement);
+  function color(name) { return css.getPropertyValue(name).trim(); }
+
+  function drawWave(canvas, data, playheadMs) {
+    var ctx = canvas.getContext("2d");
+    var w = canvas.width, h = canvas.height, mid = h / 2;
+    var scale = w / Math.max(1, data.duration_ms);
+    ctx.clearRect(0, 0, w, h);
+    data.markers.forEach(function (m) {
+      var x = m.start * scale, width = Math.max(1, (m.end - m.start) * scale);
+      if (m.kind === "barge_in" || m.kind === "backchannel") {
+        ctx.fillStyle = color("--bad");
+        ctx.fillRect(x, 0, 2, h);
+      } else {
+        ctx.fillStyle = color(m.actor === "agent" ? "--agent" : "--user");
+        ctx.globalAlpha = 0.22;
+        ctx.fillRect(x, m.actor === "agent" ? mid : 0, width, mid);
+        ctx.globalAlpha = 1;
+      }
+    });
+    ctx.fillStyle = color("--text");
+    ctx.globalAlpha = 0.75;
+    var n = data.peaks.length;
+    for (var i = 0; i < n; i++) {
+      var amp = data.peaks[i] * (mid - 4);
+      ctx.fillRect(i * w / n, mid - amp, Math.max(1, w / n - 0.5), 2 * amp || 1);
+    }
+    ctx.globalAlpha = 1;
+    if (playheadMs !== null) {
+      ctx.fillStyle = color("--accent");
+      ctx.fillRect(playheadMs * scale, 0, 2, h);
+    }
+  }
+
+  document.querySelectorAll("canvas.wave").forEach(function (canvas) {
+    var index = Number(canvas.dataset.audio), data = audio[index];
+    var player = document.getElementById("audio-" + index);
+    drawWave(canvas, data, null);
+    if (!player) { return; }
+    player.addEventListener("timeupdate", function () { drawWave(canvas, data, player.currentTime * 1000); });
+    canvas.addEventListener("click", function (event) {
+      var rect = canvas.getBoundingClientRect();
+      player.currentTime = (event.clientX - rect.left) / rect.width * data.duration_ms / 1000;
+      player.play();
+    });
+  });
+
+  document.querySelectorAll("a.evidence").forEach(function (link) {
+    link.addEventListener("click", function () {
+      var row = document.getElementById(link.getAttribute("href").slice(1));
+      for (var node = row; node; node = node.parentElement) {
+        if (node.tagName === "DETAILS") { node.open = true; }
+      }
+      document.querySelectorAll(".timeline tr.hl").forEach(function (r) { r.classList.remove("hl"); });
+      if (row) { row.classList.add("hl"); }
+    });
+  });
+
+  var filter = document.getElementById("trial-filter"), failedOnly = document.getElementById("failed-only");
+  function applyFilter() {
+    var query = filter.value.toLowerCase(), shown = 0;
+    document.querySelectorAll("details.trial").forEach(function (trial) {
+      var visible = trial.dataset.search.toLowerCase().indexOf(query) !== -1 &&
+        (!failedOnly.checked || trial.dataset.failed === "yes");
+      trial.classList.toggle("hidden", !visible);
+      if (visible) { shown++; }
+    });
+    document.getElementById("trial-count").textContent = shown + " trials";
+  }
+  filter.addEventListener("input", applyFilter);
+  failedOnly.addEventListener("change", applyFilter);
+})();
+</script>
+</body>
+</html>

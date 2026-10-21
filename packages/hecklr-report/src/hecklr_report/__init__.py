@@ -5,6 +5,7 @@
     analysis = analyze(candidate, baseline, config.stats, scenarios, personas=personas)
     render_terminal(analysis, console)
     comment = render_markdown(analysis, report_url=url)
+    render_html(analysis, candidate, run_dir / "report.html")
     exit_code = gate_exit_code(analysis, config.gate)
 """
 
@@ -16,6 +17,7 @@ from hecklr_report.gate import (
     EXIT_REGRESSION,
     gate_exit_code,
 )
+from hecklr_report.html import render_html
 from hecklr_report.machine import render_json, render_junit
 from hecklr_report.markdown import render_markdown
 from hecklr_report.model import (
@@ -53,6 +55,7 @@ __all__ = [
     "__version__",
     "analyze",
     "gate_exit_code",
+    "render_html",
     "render_json",
     "render_junit",
     "render_markdown",
