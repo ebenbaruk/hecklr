@@ -12,8 +12,10 @@ from pydantic import JsonValue
 
 from hecklr_adapters.errors import AdapterConfigError, AgentError
 
-PLACEHOLDERS: frozenset[str] = frozenset({"message", "session_id", "trial_id"})
-"""Names a request template may use."""
+PLACEHOLDERS: frozenset[str] = frozenset(
+    {"message", "session_id", "trial_id", "world_url", "world_mcp_url"}
+)
+"""Names a request template may use; ``context.template_values`` gives their values."""
 
 _PLACEHOLDER = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 

@@ -53,6 +53,37 @@ def test_custom_price_table_is_honoured() -> None:
     assert cost == Decimal(3)
 
 
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [("openai/gpt-6-luna", Decimal("0.60")), ("openai/gpt-5.6-luna", Decimal("1.40"))],
+)
+def test_ws7d_luna_models_have_list_prices(model: str, expected: Decimal) -> None:
+    usage = LLMUsage(input_tokens=1_000_000, output_tokens=1_000_000)
+    assert cost_usd(model, usage) == expected
+
+
+@pytest.mark.parametrize(
+    ("model", "cached_rate"),
+    [("openai/gpt-6-luna", Decimal("0.01")), ("openai/gpt-5.6-luna", Decimal("0.02"))],
+)
+def test_ws7d_cached_input_tokens_bill_at_the_cached_rate(model: str, cached_rate: Decimal) -> None:
+    usage = LLMUsage(input_tokens=1_000_000, output_tokens=0)
+    assert cost_usd(model, usage, cached_input_tokens=1_000_000) == cached_rate
+    # More cached tokens than input tokens cannot make a call cheaper than all-cached.
+    assert cost_usd(model, usage, cached_input_tokens=5_000_000) == cached_rate
+
+
+def test_ws7d_models_without_a_cached_rate_bill_cached_input_in_full() -> None:
+    usage = LLMUsage(input_tokens=1_000_000, output_tokens=0)
+    assert cost_usd("openai/gpt-4.1", usage, cached_input_tokens=1_000_000) == Decimal("2.00")
+    # A user price below the built-in cached rate is never undercut by it.
+    cheap = {
+        "openai/gpt-6-luna": ModelPrice(input_per_mtok=Decimal("0.005"), output_per_mtok=Decimal(0))
+    }
+    cost = cost_usd("openai/gpt-6-luna", usage, cheap, cached_input_tokens=1_000_000)
+    assert cost == Decimal("0.005")
+
+
 def test_token_estimates_are_deterministic() -> None:
     assert estimate_tokens("") == 0
     assert estimate_tokens("abcd") == 1
