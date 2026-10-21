@@ -61,6 +61,7 @@ select = [
     "T20",     # no print in library code
     "BLE",     # no blind except
     "S",       # bandit subset (eval, hardcoded secrets, ...)
+    "DTZ",     # timezone-aware datetimes only
     "D",       # docstrings on public API
 ]
 ignore = [
@@ -90,6 +91,12 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 # --- pytest -------------------------------------------------------------------
 [tool.pytest.ini_options]

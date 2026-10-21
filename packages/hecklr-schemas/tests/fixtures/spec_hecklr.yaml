@@ -1,0 +1,19 @@
+version: 1
+agent:
+  name: acme-support
+  adapters:
+    chat:  { type: http, url: http://localhost:8000/chat, stream: sse }
+    voice: { type: pipecat, url: http://localhost:7860/offer }
+    email: { type: smtp, inbox: support@acme.test }
+  editable: [prompts/system.md, tools/descriptions.yaml]   # what the fixer may change
+world: worlds/acme-maintenance.yaml
+suites:
+  ci:      { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }
+  nightly: { scenarios: "scenarios/**/*.yaml", trials: 10, channels: [chat, voice, email], adaptive: true }
+  redteam: { personas: "personas/adversarial/*.yaml", trials: 5 }
+models:
+  simulator: anthropic/claude-sonnet-5-5
+  judge:     openai/gpt-4.1
+stats: { alpha: 0.05, min_effect: 0.03 }
+budget: { usd: 25, concurrency: 32 }
+baseline: { store: github-artifacts, branch: main }
