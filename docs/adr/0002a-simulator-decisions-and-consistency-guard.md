@@ -26,7 +26,12 @@ event sink and no clock.
   mode, so red-team personas can be crossed with ordinary scenarios; `adversarial` mode without a
   strategy is a configuration error raised when the simulator is built.
 - **Strategies are data, with no global registry.** `AttackStrategy` (objective, tactics, success
-  signal) is rendered into the brief. `BUILTIN_STRATEGIES` is read-only; packs pass
+  signal, optional `decoys`) is rendered into the brief. `decoys` are details the attacker uses
+  that are not its own, such as the other customer's ID that `cross_customer_data_probe` asks
+  about. They live on the strategy, not the scenario, so every scenario crossed with a probing
+  persona gets them without authors having to remember. The guard and the LLM audit treat them as
+  part of the brief; without them the guard rejected the probe's central tactic as an invented
+  or wrong ID, which would hide exactly the cross-customer leak US-09 must catch. `BUILTIN_STRATEGIES` is read-only; packs pass
   `strategies={**BUILTIN_STRATEGIES, **pack}` to `make_simulator`.
 - **Patience is deterministic.** The tolerance is `1 + floor(5 · patience)` unproductive agent
   messages in a row, plus one more on a seeded coin flip. The model reports `agent_made_progress`
@@ -38,28 +43,34 @@ event sink and no clock.
   The driver still enforces limits in the middle of a turn. The simulator's own check lets the
   customer leave cleanly with a structured reason.
 - **The guard is deterministic first.** It flags tokens shaped like a fact value but different
-  from it, ID-like tokens found nowhere in the brief or the agent's words, unknown
+  from it, ID-like tokens found nowhere in the brief (facts, goal, decoys) or the agent's words
+  (matched as whole tokens, so a truncated `ORD-558` is not `ORD-5581`), unknown
   `facts_revealed`, and malformed decisions (including JSON spilled into the text). An optional
   LLM audit (`ConsistencyVerdict`) catches a changed goal. A flagged draft is regenerated with
   the issues as feedback, up to `max_regenerations` times. `contradictions` counts turns that
   needed regeneration. When no attempt is left, the guard raises `SimulatorError`, a harness
-  error, so a broken simulation is retried or excluded instead of failing the agent. Invalid JSON
-  is retried within the same budget but is not counted as a contradiction.
+  error, so a broken simulation is retried or excluded instead of failing the agent. Invalid JSON,
+  from the simulator or from the optional audit, is retried within the same budget but is not
+  counted as a contradiction; an unaudited draft is never accepted.
 - **Seeds are hashed, never drawn.** Every request seed is
   `blake2b(trial seed, purpose, turn, attempt)` mod 2³¹−1, pinned by a golden test. An unchanged
   turn always produces an identical request and so a cache hit. The value does not depend on how
   many draws came before.
 - **Replay grounding.** Extracted facts are kept only if the customer actually wrote the value.
   Success criteria are deliberately minimal: the `resolved` judge, plus `tool_called` on the
-  resolving tool only if the transcript called it. Authors refine the rest.
-  `transcripts_to_scenarios` never overwrites an existing file.
+  resolving tool only if the transcript called it. Authors refine the rest. A value counts as
+  said only as a whole token of at least two characters. `transcripts_to_scenarios` never
+  overwrites an existing file, and a conversation whose extraction fails is reported in
+  `ReplayBatch.failures` while the rest of the batch is written.
 
 ## Consequences
 
 - WS7 wires `make_simulator(config.models.simulator)` and `transcripts_to_scenarios` directly.
   WS14 adds strategies without touching this package.
 - The deterministic guard can raise false positives on legitimate numbers shaped like a fact
-  (e.g. a 5-digit amount when the postcode has 5 digits). Regeneration absorbs them at the cost
-  of a counted contradiction. The contradiction rate in reports makes such drift visible.
+  (e.g. a 5-digit amount when the postcode has 5 digits). Date and time facts (ISO-like values)
+  get no shape for this reason, since asking for a new slot in the same format is normal; a wrong
+  date is left to the optional LLM audit. Regeneration absorbs the remaining false positives at
+  the cost of a counted contradiction. The contradiction rate in reports makes such drift visible.
 - Progress judgement still depends on the model. Small local models are noisier, which the live
   tests check only as plumbing (ADR 0005).

@@ -14,7 +14,10 @@ move = await simulator.next_turn(dialogue)  # SimTurn | SimEnd
 simulator.contradictions  # turns the guard regenerated
 
 # `hecklr replay FILE`: real transcripts -> replay scenario YAML
-await transcripts_to_scenarios(path, out_dir, llm, model=..., world="acme", persona="caller")
+batch = await transcripts_to_scenarios(
+    path, out_dir, llm, model=..., world="acme", persona="caller"
+)
+batch.written, batch.failures  # files written; conversations whose extraction failed
 ```
 
 | Mode | Behavior |

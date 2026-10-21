@@ -9,13 +9,14 @@ Decisions: `docs/adr/0002a-simulator-decisions-and-consistency-guard.md`.
 | Criterion | Evidence |
 | --- | --- |
 | 4 modes tested with FakeLLM | `test_scripted.py` (7 tests, no LLM calls), `test_guided.py` (guided + `test_ws2_replay_mode_runs_as_guided`), `test_adversarial.py` (`test_us09_*`, strategy registry and factory validation), `test_replay.py::test_us02_replay_scenario_runs_as_an_adaptive_simulation` |
-| Contradiction guard: catches wrong ID, changed goal; regenerates; counts | `test_guard.py`: `test_ws2_guard_flags_a_wrong_customer_id`, `..._regenerates_a_wrong_id_and_counts_the_contradiction`, `..._llm_check_catches_a_changed_goal`, `..._counts_one_contradiction_per_regenerated_turn`, `..._gives_up_with_a_harness_error_after_bounded_retries` |
+| Contradiction guard: catches wrong ID, changed goal; regenerates; counts | `test_guard.py`: `test_ws2_guard_flags_a_wrong_customer_id`, `..._regenerates_a_wrong_id_and_counts_the_contradiction`, `..._llm_check_catches_a_changed_goal`, `..._counts_one_contradiction_per_regenerated_turn`, `..._gives_up_with_a_harness_error_after_bounded_retries`; review round: `test_us09_cross_customer_probe_runs_through_the_guard_without_contradictions`, `test_us09_guard_accepts_the_probe_strategy_decoys_but_not_other_ids`, `test_ws2_malformed_llm_check_*`, `test_ws2_guard_matches_identifiers_as_whole_tokens`, `test_ws2_guard_accepts_a_new_date_in_the_same_format_as_a_date_fact` |
 | Replay extraction tested on 20 transcripts | `tests/fixtures/transcripts.jsonl` (20 synthetic acme conversations: chat, voice, email), `test_us02_replay_extraction_on_20_transcripts`, YAML round trip, grounding, never-overwrite |
 | Determinism property test | `test_determinism.py::test_ws2_same_seed_gives_the_same_turns_and_requests` (hypothesis, 40 examples: identical turns and request cache keys); golden seed pinned |
 | One live test against Ollama | `test_live_ollama.py` (3 tests, `-m live`): guided conversation never gives a wrong ID, reproducible first turn, grounded replay extraction. 3 passed in 25 s on `qwen3:4b-instruct` |
 
-Numbers: 88 unit tests, 100% line and branch coverage of `hecklr_sim` (505 statements),
-`mypy --strict` clean, ruff clean. Full repo suite 344 passed, E2E fake 2 passed.
+Numbers (after review round 1): 96 unit tests, 100% line and branch coverage of `hecklr_sim`
+(548 statements), `mypy --strict` clean, ruff clean. Full repo suite 352 passed, E2E fake 2
+passed, live 3 passed on `qwen3:4b-instruct`.
 
 Exercised for real (scratch script, local Ollama `qwen3:4b-instruct`, cached provider):
 
@@ -35,8 +36,11 @@ commit `fix(sim): tighten prompts and guard after live runs against Ollama`.
 - `make_simulator(model, *, max_regenerations=2, llm_consistency_check=False, temperature=None,
   max_tokens=512, strategies=BUILTIN_STRATEGIES, clock_factory=MonotonicClock) -> SimulatorFactory`
 - `transcripts_to_scenarios(path, out_dir, llm, *, model, world, persona, seed=0, concurrency=8)
-  -> list[Path]`; also `extract_scenario`, `load_conversations`, `scenario_to_yaml`.
-- `AttackStrategy`, `BUILTIN_STRATEGIES` (pass `{**BUILTIN_STRATEGIES, **pack}` to add a pack).
+  -> ReplayBatch(written, failures)`; one failed extraction does not lose the batch. Also
+  `extract_scenario`, `load_conversations`, `scenario_to_yaml`.
+- `AttackStrategy` (with optional `decoys`), `BUILTIN_STRATEGIES` (pass
+  `{**BUILTIN_STRATEGIES, **pack}` to add a pack). WS14: a strategy that names someone else's
+  details must list them in `decoys`, or the guard rejects them as invented.
 - `SimulatorError`: a harness error, raised when no draft survives the guard.
 - `hecklr_sim.testing.decision_reply` / `verdict_reply`: FakeLLM replies for the E2E fake pipeline.
 
@@ -46,7 +50,10 @@ commit `fix(sim): tighten prompts and guard after live runs against Ollama`.
 - When its script runs out, scripted mode ends with `goal_achieved`. Graders decide success.
 - An adversarial persona follows its strategy in any non-scripted mode.
 - `contradictions` counts turns the guard regenerated. Invalid JSON is retried but not counted.
-- Replay facts are kept only if the customer wrote the value. Tags are capped at 3 plus `replay`.
+- Replay facts are kept only if the customer wrote the value as a whole token (>= 2 chars). Tags
+  are capped at 3 plus `replay`.
+- Attack decoys live on the strategy, so the guard accepts the probe target's ID (review round 1).
+- Date/time facts get no value shape: a new slot in the same format is not a contradiction.
 
 ## Next
 
