@@ -102,6 +102,16 @@ def test_aa_needs_exactly_two_runs(config_path: Path, store: StoreRun) -> None:
     assert "exactly two runs" in output
 
 
+def test_sc5_aa_refuses_the_same_run_twice(config_path: Path, store: StoreRun) -> None:
+    a = store(SCENARIOS)
+
+    code, output = invoke(config_path, "--aa", "--runs", a.id, "--runs", a.id)
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert f"names the same run {a.id} twice" in output
+    assert "A/A comparison" not in output
+
+
 def test_aa_on_runs_that_cannot_be_compared_is_a_harness_error(
     config_path: Path, store: StoreRun
 ) -> None:

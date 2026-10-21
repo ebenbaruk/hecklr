@@ -13,23 +13,27 @@ import typer
 from rich.markup import escape
 
 from hecklr.commands._common import (
+    CONFIG_ERRORS,
     DEFAULT_CONFIG,
     ConfigPath,
     config_errors,
+    fail,
     load_project_or_exit,
     stderr,
 )
+from hecklr.errors import describe_error
 from hecklr.reports import FILE_NAMES, ReportFormat, write_report
 from hecklr.results import (
     BASELINE,
     LATEST,
     Analyzed,
     analyze_runs,
+    open_store,
     resolve_baseline,
     resolve_run,
     runs_dir,
 )
-from hecklr_core import ResultStore
+from hecklr_core import RunNotFoundError
 from hecklr_report import EXIT_HARNESS_ERROR, EXIT_PASS, gate_exit_code
 from hecklr_schemas import GateConfig
 
@@ -75,14 +79,32 @@ def gate(
     project = load_project_or_exit(config, EXIT_HARNESS_ERROR)
     gate_config = project.config.gate
     if on_inconclusive is not None:
-        gate_config = GateConfig(on_inconclusive=on_inconclusive)
+        gate_config = gate_config.model_copy(update={"on_inconclusive": on_inconclusive})
     with config_errors(EXIT_HARNESS_ERROR):
-        store = ResultStore(runs_dir(project))
-        cand = resolve_run(store, candidate, suite=suite)
-        base = resolve_baseline(store, baseline, cand)
-        analyzed = analyze_runs(project, cand, base)
-    run_dir = runs_dir(project) / cand.id
-    target = out_dir if out_dir is not None else run_dir
+        with open_store(project) as store:
+            cand = resolve_run(store, candidate, suite=suite)
+            base = resolve_baseline(store, baseline, cand)
+        run_dir = runs_dir(project) / cand.id
+        target = out_dir if out_dir is not None else run_dir
+        try:
+            analyzed = analyze_runs(project, cand, base)
+            _write_reports(analyzed, target, run_dir, report_url)
+        except (*CONFIG_ERRORS, RunNotFoundError):
+            raise
+        except Exception as exc:
+            # CI reads any other exit as a verdict (a traceback exits 1, "regression"), so a gate
+            # that broke while analyzing or writing must say so with the harness-error code.
+            raise fail(f"the gate failed: {describe_error(exc)}", EXIT_HARNESS_ERROR) from exc
+    typer.echo((target / FILE_NAMES[ReportFormat.MD]).read_text(encoding="utf-8"), nl=False)
+    code = decide(analyzed, gate_config, missing_baseline)
+    stderr.print(
+        f"Gate: [bold]{OUTCOMES[code]}[/] (exit {code}); reports in {escape(str(target))}",
+        soft_wrap=True,
+    )
+    raise typer.Exit(code=code)
+
+
+def _write_reports(analyzed: Analyzed, target: Path, run_dir: Path, report_url: str | None) -> None:
     for report_format in ReportFormat:
         write_report(
             analyzed,
@@ -91,13 +113,6 @@ def gate(
             run_dir=run_dir,
             report_url=report_url,
         )
-    typer.echo((target / FILE_NAMES[ReportFormat.MD]).read_text(encoding="utf-8"), nl=False)
-    code = decide(analyzed, gate_config, missing_baseline)
-    stderr.print(
-        f"Gate: [bold]{OUTCOMES[code]}[/] (exit {code}); reports in {escape(str(target))}",
-        soft_wrap=True,
-    )
-    raise typer.Exit(code=code)
 
 
 def decide(analyzed: Analyzed, gate_config: GateConfig, missing_baseline: MissingBaseline) -> int:

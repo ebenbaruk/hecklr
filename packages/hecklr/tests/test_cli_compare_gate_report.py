@@ -9,6 +9,7 @@ import click
 import pytest
 from typer.testing import CliRunner
 
+import hecklr.commands.gate
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr_report import EXIT_HARNESS_ERROR, EXIT_INCONCLUSIVE, EXIT_PASS, EXIT_REGRESSION
@@ -176,6 +177,49 @@ def test_gate_without_any_run_or_with_unknown_ids_is_a_harness_error(
     assert run.id not in output
 
 
+def test_us04_gate_of_a_run_against_itself_is_a_harness_error(
+    config_path: Path, store: StoreRun
+) -> None:
+    # The Action's failure mode: `hecklr run` recorded nothing, so `latest` is the fetched baseline.
+    base = store(rates(1.0), order=0)
+
+    for candidate in (base.id, "latest"):
+        code, output = invoke(config_path, "gate", "--candidate", candidate, "--baseline", base.id)
+
+        assert code == EXIT_HARNESS_ERROR, output
+        assert f"the same run {base.id}" in flat(output)
+        assert "PASS" not in output
+
+
+def test_gate_that_breaks_while_writing_reports_is_a_harness_error(
+    config_path: Path, store: StoreRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store(rates(1.0), order=0)
+    store(rates(1.0), order=1)
+
+    def full_disk(*args: object, **kwargs: object) -> Path:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(hecklr.commands.gate, "write_report", full_disk)
+
+    code, output = invoke(config_path, "gate")
+
+    assert code == EXIT_HARNESS_ERROR, output
+    assert "the gate failed: OSError" in flat(output)
+
+
+def test_gate_on_inconclusive_flag_keeps_the_rest_of_the_gate_config(
+    config_path: Path, store: StoreRun, edit: Edit
+) -> None:
+    store({f"s{i}": 1.0 for i in range(5)}, order=0)
+    store({f"s{i}": 0.0 if i < 2 else 1.0 for i in range(5)}, order=1)
+    edit(config_path, "budget:", "gate: { on_inconclusive: pass }\nbudget:")
+
+    code, output = invoke(config_path, "gate", "--on-inconclusive", "fail")
+
+    assert code == EXIT_INCONCLUSIVE, output
+
+
 def test_gate_with_a_broken_config_is_a_harness_error(config_path: Path, edit: Edit) -> None:
     edit(config_path, "version: 1", "version: 1\nunknown_key: 2")
 
@@ -292,6 +336,15 @@ def test_compare_with_an_unknown_run_is_a_config_error(config_path: Path) -> Non
 
     assert code == exit_codes.CONFIG_ERROR
     assert "no finished run" in output
+
+
+def test_compare_of_a_run_with_itself_is_refused(config_path: Path, store: StoreRun) -> None:
+    run = store(rates(1.0), order=0)
+
+    code, output = invoke(config_path, "compare", run.id, run.id)
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert f"the same run {run.id}" in flat(output)
 
 
 # --- report -----------------------------------------------------------------------------------

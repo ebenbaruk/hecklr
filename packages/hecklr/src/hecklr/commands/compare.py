@@ -14,8 +14,7 @@ from hecklr.commands._common import (
     stdout,
 )
 from hecklr.reports import FILE_NAMES, ReportFormat, write_report
-from hecklr.results import analyze_runs, resolve_baseline, resolve_run, runs_dir
-from hecklr_core import ResultStore
+from hecklr.results import analyze_runs, open_store, resolve_baseline, resolve_run, runs_dir
 from hecklr_report import render_json, render_junit, render_markdown, render_terminal
 
 OutputFormat = Literal["terminal", "md", "html", "json", "junit"]
@@ -38,9 +37,9 @@ def compare(
     """Statistical comparison of two runs: Δ with its CI, p- and q-values and a verdict."""
     project = load_project_or_exit(config)
     with config_errors():
-        store = ResultStore(runs_dir(project))
-        cand = resolve_run(store, candidate)
-        base = resolve_baseline(store, baseline, cand)
+        with open_store(project) as store:
+            cand = resolve_run(store, candidate)
+            base = resolve_baseline(store, baseline, cand)
         if base is None:
             raise typer.BadParameter(
                 f"run {cand.id} has no earlier completed run of its suite to compare with",

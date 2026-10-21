@@ -17,8 +17,14 @@ from hecklr.commands._common import (
     stdout,
 )
 from hecklr.reports import FILE_NAMES, ReportFormat, write_report
-from hecklr.results import LATEST, analyze_runs, resolve_baseline, resolve_run, runs_dir
-from hecklr_core import ResultStore
+from hecklr.results import (
+    LATEST,
+    analyze_runs,
+    open_store,
+    resolve_baseline,
+    resolve_run,
+    runs_dir,
+)
 
 
 def report(
@@ -47,10 +53,10 @@ def report(
     if open_report and ReportFormat.HTML not in chosen:
         raise fail("--open needs the html format", exit_codes.CONFIG_ERROR)
     with config_errors():
-        store = ResultStore(runs_dir(project))
-        candidate = resolve_run(store, run)
-        reference = baseline or candidate.baseline_id
-        base = resolve_baseline(store, reference, candidate) if reference is not None else None
+        with open_store(project) as store:
+            candidate = resolve_run(store, run)
+            reference = baseline or candidate.baseline_id
+            base = resolve_baseline(store, reference, candidate) if reference is not None else None
         analyzed = analyze_runs(project, candidate, base)
     run_dir = runs_dir(project) / candidate.id
     target_dir = out_dir if out_dir is not None else run_dir

@@ -6,7 +6,7 @@
   same shape to measure the false-alarm rate (and the power to see a 10-point drop).
 - ``--judges`` (SC7): agreement of every judge rubric with human labels (Cohen's κ, precision
   and recall, with intervals); rubrics below κ 0.70 are untrusted.
-- ``--voice-loopback`` (SC4) is not wired into the CLI yet.
+- ``--voice-loopback`` (SC4) is not wired into the CLI yet (issue #24).
 
 Exit codes: 0 every check passed, 1 a check failed (A/A flagged a regression or a false-alarm
 rate above alpha; an untrusted judge), 3 a run could not be analyzed, 69 not available, 78 config.
@@ -35,8 +35,8 @@ from hecklr.commands._common import (
 )
 from hecklr.commands.run import run_with_progress
 from hecklr.compose import RunRequest
-from hecklr.results import LATEST, analyze_results, load_results, resolve_run, runs_dir
-from hecklr_core import Project, ResultStore, RunResults
+from hecklr.results import LATEST, analyze_results, load_results, open_store, resolve_run
+from hecklr_core import Project, RunResults
 from hecklr_report import fmt, render_terminal
 from hecklr_schemas import Grade, HumanLabel, Verdict
 from hecklr_stats import JudgeCalibration, calibrate_judge, verdict_rate
@@ -88,7 +88,7 @@ def calibrate(
     if voice_loopback:
         raise fail(
             "--voice-loopback is not available in the CLI yet; the loopback calibration runs in "
-            "hecklr-voice's test suite (SC4)",
+            "hecklr-voice's test suite (SC4); tracked in issue #24",
             exit_codes.NOT_IMPLEMENTED,
         )
     if not (aa or judges):
@@ -120,12 +120,7 @@ def _aa_runs(
     runs: Sequence[str] | None,
 ) -> tuple[RunResults, RunResults]:
     if runs:
-        if len(runs) != 2:
-            raise fail("--runs takes exactly two runs (give it twice)", exit_codes.CONFIG_ERROR)
-        with config_errors():
-            store = ResultStore(runs_dir(project))
-            first, second = (load_results(project, resolve_run(store, ref).id) for ref in runs)
-            return first, second
+        return _stored_pair(project, runs)
     root_seed = seed if seed is not None else project.config.seed
     request = RunRequest(config_path=config, suite=suite, trials=trials, seed=root_seed)
     providers = overrides(ctx).llm_providers
@@ -133,6 +128,18 @@ def _aa_runs(
     _, first = run_with_progress(request, providers)
     _, second = run_with_progress(replace(request, seed=root_seed + 1), providers)
     return first, second
+
+
+def _stored_pair(project: Project, refs: Sequence[str]) -> tuple[RunResults, RunResults]:
+    if len(refs) != 2:
+        raise fail("--runs takes exactly two runs (give it twice)", exit_codes.CONFIG_ERROR)
+    with config_errors(), open_store(project) as store:
+        first, second = (resolve_run(store, ref).id for ref in refs)
+    if first == second:
+        # The same run twice always agrees with itself and would prove nothing.
+        raise fail(f"--runs names the same run {first} twice", exit_codes.CONFIG_ERROR)
+    with config_errors():
+        return load_results(project, first), load_results(project, second)
 
 
 def _report_aa(project: Project, first: RunResults, second: RunResults, *, replicates: int) -> bool:
@@ -195,8 +202,7 @@ def _report_aa(project: Project, first: RunResults, second: RunResults, *, repli
 
 def _report_judges(project: Project, labels_path: Path, refs: Sequence[str]) -> bool:
     labels = _read_labels(labels_path)
-    with config_errors():
-        store = ResultStore(runs_dir(project))
+    with config_errors(), open_store(project) as store:
         grades = [
             grade
             for ref in refs

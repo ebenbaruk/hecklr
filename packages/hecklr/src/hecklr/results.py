@@ -9,6 +9,7 @@ A run is named by its id or an alias:
 """
 
 from collections.abc import Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -65,12 +66,12 @@ def resolve_baseline(store: ResultStore, ref: str, candidate: Run) -> Run | None
     """The baseline of ``candidate``: a run id, or ``baseline`` (``None`` when there is none).
 
     Raises:
-        RunLookupError: ``ref`` is an id that names no stored run.
+        RunLookupError: ``ref`` is an id that names no stored run, or names ``candidate`` itself.
     """
     if ref != BASELINE:
-        return resolve_run(store, ref)
+        return _distinct(resolve_run(store, ref), candidate)
     if candidate.baseline_id is not None:
-        return resolve_run(store, candidate.baseline_id)
+        return _distinct(resolve_run(store, candidate.baseline_id), candidate)
     earlier = [
         run
         for run in store.list_runs()
@@ -80,6 +81,22 @@ def resolve_baseline(store: ResultStore, ref: str, candidate: Run) -> Run | None
         and (run.created_at, run.id) < (candidate.created_at, candidate.id)
     ]
     return earlier[-1] if earlier else None
+
+
+def _distinct(baseline: Run, candidate: Run) -> Run:
+    # A run compared with itself always shows "no change". In CI that usually means the candidate
+    # run never got recorded and `latest` fell back to the fetched baseline, which must not pass.
+    if baseline.id == candidate.id:
+        raise RunLookupError(
+            f"the candidate and the baseline are the same run {candidate.id}; nothing would be "
+            "compared (did the candidate run fail before it was recorded?)"
+        )
+    return baseline
+
+
+def open_store(project: Project) -> closing[ResultStore]:
+    """The project's result store, as a context manager that closes it."""
+    return closing(ResultStore(runs_dir(project)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,11 +156,8 @@ def load_results(project: Project, run_id: str) -> RunResults:
     Raises:
         hecklr_core.RunNotFoundError: no run with this id is stored.
     """
-    store = ResultStore(runs_dir(project))
-    try:
+    with open_store(project) as store:
         return anyio.run(store.load_run, run_id)
-    finally:
-        store.close()
 
 
 def analyze_results(
