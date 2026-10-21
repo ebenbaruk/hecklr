@@ -1,0 +1,16 @@
+id: busy-homeowner
+description: Calls from a car, short on time, mildly annoyed
+language: fr-FR
+traits: { patience: 0.4, verbosity: 0.3, cooperativeness: 0.8 }
+behaviors:
+  interrupt_prob: 0.25        # per agent turn
+  backchannel_prob: 0.3
+  mid_utterance_pause_s: [0.4, 1.2]
+  fillers: true
+voice:
+  tts: { provider: cartesia, voice: fr-male-2, rate: 1.1 }
+  environment: car_interior
+  snr_db: 12
+  line: g711_mulaw_8k
+  packet_loss: 0.02
+adversarial: null             # or a strategy id, e.g. refund_social_engineering

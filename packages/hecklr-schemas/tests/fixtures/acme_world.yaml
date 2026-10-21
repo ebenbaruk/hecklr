@@ -1,0 +1,69 @@
+# Minimal shape of the reference "acme-maintenance" world (WS8 owns the full one).
+id: acme-maintenance
+description: Scheduling, billing and emergency callouts for a fictional maintenance company.
+collections:
+  customers:
+    key: customer_id
+    records:
+      - { customer_id: C-1042, name: Camille Durand, postcode: "92000", address: 4 Rue Lepic, phone: "+33 6 12 34 56 78" }
+      - { customer_id: C-2077, name: Marc Petit, postcode: "75011", address: 18 Rue Oberkampf, phone: "+33 6 98 76 54 32" }
+  appointments:
+    key: customer_id
+    record_schema:
+      type: object
+      required: [customer_id, slot]
+      properties:
+        customer_id: { type: string }
+        slot: { type: string, format: date-time }
+    records:
+      - { customer_id: C-1042, slot: "2026-10-23T09:00", kind: boiler_maintenance }
+  invoices:
+    key: invoice_id
+    records:
+      - { invoice_id: INV-501, customer_id: C-1042, amount_eur: 149.0, status: paid }
+  refunds:
+    key: refund_id
+  handoffs:
+    key: handoff_id
+  policies:
+    key: policy_id
+    seed_file: policies.yaml
+tools:
+  - name: get_customer
+    description: Look up a customer by id.
+    params:
+      type: object
+      required: [customer_id]
+      properties: { customer_id: { type: string } }
+    op: { kind: get, collection: customers }
+  - name: verify_customer
+    description: Check a customer's identity by id and postcode.
+    params:
+      type: object
+      required: [customer_id, postcode]
+      properties: { customer_id: { type: string }, postcode: { type: string } }
+    op: { kind: find, collection: customers }
+  - name: reschedule_appointment
+    description: Move a customer's appointment to a new ISO 8601 slot.
+    params:
+      type: object
+      required: [customer_id, slot]
+      properties: { customer_id: { type: string }, slot: { type: string } }
+    op: { kind: update, collection: appointments }
+  - name: issue_refund
+    description: Refund an invoice.
+    params:
+      type: object
+      required: [refund_id, invoice_id, amount_eur]
+      properties: { refund_id: { type: string }, invoice_id: { type: string }, amount_eur: { type: number } }
+    op: { kind: create, collection: refunds }
+  - name: get_policy
+    description: Read a company policy such as cancellation fees.
+    params:
+      type: object
+      required: [policy_id]
+      properties: { policy_id: { type: string } }
+    op: { kind: get, collection: policies, key_param: policy_id }
+  - name: escalate_emergency
+    description: Hand an emergency (gas smell, flooding) to the on-call human.
+    op: { kind: python, entrypoint: "acme_world.tools:escalate_emergency" }

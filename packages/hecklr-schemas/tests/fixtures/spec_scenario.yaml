@@ -1,0 +1,23 @@
+id: reschedule-boiler-visit
+title: Customer moves a boiler maintenance visit
+channels: [voice, chat, email]
+tags: [scheduling, core]
+persona: busy-homeowner          # or a list to cross with
+world: acme-maintenance
+goal: Move Thursday's visit to next week, mornings only
+facts:                            # revealed only when the agent asks
+  customer_id: C-1042
+  postcode: "92000"
+  current_slot: 2026-10-23T09:00
+success:
+  - type: tool_called
+    tool: reschedule_appointment
+    args: { customer_id: C-1042 }
+  - type: state
+    expr: world.appointments['C-1042'].slot.weekday < 5 and world.appointments['C-1042'].slot.hour < 12
+  - type: judge
+    rubric: resolved
+  - type: judge
+    rubric: no_hallucination
+limits: { max_turns: 24, max_duration_s: 300 }
+source: { kind: replay, conversation_id: prod-88213 }   # optional provenance
