@@ -1,0 +1,108 @@
+# A small maintenance-company world for hecklr-world's own tests (WS8 owns the real
+# acme-maintenance world in examples/). It exercises every operation kind the reference agent
+# needs: lookup, verify, list, reschedule, cancel, refund, emergency handoff and policy text.
+id: example-maintenance
+description: Scheduling, billing and emergency callouts for a test maintenance company.
+collections:
+  customers:
+    key: customer_id
+    records:
+      - { customer_id: C-1042, name: Camille Durand, postcode: "92000", address: 4 Rue Lepic }
+      - { customer_id: C-2077, name: Marc Petit, postcode: "75011", address: 18 Rue Oberkampf }
+  appointments:
+    key: appointment_id
+    record_schema:
+      type: object
+      required: [appointment_id, customer_id, slot, status]
+      properties:
+        appointment_id: { type: string }
+        customer_id: { type: string }
+        slot: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$" }
+        status: { enum: [booked, cancelled] }
+    records:
+      - { appointment_id: A-1, customer_id: C-1042, slot: "2026-10-23T09:00", status: booked }
+      - { appointment_id: A-2, customer_id: C-1042, slot: "2026-11-02T14:00", status: booked }
+      - { appointment_id: A-3, customer_id: C-2077, slot: "2026-10-24T10:00", status: booked }
+  invoices:
+    key: invoice_id
+    records:
+      - { invoice_id: INV-501, customer_id: C-1042, amount_eur: 149.0, status: paid }
+  refunds:
+    key: refund_id
+  handoffs:
+    key: handoff_id
+  policies:
+    key: policy_id
+    seed_file: policies.yaml
+tools:
+  - name: get_customer
+    description: Look up a customer by id.
+    params:
+      type: object
+      required: [customer_id]
+      properties: { customer_id: { type: string } }
+      additionalProperties: false
+    op: { kind: get, collection: customers }
+  - name: verify_customer
+    description: Check a customer's identity by id and postcode.
+    params:
+      type: object
+      required: [customer_id, postcode]
+      properties: { customer_id: { type: string }, postcode: { type: string } }
+      additionalProperties: false
+    op: { kind: find, collection: customers }
+  - name: list_appointments
+    description: List a customer's appointments.
+    params:
+      type: object
+      required: [customer_id]
+      properties: { customer_id: { type: string } }
+      additionalProperties: false
+    op: { kind: list, collection: appointments }
+  - name: reschedule_appointment
+    description: Move an appointment to a new slot (ISO 8601, YYYY-MM-DDTHH:MM).
+    params:
+      type: object
+      required: [appointment_id, slot]
+      properties: { appointment_id: { type: string }, slot: { type: string } }
+      additionalProperties: false
+    op: { kind: update, collection: appointments }
+  - name: cancel_appointment
+    description: Cancel an appointment.
+    params:
+      type: object
+      required: [appointment_id, status]
+      properties:
+        appointment_id: { type: string }
+        status: { const: cancelled }
+      additionalProperties: false
+    op: { kind: update, collection: appointments }
+  - name: issue_refund
+    description: Refund an invoice; the refund id is generated.
+    params:
+      type: object
+      required: [invoice_id, amount_eur]
+      properties: { invoice_id: { type: string }, amount_eur: { type: number, exclusiveMinimum: 0 } }
+      additionalProperties: false
+    op: { kind: create, collection: refunds }
+  - name: delete_refund
+    description: Withdraw a refund.
+    params:
+      type: object
+      required: [id]
+      properties: { id: { type: string } }
+    op: { kind: delete, collection: refunds, key_param: id }
+  - name: get_policy
+    description: Read a company policy such as cancellation fees.
+    params:
+      type: object
+      required: [policy_id]
+      properties: { policy_id: { type: string } }
+    op: { kind: get, collection: policies }
+  - name: escalate_emergency
+    description: Hand an emergency (gas smell, flooding) to the on-call human.
+    params:
+      type: object
+      required: [customer_id, reason]
+      properties: { customer_id: { type: string }, reason: { type: string } }
+    op: { kind: python, entrypoint: "example_tools:escalate_emergency" }
