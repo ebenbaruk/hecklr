@@ -8,6 +8,10 @@ license = "Apache-2.0"
 authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
     "hecklr-schemas",
+    "anthropic>=1.17,<2",
+    "anyio>=4.10",
+    "openai>=3.35,<4",
+    "structlog>=25.4",
 ]
 
 [build-system]
