@@ -32,7 +32,9 @@ class FakeGh:
 
     def __call__(self, args: Sequence[str], stdin: str | None) -> str:
         self.calls.append(list(args))
-        if args[0].startswith(f"repos/{REPO}/actions/artifacts"):
+        # Like gh itself: only the subcommands the Action uses exist.
+        assert args[0] in {"api", "run"}, f"unknown command {args[0]!r} for gh"
+        if args[1].startswith(f"repos/{REPO}/actions/artifacts"):
             return json.dumps({"artifacts": self.artifacts})
         if args[:2] == ["run", "download"]:
             shutil.copytree(self.downloads[args[2]], args[args.index("-D") + 1], dirs_exist_ok=True)
@@ -83,7 +85,10 @@ def test_the_newest_unexpired_artifact_of_the_branch_is_the_baseline() -> None:
 
     assert found is not None
     assert (found.artifact_id, found.workflow_run_id) == (2, 12)
-    assert gh.calls[0] == [f"repos/{REPO}/actions/artifacts?name=hecklr-baseline-ci&per_page=100"]
+    assert gh.calls[0] == [
+        "api",
+        f"repos/{REPO}/actions/artifacts?name=hecklr-baseline-ci&per_page=100",
+    ]
 
 
 def test_fetch_baseline_puts_the_run_into_the_store_and_outputs_its_id(

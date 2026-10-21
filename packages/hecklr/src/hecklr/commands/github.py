@@ -78,7 +78,8 @@ class BaselineArtifact:
 
 def find_baseline(gh: Gh, repo: str, name: str, branch: str) -> BaselineArtifact | None:
     """The newest unexpired artifact ``name`` uploaded by a workflow run on ``branch``."""
-    listing = json.loads(gh([f"repos/{repo}/actions/artifacts?name={name}&per_page=100"], None))
+    endpoint = f"repos/{repo}/actions/artifacts?name={name}&per_page=100"
+    listing = json.loads(gh(["api", endpoint], None))
     candidates = [
         BaselineArtifact(
             artifact_id=int(item["id"]),
