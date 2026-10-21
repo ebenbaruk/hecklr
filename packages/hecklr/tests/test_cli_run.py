@@ -50,7 +50,8 @@ def test_us01_run_prints_suite_and_scenario_pass_rates_with_intervals(config_pat
 
     assert code == exit_codes.OK, output
     assert "Suite ci: 10 trials over 5 scenarios" in output
-    assert re.search(r"pass_rate\s+│\s+100\.0% \[100\.0%, 100\.0%\]\s+│\s+5 │", output), output
+    # Wilson on 5 all-pass scenarios, not a collapsed bootstrap (issue #14, ADR 0005c).
+    assert re.search(r"pass_rate\s+│\s+100\.0% \[56\.6%, 100\.0%\]\s+│\s+5 │", output), output
     assert "Scenarios (Wilson 95% CI)" in output
     assert output.count("2/2") == 5
     assert output.count("100.0% [34.2%, 100.0%]") == 5  # Wilson interval of 2/2
