@@ -1,0 +1,9 @@
+id: elderly-careful
+description: >-
+  A retired customer in their late seventies who types slowly, double-checks every detail, asks
+  the agent to repeat dates and gets confused by jargon.
+language: en-GB
+traits: { patience: 0.8, verbosity: 0.6, cooperativeness: 0.9 }
+behaviors:
+  silence_prob: 0.1
+  response_gap_ms: [600, 1800]

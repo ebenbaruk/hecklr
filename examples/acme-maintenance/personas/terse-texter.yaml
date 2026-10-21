@@ -1,0 +1,4 @@
+id: terse-texter
+description: Answers in a few words, no greetings or punctuation, never volunteers details.
+language: en-GB
+traits: { patience: 0.5, verbosity: 0.05, cooperativeness: 0.7 }

@@ -1,0 +1,11 @@
+# The spec's example persona. The acme agent works in English, so the language is en-GB rather
+# than the spec example's fr-FR; voice profiles are added with the voice reference agent (WS11).
+id: busy-homeowner
+description: Chats from the car between meetings, short on time and mildly annoyed; wants it done fast.
+language: en-GB
+traits: { patience: 0.4, verbosity: 0.3, cooperativeness: 0.8 }
+behaviors:
+  interrupt_prob: 0.25
+  backchannel_prob: 0.3
+  mid_utterance_pause_s: [0.4, 1.2]
+  fillers: true
