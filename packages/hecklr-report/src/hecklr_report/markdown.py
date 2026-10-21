@@ -16,7 +16,7 @@ from hecklr_stats import PASS_RATE
 
 MAX_CAUSES: Final = {"pass_to_fail": 5, "fail_to_pass": 2}
 MAX_SCENARIOS_PER_CAUSE: Final = 4
-MAX_SLICES: Final = 4
+MAX_SLICES: Final = 3
 MAX_LATENCY_LINES: Final = 3
 RATIONALE_CHARS: Final = 90
 
@@ -31,6 +31,7 @@ _ARROWS: Final[dict[FlipDirection, str]] = {
     "fail_to_pass": "Flipped fail → pass",
 }
 _MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]<>()#+|!~])")
+_ZERO_WIDTH_JOINER: Final = "\N{ZERO WIDTH JOINER}"
 
 
 def render_markdown(analysis: Analysis, *, report_url: str | None = None) -> str:
@@ -51,8 +52,13 @@ def render_markdown(analysis: Analysis, *, report_url: str | None = None) -> str
 
 
 def escape(text: str) -> str:
-    """User or model text made inert in GitHub Markdown (no markup, links or HTML)."""
-    return _MARKDOWN_SPECIAL.sub(r"\\\1", " ".join(text.split()))
+    """User or model text made inert in GitHub Markdown (no markup, links, HTML or mentions).
+
+    A backslash does not stop GitHub from expanding ``@team`` into a notification, so a joiner
+    after every ``@`` breaks the mention while the text still reads the same.
+    """
+    flat = _MARKDOWN_SPECIAL.sub(r"\\\1", " ".join(text.split()))
+    return flat.replace("@", "@" + _ZERO_WIDTH_JOINER)
 
 
 def _code(text: str) -> str:
@@ -72,8 +78,8 @@ def _headline(analysis: Analysis) -> list[str]:
     comparison = analysis.suite_comparison
     if comparison is not None:
         lines = [
-            f"**Pass rate** {fmt.value(comparison.baseline_estimate.value, 'percent')} → "
-            f"{fmt.value(comparison.candidate_estimate.value, 'percent')}: "
+            f"**Pass rate** {fmt.estimate(comparison.baseline_estimate, 'percent')} → "
+            f"{fmt.estimate(comparison.candidate_estimate, 'percent')}: "
             f"**{fmt.delta(comparison)}** ({fmt.confidence(comparison.delta)}), "
             f"{fmt.p_equals(comparison.p_value)} · {comparison.n_scenarios} scenarios, "
             f"{comparison.n_trials_baseline} vs {comparison.n_trials_candidate} trials · "
@@ -144,8 +150,8 @@ def _latency(comparisons: Sequence[Comparison]) -> list[str]:
     chosen = [c for c in comparisons if c.metric == p95][:MAX_LATENCY_LINES]
     return [
         f"**Latency p95** {fmt.slice_label(c.slice)}: "
-        f"{fmt.value(c.baseline_estimate.value, 'ms')} → "
-        f"{fmt.value(c.candidate_estimate.value, 'ms')}, {fmt.delta(c)}, "
+        f"{fmt.estimate(c.baseline_estimate, 'ms')} → "
+        f"{fmt.estimate(c.candidate_estimate, 'ms')}, {fmt.delta(c)}, "
         f"{c.verdict.value.replace('_', ' ')}"
         for c in chosen
     ]
@@ -160,8 +166,7 @@ def _slices(comparisons: Sequence[Comparison]) -> list[str]:
         if not hits:
             continue
         shown = ", ".join(
-            f"{_code(fmt.slice_label(c.slice))} {fmt.delta(c).split(' [')[0]}"
-            for c in hits[:MAX_SLICES]
+            f"{_code(fmt.slice_label(c.slice))} {fmt.delta(c)}" for c in hits[:MAX_SLICES]
         )
         more = f" +{len(hits) - MAX_SLICES} more" if len(hits) > MAX_SLICES else ""
         name = "regressed" if verdict is Verdict.REGRESSION else "improved"

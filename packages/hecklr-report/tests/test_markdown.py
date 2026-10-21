@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from hypothesis import HealthCheck, given, settings
@@ -136,7 +137,7 @@ def test_us05_worst_case_comment_summarizes_what_does_not_fit(
     assert "+45 more causes (900 scenarios)" in comment
     assert "+16 more" in comment
     assert "+7 more causes (7 scenarios)" in comment
-    assert "+11 more" in comment
+    assert "+12 more" in comment
     assert "about 7 more trials per scenario" in comment
     assert "<script>" not in comment
     assert "](http://evil" not in comment
@@ -161,6 +162,7 @@ def test_us05_regression_comment_shows_verdict_delta_flips_and_latency(
     assert "`judge:resolved`" in comment
     assert "The agent never confirmed the new slot." in comment
     assert "**Latency p95** suite:" in comment
+    assert " ms [" in comment.split("**Latency p95** suite:")[1].split(" → ")[0]
     assert "**Run** 200 of 200 trials analyzed" in comment
     assert len(comment.splitlines()) < 30
 
@@ -211,3 +213,41 @@ def test_escape_neutralizes_markdown_and_html() -> None:
     assert escape("[x](http://e) <img> *b* `c`\n_d_") == (
         r"\[x\]\(http://e\) \<img\> \*b\* \`c\` \_d\_"
     )
+
+
+def test_us05_every_slice_delta_carries_its_interval(
+    regression: tuple[Analysis, RunResults],
+) -> None:
+    analysis = crowded(
+        regression[0], causes=0, per_cause=1, fixed=0, slices=4, judges=0, problems=0, rationale=""
+    )
+
+    comment = render_markdown(analysis)
+    slice_lines = [line for line in comment.splitlines() if line.startswith("**Slices")]
+
+    assert len(slice_lines) == 2
+    for line in slice_lines:
+        for item in line.split("): ", 1)[1].split("`tag-")[1:]:
+            assert re.search(r"pts \[[^\]]+, [^\]]+\]", item), item
+
+
+def test_us05_headline_values_carry_their_intervals(
+    regression: tuple[Analysis, RunResults],
+) -> None:
+    headline = next(
+        line
+        for line in render_markdown(regression[0]).splitlines()
+        if line.startswith("**Pass rate**")
+    )
+
+    before, after = headline.split(" → ")
+    assert re.search(r"% \[[^\]]+\]$", before)
+    assert re.match(r"[\d.]+% \[[^\]]+\]:", after)
+
+
+def test_escape_breaks_github_mentions() -> None:
+    escaped = escape("ping @acme/oncall and @bob")
+
+    assert "@acme" not in escaped
+    assert "@bob" not in escaped
+    assert escaped.replace("\N{ZERO WIDTH JOINER}", "") == "ping @acme/oncall and @bob"
