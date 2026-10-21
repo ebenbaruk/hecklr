@@ -62,8 +62,12 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   handoff and the F4 leak all pass (4 tests, 39 s); the four flows cost $0.0014 together.
   `hecklr run --suite <15 core booking/cancel/reschedule scenarios>` fully on luna (LLM-brain
   agent over HTTP, luna simulator and judges): 15/15 passed, $0.031.
-- **Flaky test.** `test_an_unreachable_sandbox_becomes_an_apology` now injects the refused
-  connection (`create_app(world_transport=...)`) instead of dialling port 9.
+- **Flaky test.** `test_an_unreachable_sandbox_becomes_an_apology` failed when an xdist worker
+  had run the hecklr pytest-plugin tests first: their `pytester.runpytest_inprocess` dropped a
+  lazily imported `httpcore2` from `sys.modules`, so its re-imported exception classes escaped
+  httpx2's error mapping and the agent answered 500. The root `conftest.py` now imports
+  `httpcore2` up front. The test also injects the refused connection
+  (`create_app(world_transport=...)`) instead of dialling port 9.
 - Numbers: 279 tests + 4 live; 96% coverage of `agent/`.
 
 ## Next (integration, WS7a / integrator)
