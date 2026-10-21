@@ -152,6 +152,8 @@ class AudioView:
     duration_ms: int
     peaks: list[float] = field(default_factory=list)
     markers: list[Marker] = field(default_factory=list)
+    note: str | None = None
+    """Why there is no player or no waveform, e.g. ``recording unreadable: ...``."""
 
     def script_data(self) -> dict[str, JsonValue]:
         """What the waveform script draws."""
@@ -326,8 +328,16 @@ def _audio_views(
             ),
             0,
         )
-        path = root / recording
-        peaks, length_ms = _waveform(path)
+        path, note = _locate(root, recording)
+        peaks: list[float] = []
+        length_ms = 0
+        if path is not None:
+            try:
+                peaks, length_ms = _waveform(path)
+            except (wave.Error, EOFError, ValueError) as error:
+                # A crashed call is the likeliest to leave a damaged file, and failed trials are
+                # what the report is for: keep the markers and say why there is no waveform.
+                note = f"recording unreadable: {error}; markers only"
         markers = [
             Marker(p.start_ms - origin, p.end_ms - origin, e.actor, p.content)
             for e, p in spans
@@ -342,13 +352,29 @@ def _audio_views(
             AudioView(
                 index=first_index + offset,
                 recording=recording,
-                src=embedder.src(path),
+                src=embedder.src(path) if path is not None else None,
                 duration_ms=length_ms or max([duration_ms, *(m.end_ms for m in markers)]),
                 peaks=peaks,
                 markers=markers,
+                note=note,
             )
         )
     return views
+
+
+def _locate(root: Path, recording: str) -> tuple[Path | None, str | None]:
+    """The recording's file under ``root``, or ``None`` and the reason it cannot be shown.
+
+    Paths come from stored events; one escaping the run directory (absolute or ``..``) would
+    embed an arbitrary local file into a report that is meant to be shared, so it is refused.
+    """
+    base = root.resolve()
+    path = (base / recording).resolve()
+    if not path.is_relative_to(base):
+        return None, "recording path is outside the run directory; markers only"
+    if not path.is_file():
+        return None, "recording not found next to the report; markers only"
+    return path, None
 
 
 @dataclass(slots=True)
@@ -358,10 +384,8 @@ class _Embedder:
     report_dir: Path
     budget: int
 
-    def src(self, path: Path) -> str | None:
-        """The player source for ``path``; ``None`` when the file is missing."""
-        if not path.is_file():
-            return None
+    def src(self, path: Path) -> str:
+        """The player source for the existing file ``path``."""
         size = path.stat().st_size
         if size > self.budget:
             return Path(os.path.relpath(path, self.report_dir)).as_posix()
@@ -372,17 +396,24 @@ class _Embedder:
 def _waveform(path: Path) -> tuple[list[float], int]:
     """Peak amplitude per bucket (0 to 1) and the length in ms of a 16-bit PCM WAV file.
 
-    Returns no peaks for a missing file or another sample format; the player still works and the
-    turn markers are drawn on an empty track.
+    Returns no peaks for another sample format; the player still works and the turn markers are
+    drawn on an empty track. A truncated file is drawn up to its last whole frame.
+
+    Raises:
+        wave.Error: ``path`` is not a WAV file.
+        EOFError: ``path`` is empty or its header is cut off.
+        ValueError: The header gives a zero frame rate.
     """
-    if not path.is_file():
-        return [], 0
     with wave.open(str(path), "rb") as wav:
-        if wav.getsampwidth() != 2:
-            return [], round(wav.getnframes() * 1000 / wav.getframerate())
+        channels, rate, width = wav.getnchannels(), wav.getframerate(), wav.getsampwidth()
+        # ``wave`` rejects a header with no channels but accepts a zero frame rate.
+        if rate < 1:
+            raise ValueError(f"frame rate {rate} Hz")
+        if width != 2:
+            return [], round(wav.getnframes() * 1000 / rate)
         frames = wav.readframes(wav.getnframes())
-        channels, rate = wav.getnchannels(), wav.getframerate()
-    samples = np.frombuffer(frames, dtype="<i2").reshape(-1, channels).astype(np.float64)
+    whole = len(frames) // (2 * channels) * 2 * channels
+    samples = np.frombuffer(frames[:whole], dtype="<i2").reshape(-1, channels).astype(np.float64)
     mono = np.abs(samples).max(axis=1) / 32768.0
     length_ms = round(mono.size * 1000 / rate)
     if mono.size == 0:

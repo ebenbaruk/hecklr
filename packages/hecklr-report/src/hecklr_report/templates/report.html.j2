@@ -267,7 +267,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
       {% if t.audio %}<h3>Audio</h3>
         <div class="legend"><span><i style="background:var(--user)"></i>caller speech</span><span><i style="background:var(--agent)"></i>agent speech</span><span><i style="background:var(--bad)"></i>interruption</span></div>
         {% for au in t.audio %}
-        <div class="meta"><code>{{ au.recording }}</code>{% if not au.src %} · recording not found next to the report; markers only{% endif %}</div>
+        <div class="meta"><code>{{ au.recording }}</code>{% if au.note %} · {{ au.note }}{% endif %}</div>
         <canvas class="wave" data-audio="{{ au.index }}" width="1100" height="110"></canvas>
         {% if au.src %}<audio controls preload="none" id="audio-{{ au.index }}" src="{{ au.src }}"></audio>{% endif %}
         {% endfor %}

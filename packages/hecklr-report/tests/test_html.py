@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import re
+import struct
 import wave
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING
@@ -247,6 +249,105 @@ def test_non_pcm16_recordings_play_without_a_waveform(
     page = render(results, kit, scenarios, tmp_path)
 
     assert '"peaks": []' in page
+
+
+def write_stereo_wav(path: Path, frames: int = 4_000) -> None:
+    samples = np.full(frames * 2, 12_000, dtype="<i2")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(8_000)
+        wav.writeframes(samples.tobytes())
+
+
+def voice_page(kit: type[Kit], scenarios: dict[str, Scenario], tmp: Path, recording: str) -> str:
+    builder = kit.RunBuilder()
+    builder.trial("s00", channel=Channel.VOICE, voice=kit.VoiceShape(recording=recording))
+    return render(builder.build(), kit, scenarios, tmp)
+
+
+def test_truncated_recording_is_drawn_up_to_its_last_whole_frame(
+    kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path
+) -> None:
+    path = tmp_path / "audio" / "cut.wav"
+    write_stereo_wav(path)
+    path.write_bytes(path.read_bytes()[:-3])
+
+    page = voice_page(kit, scenarios, tmp_path, "audio/cut.wav")
+
+    assert "data:audio/wav;base64," in page
+    assert '"peaks": []' not in page
+    assert "unreadable" not in page
+
+
+def wav_bytes(rate: int, frames: bytes) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(8_000)
+        wav.writeframes(frames)
+    data = bytearray(buffer.getvalue())
+    data[24:28] = struct.pack("<I", rate)  # the fmt chunk's sample rate field
+    return bytes(data)
+
+
+def test_header_only_recording_plays_without_a_waveform(
+    kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path
+) -> None:
+    path = tmp_path / "audio" / "silent.wav"
+    path.parent.mkdir()
+    path.write_bytes(wav_bytes(8_000, b""))
+
+    page = voice_page(kit, scenarios, tmp_path, "audio/silent.wav")
+
+    assert "data:audio/wav;base64," in page
+    assert '"peaks": []' in page
+    assert "unreadable" not in page
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [
+        (b"", "recording unreadable: "),
+        (b"OggS" + bytes(64), "recording unreadable: "),
+        (wav_bytes(0, bytes(100)), "recording unreadable: frame rate 0 Hz"),
+    ],
+    ids=["empty", "not-riff", "zero-rate"],
+)
+def test_unreadable_recording_keeps_markers_and_says_why(
+    kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path, content: bytes, reason: str
+) -> None:
+    path = tmp_path / "audio" / "bad.wav"
+    path.parent.mkdir()
+    path.write_bytes(content)
+
+    page = voice_page(kit, scenarios, tmp_path, "audio/bad.wav")
+
+    assert reason in page
+    assert "; markers only" in page
+    assert '"peaks": []' in page
+    assert '<canvas class="wave" data-audio="0"' in page
+
+
+def test_recording_paths_outside_the_run_directory_are_not_embedded(
+    kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path
+) -> None:
+    secret = tmp_path / "secret.wav"
+    write_wav(secret)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    for recording in ("../secret.wav", str(secret)):
+        builder = kit.RunBuilder()
+        builder.trial("s00", channel=Channel.VOICE, voice=kit.VoiceShape(recording=recording))
+        results = builder.build()
+        analysis = analyze(results, None, kit.stats, scenarios)
+        page = render_html(analysis, results, run_dir / "r.html").read_text(encoding="utf-8")
+
+        assert "recording path is outside the run directory; markers only" in page
+        assert "<audio" not in page
 
 
 def test_us06_us07_voice_section_has_degradation_curve_and_metric_tables(
