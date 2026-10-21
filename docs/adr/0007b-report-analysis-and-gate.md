@@ -43,11 +43,16 @@ compared between runs (ADR 0005b defers it), when a JUnit test case fails, and w
 - **JUnit.** A scenario's test case fails when fewer than half its analyzed trials passed (the
   same majority rule as flips); it is an `error` when no trial could be analyzed.
 - **PR comment.** Each section has a line budget (at most 27 lines in total), with "+N more" for
-  the rest. User and model text is escaped; causes print as code spans.
+  the rest. Every number carries its interval, including both sides of a "baseline → candidate"
+  arrow and each slice Δ. User and model text is escaped (`@` gets a zero-width joiner so a
+  rationale cannot mention a GitHub user or team); causes print as code spans.
 - **HTML.** One file: inline CSS and JavaScript, Jinja2 autoescaping, script data through `tojson`.
   The waveform is drawn on a canvas from peaks computed in Python (no wavesurfer.js to vendor).
   Recordings are embedded as `data:` URIs, failed trials first, until 8 MB are spent; the rest are
-  linked relative to the report.
+  linked relative to the report. A recording path that resolves outside the run directory is
+  never read. An unreadable recording (empty, not RIFF, bad header) keeps its turn markers and
+  says why; a truncated one is drawn up to its last whole frame.
+- **JUnit text.** Characters XML 1.0 forbids are replaced with U+FFFD before model text goes in.
 
 ## Consequences
 
@@ -56,5 +61,13 @@ compared between runs (ADR 0005b defers it), when a JUnit test case fails, and w
 - Undecided trials shrink the sample instead of biasing it; their count is in every report.
 - A latency regression never fails `hecklr gate` by itself. If teams want that, `GateConfig`
   needs a field, which is a schema change (RFC).
+- **Divergence from the spec.** The voice metrics table says the degradation curve is "gated on
+  the 10 dB bucket", and fault F7 is a "voice response latency gate". Here neither gates
+  directly: the curve and latency comparisons are diagnostics. The fault-matrix owners must make
+  F7 (and any SNR gate) fail through a scenario criterion (`latency_p95_below` or `voice_metric`
+  on the 10 dB personas), which reaches the suite pass rate and therefore the gate.
+- `hecklr gate` exits 3 when there is no baseline, including the very first CI run of a repo.
+  WS7a must handle that case explicitly (for example, bootstrap the baseline from the first run
+  on the default branch and say so) rather than surface it as a harness error.
 - `Comparison.min_effect` holds milliseconds for latency comparisons and a proportion for pass
   rates; renderers read the unit from the metric name.

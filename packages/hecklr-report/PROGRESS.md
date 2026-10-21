@@ -40,7 +40,16 @@ US-03, US-04, US-05, US-06, US-07, "Voice simulation engine > Metrics". Decision
   `render_json` (round-trips), `render_junit` (ElementTree-parsed structure).
 - `gate_exit_code`: `test_us04_exit_code_follows_the_suite_verdict` (all verdicts x both
   `on_inconclusive` settings), problems and missing baseline exit 3.
-- 74 tests, 98% line+branch coverage, `mypy --strict` and ruff clean.
+- 73 tests at first review, 98% line+branch coverage, `mypy --strict` and ruff clean.
+- Review round 1: damaged recordings no longer break `render_html`
+  (`test_truncated_recording_is_drawn_up_to_its_last_whole_frame`,
+  `test_unreadable_recording_keeps_markers_and_says_why[empty|not-riff|zero-rate]`,
+  `test_header_only_recording_plays_without_a_waveform`); recording paths confined to the run
+  directory (`test_recording_paths_outside_the_run_directory_are_not_embedded`); slice deltas and
+  headline/latency arrow values carry intervals (`test_us05_every_slice_delta_carries_its_interval`,
+  `test_us05_headline_values_carry_their_intervals`); `@` mentions neutralized
+  (`test_escape_breaks_github_mentions`); XML-forbidden characters dropped from JUnit
+  (`test_junit_drops_characters_xml_cannot_carry`). 83 tests, 98% line+branch coverage.
 - Exercised for real: rendered a 108-trial chat+voice regression report, served it on
   127.0.0.1 and drove it in Chrome: one network request (the document), no page errors,
   waveform and markers drawn, failed-only and text filters work, evidence links open the
@@ -51,6 +60,10 @@ US-03, US-04, US-05, US-06, US-07, "Voice simulation engine > Metrics". Decision
 - WS7a wiring (next batch): `hecklr compare`, `hecklr gate`, `hecklr report` call `analyze` with
   `personas=project personas`, and write `report.html` into the run directory.
 - Judge calibrations come from the UI labeling queue (WS16); pass them as `judge_calibrations`.
+- Chat TTLT (ADR 0006: `latency_ms + end_ms - t_ms`) is not yet computed or reported; add it as
+  its own latency metric next to TTFT.
+- Run-level `response_latency` summaries pool chat TTFT and voice response latency in
+  mixed-channel runs (only the comparisons split by channel); summarize per channel too.
 
 ## Open questions
 
