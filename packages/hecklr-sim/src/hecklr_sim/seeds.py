@@ -12,7 +12,7 @@ SEED_MODULUS = 2**31 - 1
 """Derived seeds stay below this so every provider accepts them (some reject 64-bit seeds)."""
 
 
-def derive_seed(seed: int, *labels: str | int) -> int:
+def derive_subseed(seed: int, *labels: str | int) -> int:
     """Return a seed in ``[0, SEED_MODULUS)`` determined only by ``seed`` and ``labels``."""
     payload = json.dumps([seed, *labels]).encode()
     digest = hashlib.blake2b(payload, digest_size=8).digest()
@@ -21,4 +21,4 @@ def derive_seed(seed: int, *labels: str | int) -> int:
 
 def unit_draw(seed: int, *labels: str | int) -> float:
     """Return a uniform draw in ``[0, 1)`` determined only by ``seed`` and ``labels``."""
-    return derive_seed(seed, *labels) / SEED_MODULUS
+    return derive_subseed(seed, *labels) / SEED_MODULUS

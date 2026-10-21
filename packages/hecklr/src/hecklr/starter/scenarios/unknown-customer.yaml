@@ -1,0 +1,15 @@
+id: unknown-customer
+title: Customer gives a customer id that does not exist
+channels: [chat]
+tags: [core, account]
+persona: confused-first-timer
+world: acme-starter
+goal: Move your visit to next week; you only know the customer id printed on an old letter.
+facts:
+  customer_id: C-9999
+success:
+  - type: tool_not_called
+    tool: reschedule_appointment
+  - type: judge
+    rubric: no_hallucination
+limits: { max_turns: 10 }

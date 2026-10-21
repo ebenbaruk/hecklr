@@ -16,7 +16,7 @@ from hecklr_schemas import (
     Traits,
     TrialBrief,
 )
-from hecklr_sim import GuidedSimulator, Patience, SimulatorError, derive_seed, make_simulator
+from hecklr_sim import GuidedSimulator, Patience, SimulatorError, derive_subseed, make_simulator
 from hecklr_sim.decision import LLMEndReason
 from hecklr_sim.testing import decision_reply
 
@@ -49,7 +49,7 @@ async def test_ws2_guided_request_carries_the_private_brief_and_a_derived_seed(
 
     (request,) = llm.calls
     assert request.model == "fake/sim"
-    assert request.seed == derive_seed(11, "turn", 1, 0)
+    assert request.seed == derive_subseed(11, "turn", 1, 0)
     assert request.temperature == 0.7
     assert request.max_tokens == 300
     assert request.schema_name == "SimDecision"
@@ -235,7 +235,7 @@ async def test_ws2_guided_retries_malformed_json_without_counting_a_contradictio
 
     assert await simulator.next_turn([]) == SimTurn(text="Hi there.")
     assert simulator.contradictions == 0
-    assert [call.seed for call in llm.calls] == [derive_seed(3, "turn", 0, a) for a in (0, 1)]
+    assert [call.seed for call in llm.calls] == [derive_subseed(3, "turn", 0, a) for a in (0, 1)]
     assert "not a valid JSON object" in llm.calls[1].messages[-1].content
 
 

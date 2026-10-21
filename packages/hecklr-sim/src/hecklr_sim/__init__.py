@@ -27,7 +27,7 @@ from hecklr_sim.replay import (
     transcripts_to_scenarios,
 )
 from hecklr_sim.scripted import ScriptedSimulator
-from hecklr_sim.seeds import derive_seed, unit_draw
+from hecklr_sim.seeds import derive_subseed, unit_draw
 from hecklr_sim.strategies import (
     BUILTIN_STRATEGIES,
     CROSS_CUSTOMER_DATA_PROBE,
@@ -57,7 +57,7 @@ __all__ = [
     "SimDecision",
     "SimulatorError",
     "SimulatorSettings",
-    "derive_seed",
+    "derive_subseed",
     "extract_scenario",
     "grounded_facts",
     "load_conversations",

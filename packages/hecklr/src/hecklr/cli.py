@@ -1,37 +1,23 @@
 """The ``hecklr`` command-line entry point.
 
-Wave 0 ships the command surface from the spec so scripts and docs can target stable names. Each
-command except ``version`` is a stub that fails loudly until its workstream (WS7 and others)
-implements it.
+Each command lives in its own module under ``hecklr.commands`` and is registered here, so
+workstreams adding commands touch one new file and one line. Commands not built yet are stubs
+(``hecklr.commands.stubs``) that exit with ``EX_UNAVAILABLE``.
 """
 
-from collections.abc import Callable
-from typing import Final
+import logging
+import sys
+from typing import Annotated, Any
 
+import structlog
 import typer
-from rich.console import Console
 
 from hecklr import __version__
-
-# EX_UNAVAILABLE from sysexits.h: distinct from the gate's 0-3 codes, so a stub can never be
-# mistaken for a pass, a regression or an inconclusive verdict.
-NOT_IMPLEMENTED_EXIT_CODE: Final = 69
-
-# Command name -> one-line help, in the order the spec lists them.
-PLANNED_COMMANDS: Final[dict[str, str]] = {
-    "init": "Interactive setup: write hecklr.yaml, a starter world, scenarios and personas.",
-    "run": "Run a suite against the agent and write results.",
-    "compare": "Statistical comparison of two runs.",
-    "gate": "Compare against the stored baseline and set the CI exit code.",
-    "report": "Build HTML, Markdown, JSON or JUnit output for a run.",
-    "replay": "Convert real transcripts into replay scenarios.",
-    "mine": "Mine production logs into failure clusters and proposed scenarios.",
-    "fix": "Generate and validate prompt patches for a failure cluster.",
-    "calibrate": "Self-tests: A/A false-positive rate, judge agreement, voice loopback.",
-    "bench": "Run or reproduce the public voice benchmark.",
-    "ui": "Start the local web UI.",
-    "doctor": "Check keys, audio dependencies, ports and agent reachability.",
-}
+from hecklr.commands import stubs
+from hecklr.commands.doctor import doctor
+from hecklr.commands.init import init
+from hecklr.commands.replay import replay
+from hecklr.commands.run import run
 
 app = typer.Typer(
     name="hecklr",
@@ -39,7 +25,37 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
-_stderr = Console(stderr=True)
+
+
+@app.callback()
+def configure(
+    verbose: Annotated[
+        int, typer.Option("--verbose", "-v", count=True, help="Show harness logs (-vv: debug).")
+    ] = 0,
+) -> None:
+    """The crash-test lab for conversational AI agents."""
+    configure_logging(verbose)
+
+
+def configure_logging(verbosity: int) -> None:
+    """Harness logs go to stderr: warnings by default, ``-v`` info, ``-vv`` debug."""
+    level = (logging.WARNING, logging.INFO, logging.DEBUG)[min(verbosity, 2)]
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="%H:%M:%S"),
+            structlog.dev.ConsoleRenderer(colors=False),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(level),
+        # Looked up on every call, so lines written during the live progress display go through
+        # Rich's redirected stderr instead of tearing the progress bar.
+        logger_factory=_stderr_logger,
+    )
+
+
+def _stderr_logger(*args: Any) -> structlog.PrintLogger:
+    return structlog.PrintLogger(sys.stderr)
 
 
 @app.command()
@@ -48,22 +64,13 @@ def version() -> None:
     typer.echo(__version__)
 
 
-def _make_stub(name: str) -> Callable[[typer.Context], None]:
-    def stub(ctx: typer.Context) -> None:
-        _stderr.print(f"[bold red]hecklr {name}[/] is not implemented yet (Hecklr {__version__}).")
-        raise typer.Exit(code=NOT_IMPLEMENTED_EXIT_CODE)
-
-    return stub
-
-
-for _name, _help in PLANNED_COMMANDS.items():
-    # Accept any arguments so `hecklr run --suite ci` reports "not implemented" instead of a
-    # usage error that would suggest the flag is wrong.
-    app.command(
-        name=_name,
-        help=_help,
-        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-    )(_make_stub(_name))
+app.command(help="Interactive setup: write hecklr.yaml, a starter world, scenarios and personas.")(
+    init
+)
+app.command(help="Run a suite against the agent and write results.")(run)
+app.command(help="Convert real transcripts into replay scenarios.")(replay)
+app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
+stubs.register(app)
 
 
 def main() -> None:

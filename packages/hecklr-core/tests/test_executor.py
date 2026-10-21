@@ -19,11 +19,11 @@ from structlog.testing import capture_logs
 
 from hecklr_core import (
     Collaborators,
-    CriterionGrader,
     ResultStore,
     RetryPolicy,
     RunExecutor,
     Suite,
+    TrialGrader,
     extend_matrix,
     is_retryable,
     load_project,
@@ -51,7 +51,6 @@ from hecklr_schemas import (
     Message,
     Run,
     RunStatus,
-    Scenario,
     ScenarioLimits,
     SessionContext,
     SimEnd,
@@ -253,14 +252,23 @@ class PricedLLM:
         )
 
 
-def graders_for(*graders: FakeGrader) -> Callable[[Scenario], list[CriterionGrader]]:
-    def factory(scenario: Scenario) -> list[CriterionGrader]:
-        return [
-            CriterionGrader(grader, index if index < len(scenario.success) else None)
-            for index, grader in enumerate(graders)
-        ]
+def graders_for(*graders: FakeGrader) -> TrialGrader:
+    """Grades like ``hecklr_grade.grade_trial`` minus its error handling: grader i answers
+    criterion i, extra graders are diagnostics."""
 
-    return factory
+    async def grade(ctx: GradeContext) -> list[Grade]:
+        grades = []
+        for index, grader in enumerate(graders):
+            criterion_index = index if index < len(ctx.scenario.success) else None
+            bound = dataclasses.replace(
+                ctx,
+                criterion=ctx.scenario.success[index] if criterion_index is not None else None,
+                criterion_index=criterion_index,
+            )
+            grades.append(await grader.grade(bound))
+        return grades
+
+    return grade
 
 
 def make_collaborators(
@@ -279,7 +287,7 @@ def make_collaborators(
         simulator_factory=fake_simulator_factory,
         simulator_llm=model,
         judge_llm=model,
-        grader_factory=graders_for(*graders),
+        grade_trial=graders_for(*graders),
     )
 
 
@@ -558,28 +566,34 @@ async def test_hung_trial_hits_the_hard_deadline(tmp_path: Path, ci_suite: Suite
 
 
 @pytest.mark.anyio
-async def test_failing_grader_becomes_an_error_grade(tmp_path: Path, ci_suite: Suite) -> None:
-    collaborators = make_collaborators(graders=[FakeGrader(raises=True), FakeGrader(name="ok")])
+async def test_trial_grader_gets_an_unbound_metered_context_and_its_grades_are_stored(
+    tmp_path: Path, ci_suite: Suite
+) -> None:
+    contexts: list[GradeContext] = []
+    inner = graders_for(FakeGrader(name="first"), FakeGrader(name="second"))
+
+    async def grade(ctx: GradeContext) -> list[Grade]:
+        contexts.append(ctx)
+        return list(await inner(ctx))
+
+    collaborators = dataclasses.replace(make_collaborators(), grade_trial=grade)
     final, store = await _execute(tmp_path, ci_suite, collaborators)
     results = await store.load_run(final.id)
     store.close()
-    assert final.status is RunStatus.COMPLETED
-    errors = [g for g in results.grades if g.grader == "fake"]
-    assert len(errors) == 4
-    assert {(g.status, g.passed, g.rationale) for g in errors} == {
-        ("error", False, "ValueError: grader bug")
-    }
-    assert all(g.passed for g in results.grades if g.grader == "ok")
+    assert len(contexts) == len(results.trials) == 4
+    assert {(ctx.criterion, ctx.criterion_index) for ctx in contexts} == {(None, None)}
+    assert all(ctx.llm is not None and ctx.judge_model == "fake/judge" for ctx in contexts)
+    assert [g.grader for g in results.grades] == ["first", "second"] * 4
 
 
 @pytest.mark.anyio
-async def test_broken_grader_factory_fails_the_run_and_records_it(
+async def test_failing_trial_grader_fails_the_run_and_records_it(
     tmp_path: Path, ci_suite: Suite
 ) -> None:
-    def broken(scenario: Scenario) -> list[CriterionGrader]:
+    async def broken(ctx: GradeContext) -> list[Grade]:
         raise KeyError("unknown rubric")
 
-    collaborators = dataclasses.replace(make_collaborators(), grader_factory=broken)
+    collaborators = dataclasses.replace(make_collaborators(), grade_trial=broken)
     store = ResultStore(tmp_path / "runs")
     run = _planned(ci_suite)
     with pytest.raises(ExceptionGroup) as caught:
