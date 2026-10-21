@@ -235,7 +235,8 @@ VOICE_CASES = [
         # Measured against Pipecat 1.13's SmallWebRTC receive path (aiortc on the bot side):
         # the bot hears ~110 ms less of each utterance and one reply in a long call arrives
         # ~150 ms later than the rest. The same caller track looped through plain aiortc keeps
-        # every edge within 10 ms (tests/voice/test_pipecat.py), so this is the bot's side.
+        # every edge within 10 ms (tests/voice/test_pipecat.py), so this is the bot's side:
+        # https://github.com/ebenbaruk/hecklr/issues/27
         jitter_ms=200.0,
         caller_loss_ms=150.0,
         timing_needs_idle_cpu=True,

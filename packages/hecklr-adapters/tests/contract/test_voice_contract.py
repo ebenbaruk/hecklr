@@ -3,8 +3,8 @@
 Covers connecting, caller audio reaching the agent at its rate, agent audio delivered as 16 kHz
 real-time frames, SC4 (response latency and barge-in reaction measured by the real
 ``VoiceDriver`` within 20 ms of the agent's injected timing, over a real transport), agent
-hang-up, agent failure, a silent agent, clean hang-up, and an event loop left free
-(spec "Agent adapters", "Calibration and self-tests"; WS10).
+hang-up, agent failure, a new call after a failed one, a silent agent, clean hang-up, and an
+event loop left free (spec "Agent adapters", "Calibration and self-tests"; WS10).
 """
 
 import dataclasses
@@ -256,6 +256,21 @@ async def test_ws10_contract_agent_failure_mid_call_is_an_agent_error(case: Voic
     ) as agent:
         result, _ = await drive(agent.target)
     assert result.status == "agent_error", result
+
+
+async def test_ws10_contract_target_places_a_new_call_after_a_failed_one(case: VoiceCase) -> None:
+    """A failed call leaves the target usable: the next trial connects and talks normally."""
+    async with case.agent(
+        reply=synthetic_reply(SHORT_REPLY),
+        reply_after_ms=300,
+        hang_up_after=1,
+        fail_after_replies=1 if case.can_fail else None,
+    ) as agent:
+        first, _ = await drive(agent.target)
+        second, sink = await drive(agent.target)
+    assert first.status == ("agent_error" if case.can_fail else "ok"), first
+    assert (second.status, second.end_reason) == ("ok", EndReason.AGENT_ENDED), second
+    assert len(sink.utterances("agent")) == 1
 
 
 async def test_ws10_contract_silent_agent_times_out(case: VoiceCase) -> None:

@@ -300,7 +300,8 @@ class WebSocketAgent:
     rhythm: Rhythm
     make_brain: Callable[[], LoopbackBrain]
     fail_after_replies: int | None = None
-    """Close abnormally (1011) once this many replies have started."""
+    """Close the first call abnormally (1011) once this many replies have started; later
+    calls run normally, so the contract can check a target places a new call after a failure."""
     calls: list[CallLog] = field(default_factory=list)
 
 
@@ -360,7 +361,7 @@ async def _converse(agent: WebSocketAgent, log: CallLog, connection: ServerConne
         scope.cancel()
 
     async def talk() -> None:
-        if agent.fail_after_replies is not None:
+        if agent.fail_after_replies is not None and log is agent.calls[0]:
             failing_after = agent.fail_after_replies
             await poll_until(lambda: len(brain.replies) >= failing_after)
             await sleep_until(brain.replies[-1].start_ms + 100)

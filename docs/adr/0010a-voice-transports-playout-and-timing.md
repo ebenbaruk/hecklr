@@ -53,6 +53,20 @@ their own queues; and a burst `clear`s when the caller barges in. SC4 asks for Â
   skip inside a parallel (xdist) run, because jitter buffers and the in-process reference bots
   react to CPU load; they run serially (`pytest .../test_voice_contract.py`).
 
+- **`TimedFrame.t_ms` counts from connect, not from the trial start.** The frozen schema
+  describes it as trial-clock time, but `SessionContext` carries no trial origin, so an adapter
+  cannot know it. Adapters stamp milliseconds since `connect` on their own monotonic clock (as
+  `hecklr-voice`'s in-process loopback does); the driver times everything from `sample_index`
+  and its own clock and does not read `t_ms`. Filling it with true trial time needs the origin
+  in `SessionContext` (a schema RFC), worth doing only when a consumer needs it.
+- **Hang-up always releases the transport.** The goodbye message may fail or be cancelled (the
+  driver bounds hang-ups at 5 s); closing the socket, peer connection or room and stopping the
+  reading task run in a `finally`, shielded and bounded (`RELEASE_TIMEOUT_S`, and websockets'
+  `close_timeout` of 1 s, since it advises against cancelling `close()`).
+- **Pipecat negotiation uses the trial's `timeout_s`** for the offer POST: the frozen
+  `PipecatAdapterConfig` has no timeout field, and the per-reply deadline is the longest a
+  caller should wait for the line to pick up.
+
 ## Consequences
 
 - WebSocket SC4 holds over real sockets for raw PCM (16 and 24 kHz), Twilio and Pipecat

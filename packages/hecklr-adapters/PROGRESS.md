@@ -43,8 +43,19 @@ Owner: WS6 (chat), WS10 (voice). Spec: `docs/SPEC.md` → "Agent adapters". ADRs
   WebSocket pcm 16 kHz 0-12 ms, pcm 24 kHz burst 1-18 ms, Twilio 2-18 ms, Pipecat protobuf
   1-12 ms; LiveKit 80-170 ms transport delay idle (up to ~340 ms on a loaded machine), spread
   < 60 ms; Pipecat SmallWebRTC ~210 ms. WebRTC SC4 tests skip under xdist (load-sensitive) and
-  run serially.
-- Unit tests `tests/voice/`: audio, playout, wire, websocket, pipecat, factory.
+  run serially. CI runs the suite only under xdist, so **SC4 over LiveKit and SmallWebRTC is
+  verified manually** (`uv run pytest packages/hecklr-adapters/tests/contract/test_voice_contract.py`
+  on an idle machine with Docker); WebSocket SC4 runs in CI. A serial CI step needs Docker and
+  an idle runner and belongs with the CI owner.
+- Unit tests `tests/voice/`: audio, playout, wire, websocket, pipecat, livekit, factory.
+- Review round 1: hang-up always releases the transport (socket, peer connection, room, reading
+  task) even when the goodbye fails or is cancelled (`test_hangup_releases_the_socket_when_the_goodbye_fails`,
+  `test_a_cancelled_hangup_still_releases_the_socket`,
+  `test_hangup_closes_the_peer_connection_even_when_a_step_fails`,
+  `test_hangup_leaves_the_room_even_when_a_step_fails`); contract case
+  `test_ws10_contract_target_places_a_new_call_after_a_failed_one` (all 6 transports); the
+  LiveKit reference agent leaves its rooms when cancelled; Pipecat negotiation uses
+  `ctx.timeout_s`; `TimedFrame.t_ms` origin recorded in ADR 0010a.
 - Package coverage 97% (`uv run pytest packages/hecklr-adapters -n auto
   --cov=packages/hecklr-adapters/src`).
 
@@ -63,7 +74,8 @@ Owner: WS6 (chat), WS10 (voice). Spec: `docs/SPEC.md` → "Agent adapters". ADRs
   utterance, and one reply late in a long call arrives ~150 ms later than the rest. The same
   caller track looped through plain aiortc keeps every edge within 10 ms
   (`test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place`), so it is the bot's receive
-  path; the case carries wider allowances. Run them with
+  path; the case carries wider allowances. Tracked in
+  [#27](https://github.com/ebenbaruk/hecklr/issues/27). Run them with
   `uv run pytest packages/hecklr-adapters/tests/contract/test_voice_contract.py`.
 - An async function-scoped fixture that started the DSP pool (`warm_dsp_pool`) left the next
   test with dead worker processes (`BrokenWorkerProcess`); the driver warms the pool itself, so

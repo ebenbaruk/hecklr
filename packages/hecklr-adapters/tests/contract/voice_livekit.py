@@ -11,7 +11,6 @@ LiveKit agents do.
 """
 
 import asyncio
-import concurrent.futures
 import contextlib
 import shutil
 import socket
@@ -151,6 +150,15 @@ class LiveKitAgent:
             .to_jwt()
         )
         await room.connect(self.server.url, token)
+        try:
+            await self._converse(room)
+        finally:
+            # Leave even when the worker is cancelled at the end of a test: a room left
+            # connected keeps reconnecting to a server that is about to stop.
+            with anyio.move_on_after(5, shield=True):
+                await room.disconnect()
+
+    async def _converse(self, room: rtc.Room) -> None:
         caller = await _first_caller(room)
         log = CallLog(self.make_brain(), caller.attributes.get("hecklr.trial_id"))
         log.brain.media_clock = False
@@ -179,13 +187,15 @@ class LiveKitAgent:
         async def clear() -> None:
             source.clear_queue()
 
-        async with anyio.create_task_group() as group:
-            group.start_soon(_listen, caller, log.brain)
-            group.start_soon(_cancel_on, left, group.cancel_scope)
-            await speak(log.brain, Voice(self.rhythm, AGENT_RATE, send, clear))
-            group.cancel_scope.cancel()
-        await room.disconnect()
-        await source.aclose()
+        try:
+            async with anyio.create_task_group() as group:
+                group.start_soon(_listen, caller, log.brain)
+                group.start_soon(_cancel_on, left, group.cancel_scope)
+                await speak(log.brain, Voice(self.rhythm, AGENT_RATE, send, clear))
+                group.cancel_scope.cancel()
+        finally:
+            with anyio.move_on_after(5, shield=True):
+                await source.aclose()
 
 
 async def _cancel_on(event: anyio.Event, scope: anyio.CancelScope) -> None:
@@ -206,20 +216,37 @@ async def _listen(caller: rtc.RemoteParticipant, brain: LoopbackBrain) -> None:
             await anyio.sleep(0.01)
     track = next(pub.track for pub in caller.track_publications.values() if pub.track)
     stream = rtc.AudioStream.from_track(track=track, sample_rate=AGENT_RATE, num_channels=1)
-    async for event in stream:
-        samples = np.frombuffer(event.frame.data, dtype=np.int16).copy()
-        brain.hear(samples, AGENT_RATE, now_ms())
+    try:
+        async for event in stream:
+            samples = np.frombuffer(event.frame.data, dtype=np.int16).copy()
+            brain.hear(samples, AGENT_RATE, now_ms())
+    finally:
+        with anyio.move_on_after(5, shield=True):
+            await stream.aclose()
 
 
 @contextlib.contextmanager
 def run_livekit_agent(agent: LiveKitAgent) -> Iterator[None]:
-    """Run the agent worker on its own loop for the duration of the block."""
+    """Run the agent worker on its own loop for the duration of the block.
+
+    The worker is stopped from inside its loop and waited for: cancelling the cross-thread
+    future would report it done at once, and stopping the loop then would cut the rooms'
+    clean-up short, leaving them connected (reconnecting to a stopped server) and subscribed
+    to LiveKit's event queue on a closed loop.
+    """
     thread = AgentThread()
-    task = asyncio.run_coroutine_threadsafe(agent.run(), thread.loop)
+    stop = asyncio.Event()
+
+    async def run_until_stopped() -> None:
+        async with anyio.create_task_group() as group:
+            group.start_soon(agent.run)
+            await stop.wait()
+            group.cancel_scope.cancel()
+
+    done = asyncio.run_coroutine_threadsafe(run_until_stopped(), thread.loop)
     try:
         yield
     finally:
-        task.cancel()
-        with contextlib.suppress(concurrent.futures.CancelledError):
-            task.result(timeout=10)
+        thread.loop.call_soon_threadsafe(stop.set)
+        done.result(timeout=15)
         thread.stop()
