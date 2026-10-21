@@ -166,7 +166,9 @@ def test_a_crashing_suite_runs_once_and_fails_every_scenario(
 
     result.assert_outcomes(failed=5)
     assert calls == ["ci"]
-    assert result.stdout.str().count("the suite run failed: RuntimeError: driver lost") == 5
+    # One failure section per scenario, each with the remembered error (the short summary line
+    # may repeat it, depending on terminal width).
+    assert result.outlines.count("the suite run failed: RuntimeError: driver lost") == 5
 
 
 def test_a_run_that_did_not_complete_fails_every_scenario(
