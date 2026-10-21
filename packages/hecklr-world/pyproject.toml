@@ -7,7 +7,14 @@ requires-python = ">=3.12"
 license = "Apache-2.0"
 authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
-    "hecklr-schemas",
+    "hecklr-schemas>=0.1,<0.2",
+    "anyio>=4.10",
+    "fastapi>=0.156,<1",
+    "jsonschema>=4.26,<5",
+    "mcp>=2.3,<3",
+    "pyyaml>=6.0",
+    "structlog>=25.4",
+    "uvicorn>=0.54,<1",
 ]
 
 [build-system]
@@ -16,3 +23,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hecklr_world"]
+
+[dependency-groups]
+dev = [
+    "types-jsonschema>=4.26.0.20261006",
+]
