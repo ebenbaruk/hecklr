@@ -1,0 +1,296 @@
+"""``analyze``: one stored run (and optionally its baseline) to a renderable ``Analysis``.
+
+Statistics come from ``hecklr_stats`` (pass rates, pass^k, pass@k, latency quantiles, paired
+comparisons and verdicts); this module converts stored results into its inputs and adds what only
+a report needs: flipped scenarios grouped by cause, exclusion counts, voice slices, judge trust
+and latency comparisons.
+"""
+
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+
+from hecklr_core import RunResults
+from hecklr_report.latency import compare_latencies
+from hecklr_report.model import (
+    Analysis,
+    FailureCause,
+    FlipDirection,
+    FlipGroup,
+    JudgeTrust,
+    RunInfo,
+    ScenarioResult,
+    TrialRow,
+    VoiceSection,
+)
+from hecklr_report.outcomes import ACCENT, SNR_DB, ConvertedRun, convert
+from hecklr_report.voice import SNR_ORDER, degradation, mean_estimate, voice_metrics
+from hecklr_schemas import (
+    Channel,
+    Event,
+    MetricSummary,
+    Persona,
+    RunId,
+    RunStatus,
+    Scenario,
+    StatsConfig,
+)
+from hecklr_stats import JudgeCalibration, compare_runs, summarize_run, wilson_estimate
+
+COST_PER_TRIAL = "cost_usd_per_trial"
+"""Mean simulator and judge spend per conversation, with a bootstrap interval."""
+
+_BROKEN_RUN = (RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.PENDING, RunStatus.RUNNING)
+
+
+def analyze(
+    candidate: RunResults,
+    baseline: RunResults | None,
+    stats: StatsConfig,
+    scenarios: Mapping[str, Scenario],
+    *,
+    personas: Mapping[str, Persona] | None = None,
+    judge_calibrations: Sequence[JudgeCalibration] = (),
+) -> Analysis:
+    """Analyze ``candidate``, compared with ``baseline`` when one is given.
+
+    Args:
+        candidate: The run under test.
+        baseline: The run to compare against, or ``None`` for a single-run report.
+        stats: Significance level, minimum effect, resamples and seed (the candidate run's seed
+            when ``stats.seed`` is ``None``).
+        scenarios: Scenario definitions by id, for titles, tags and failure causes. Trials of a
+            scenario missing here are still analyzed, without tags.
+        personas: Persona definitions by id; voice trials are sliced by SNR bucket and accent only
+            when their persona is given.
+        judge_calibrations: Agreement of judge rubrics with human labels, when available; rubrics
+            below κ 0.70 are flagged untrusted.
+    """
+    known_personas = personas or {}
+    seed = stats.seed if stats.seed is not None else candidate.run.seed
+    cand = convert(candidate, scenarios, known_personas)
+    base = convert(baseline, scenarios, known_personas) if baseline is not None else None
+    problems = _problems(candidate, cand, baseline, base)
+
+    summaries = _summaries(candidate, cand, stats, seed)
+    baseline_summaries: list[MetricSummary] = []
+    comparisons = []
+    if baseline is not None and base is not None:
+        base_seed = stats.seed if stats.seed is not None else baseline.run.seed
+        baseline_summaries = _summaries(baseline, base, stats, base_seed)
+        if not problems:
+            comparisons = compare_runs(
+                base.outcomes,
+                cand.outcomes,
+                baseline_run=baseline.run.id,
+                candidate_run=candidate.run.id,
+                config=stats,
+                seed=seed,
+            ) + compare_latencies(
+                base.outcomes,
+                cand.outcomes,
+                baseline_run=baseline.run.id,
+                candidate_run=candidate.run.id,
+                config=stats,
+                seed=seed,
+            )
+    scenario_results = _scenario_results(cand.rows, base.rows if base else None, scenarios)
+    return Analysis(
+        created_at=datetime.now(UTC),
+        candidate=RunInfo.of(candidate.run),
+        baseline=RunInfo.of(baseline.run) if baseline is not None else None,
+        stats=stats,
+        seed=seed,
+        counts=cand.counts,
+        baseline_counts=base.counts if base is not None else None,
+        summaries=summaries,
+        baseline_summaries=baseline_summaries,
+        comparisons=comparisons,
+        verdict=comparisons[0].verdict if comparisons else None,
+        scenarios=scenario_results,
+        flips=_flip_groups(scenario_results),
+        voice=_voice(candidate, cand, summaries, baseline_summaries, stats, seed),
+        judges=[_trust(c) for c in judge_calibrations],
+        trials=cand.rows,
+        problems=problems,
+    )
+
+
+def _problems(
+    candidate: RunResults,
+    cand: ConvertedRun,
+    baseline: RunResults | None,
+    base: ConvertedRun | None,
+) -> list[str]:
+    """Reasons the analysis cannot decide a gate (any of them makes the gate exit 3)."""
+    problems = []
+    if candidate.run.status in _BROKEN_RUN:
+        problems.append(f"candidate run {candidate.run.id} is {candidate.run.status.value}")
+    if not cand.outcomes:
+        problems.append("no trial of the candidate run could be analyzed")
+    if baseline is None or base is None:
+        return problems
+    if baseline.run.status in _BROKEN_RUN:
+        problems.append(f"baseline run {baseline.run.id} is {baseline.run.status.value}")
+    if not base.outcomes:
+        problems.append("no trial of the baseline run could be analyzed")
+    shared = {o.scenario_id for o in cand.outcomes} & {o.scenario_id for o in base.outcomes}
+    if cand.outcomes and base.outcomes and not shared:
+        problems.append("the candidate and baseline runs share no analyzable scenario")
+    return problems
+
+
+def _summaries(
+    results: RunResults, converted: ConvertedRun, stats: StatsConfig, seed: int
+) -> list[MetricSummary]:
+    if not converted.outcomes:
+        return []
+    summaries = summarize_run(
+        converted.outcomes,
+        run_id=results.run.id,
+        seed=seed,
+        resamples=stats.bootstrap_resamples,
+    )
+    costs = [float(r.cost_usd) for r in converted.rows if r.excluded != "harness_error"]
+    if costs:
+        summaries.append(
+            MetricSummary(
+                run_id=results.run.id,
+                metric=COST_PER_TRIAL,
+                estimate=mean_estimate(costs, seed=seed, resamples=stats.bootstrap_resamples),
+            )
+        )
+    return summaries
+
+
+def _scenario_results(
+    rows: Sequence[TrialRow],
+    baseline_rows: Sequence[TrialRow] | None,
+    scenarios: Mapping[str, Scenario],
+) -> list[ScenarioResult]:
+    by_scenario = _group(rows)
+    base_by_scenario = _group(baseline_rows or [])
+    results = []
+    for sid in sorted(by_scenario):
+        cand_rows = [r for r in by_scenario[sid] if r.passed is not None]
+        base_rows = [r for r in base_by_scenario.get(sid, []) if r.passed is not None]
+        passes = sum(1 for r in cand_rows if r.passed)
+        flip = _flip(cand_rows, base_rows) if baseline_rows is not None else None
+        failing_side = base_rows if flip == "fail_to_pass" else cand_rows
+        scenario = scenarios.get(sid)
+        results.append(
+            ScenarioResult(
+                scenario_id=sid,
+                title=scenario.title if scenario is not None else sid,
+                tags=list(scenario.tags) if scenario is not None else [],
+                trials=len(cand_rows),
+                passes=passes,
+                pass_rate=wilson_estimate(passes, len(cand_rows)) if cand_rows else None,
+                baseline_pass_rate=(
+                    wilson_estimate(sum(1 for r in base_rows if r.passed), len(base_rows))
+                    if base_rows
+                    else None
+                ),
+                flip=flip,
+                cause=_dominant_cause(failing_side),
+            )
+        )
+    return results
+
+
+def _group(rows: Sequence[TrialRow]) -> dict[str, list[TrialRow]]:
+    grouped: dict[str, list[TrialRow]] = {}
+    for row in rows:
+        grouped.setdefault(row.scenario_id, []).append(row)
+    return grouped
+
+
+def _majority_passes(rows: Sequence[TrialRow]) -> bool:
+    # Same rule as ``hecklr_stats.allocate_trials``: passing at least half the trials.
+    return 2 * sum(1 for r in rows if r.passed) >= len(rows)
+
+
+def _flip(cand: Sequence[TrialRow], base: Sequence[TrialRow]) -> FlipDirection | None:
+    if not cand or not base:
+        return None
+    before, after = _majority_passes(base), _majority_passes(cand)
+    if before and not after:
+        return "pass_to_fail"
+    if after and not before:
+        return "fail_to_pass"
+    return None
+
+
+def _dominant_cause(rows: Sequence[TrialRow]) -> FailureCause | None:
+    """The cause behind most failed trials of ``rows``, with its first rationale."""
+    causes = [cause for row in rows if row.passed is False for cause in row.causes]
+    if not causes:
+        return None
+    tally = Counter(cause.cause for cause in causes)
+    top = min(tally, key=lambda name: (-tally[name], name))
+    rationale = next((c.rationale for c in causes if c.cause == top and c.rationale), None)
+    return FailureCause(cause=top, rationale=rationale)
+
+
+_UNKNOWN_CAUSE = "no failing criterion recorded"
+
+
+def _flip_groups(results: Sequence[ScenarioResult]) -> list[FlipGroup]:
+    """Flipped scenarios grouped by direction and cause, biggest groups first (US-05)."""
+    groups: dict[tuple[FlipDirection, str], list[ScenarioResult]] = {}
+    for result in results:
+        if result.flip is not None:
+            cause = result.cause.cause if result.cause is not None else _UNKNOWN_CAUSE
+            groups.setdefault((result.flip, cause), []).append(result)
+    ordered = sorted(
+        groups.items(),
+        key=lambda item: (item[0][0] != "pass_to_fail", -len(item[1]), item[0][1]),
+    )
+    return [
+        FlipGroup(
+            direction=direction,
+            cause=cause,
+            scenario_ids=[m.scenario_id for m in members],
+            rationale=next(
+                (m.cause.rationale for m in members if m.cause and m.cause.rationale), None
+            ),
+        )
+        for (direction, cause), members in ordered
+    ]
+
+
+def _voice(
+    candidate: RunResults,
+    cand: ConvertedRun,
+    summaries: Sequence[MetricSummary],
+    baseline_summaries: Sequence[MetricSummary],
+    stats: StatsConfig,
+    seed: int,
+) -> VoiceSection | None:
+    if not any(r.channel is Channel.VOICE and r.excluded != "harness_error" for r in cand.rows):
+        return None
+    events: dict[str, list[Event]] = {}
+    for event in candidate.events:
+        events.setdefault(event.trial_id, []).append(event)
+    return VoiceSection(
+        degradation=degradation(SNR_DB, SNR_ORDER, cand.outcomes, summaries, baseline_summaries),
+        by_accent=degradation(ACCENT, None, cand.outcomes, summaries, baseline_summaries),
+        metrics=voice_metrics(
+            cand.rows,
+            events,
+            run_id=RunId(candidate.run.id),
+            seed=seed,
+            resamples=stats.bootstrap_resamples,
+        ),
+    )
+
+
+def _trust(calibration: JudgeCalibration) -> JudgeTrust:
+    return JudgeTrust(
+        grader=calibration.grader,
+        grader_version=calibration.grader_version,
+        judge_model=calibration.judge_model,
+        n=calibration.n,
+        kappa=calibration.kappa,
+        trusted=calibration.trusted,
+    )
