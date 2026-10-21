@@ -1,0 +1,22 @@
+[project]
+name = "hecklr-voice"
+version = "0.1.0"
+description = "Hecklr voice engine: audio pipeline, impairments, turn-taking, voice metrics."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Eli Benbaruk" }]
+dependencies = [
+    "hecklr-schemas",
+]
+
+[project.optional-dependencies]
+# Local TTS/ASR models (Kokoro, Piper, faster-whisper); filled by WS9.
+local = []
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hecklr_voice"]

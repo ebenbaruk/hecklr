@@ -1,0 +1,18 @@
+[project]
+name = "hecklr-llm"
+version = "0.1.0"
+description = "LLM provider layer for Hecklr: Anthropic, OpenAI-compatible, FakeLLM, response cache."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Eli Benbaruk" }]
+dependencies = [
+    "hecklr-schemas",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hecklr_llm"]

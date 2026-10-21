@@ -1,0 +1,130 @@
+# Virtual workspace root: it holds shared tooling config and the dev group, and is never built.
+# Every installable unit lives in packages/*.
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+hecklr = { workspace = true }
+hecklr-schemas = { workspace = true }
+hecklr-core = { workspace = true }
+hecklr-llm = { workspace = true }
+hecklr-sim = { workspace = true }
+hecklr-world = { workspace = true }
+hecklr-channels = { workspace = true }
+hecklr-voice = { workspace = true }
+hecklr-adapters = { workspace = true }
+hecklr-grade = { workspace = true }
+hecklr-stats = { workspace = true }
+hecklr-report = { workspace = true }
+hecklr-mine = { workspace = true }
+hecklr-fix = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "anyio>=4.10",
+    "hypothesis>=6.140",
+    "mypy>=1.18",
+    "pre-commit>=4.3",
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+    "pytest-socket>=0.8.1",
+    "pytest-xdist>=3.8",
+    "pyyaml>=6.0",
+    "ruff>=0.14",
+    "types-pyyaml>=6.0",
+]
+
+# --- ruff ---------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# The spec is the source of truth and is never rewritten by tooling.
+extend-exclude = ["ui", "docs/SPEC.md"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "N",       # pep8-naming
+    "UP",      # pyupgrade
+    "B",       # bugbear
+    "SIM",     # simplify
+    "RUF",     # ruff-specific
+    "ASYNC",   # async pitfalls
+    "PT",      # pytest style
+    "C4",      # comprehensions
+    "PIE",
+    "RET",
+    "PTH",     # pathlib
+    "T20",     # no print in library code
+    "BLE",     # no blind except
+    "S",       # bandit subset (eval, hardcoded secrets, ...)
+    "D",       # docstrings on public API
+]
+ignore = [
+    "D105",  # magic methods document themselves
+    "D107",  # __init__ is documented on the class
+    "D203",  # conflicts with D211
+    "D213",  # conflicts with D212
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["D", "S101", "S105", "S106", "S311", "T20"]
+"tests/**" = ["D", "S101", "S105", "S106", "S311", "T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "hecklr", "hecklr_schemas", "hecklr_core", "hecklr_llm", "hecklr_sim", "hecklr_world",
+    "hecklr_channels", "hecklr_voice", "hecklr_adapters", "hecklr_grade", "hecklr_stats",
+    "hecklr_report", "hecklr_mine", "hecklr_fix",
+]
+
+# --- mypy ---------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+# --- pytest -------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+# importlib mode lets every package keep its own tests/ and conftest.py without name clashes.
+# Sockets are blocked so unit tests cannot reach the network (AF_UNIX stays open for the asyncio
+# self-pipe); tests marked `live` get them back in conftest.py.
+addopts = [
+    "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live", "-ra",
+    "--disable-socket", "--allow-unix-socket",
+]
+testpaths = ["packages", "tests"]
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+    "live: calls a real model or service; opt in with -m live, capped by HECKLR_TEST_BUDGET_USD",
+    "fake: end-to-end test that runs entirely on FakeLLM",
+    "e2e: cross-package end-to-end test",
+    "slow: takes more than a few seconds",
+    "voice: needs the audio pipeline",
+    "perf: performance benchmark (SC2, SC3)",
+]
+
+# --- coverage -----------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["packages"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@overload",
+    "raise NotImplementedError",
+    "\\.\\.\\.$",
+]
