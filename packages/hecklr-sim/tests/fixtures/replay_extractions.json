@@ -1,0 +1,516 @@
+{
+  "prod-88213": {
+    "reply": {
+      "title": "Customer moves a boiler maintenance visit",
+      "goal": "Move Thursday's boiler service to a morning slot next week.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-1042"
+        },
+        {
+          "name": "postcode",
+          "value": "92000"
+        }
+      ],
+      "resolving_tool": "reschedule_appointment",
+      "tags": [
+        "scheduling"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-1042",
+      "postcode": "92000"
+    },
+    "expected_tool": "reschedule_appointment"
+  },
+  "prod-88214": {
+    "reply": {
+      "title": "Customer disputes a duplicate charge",
+      "goal": "Get the duplicate charge refunded.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-2211"
+        },
+        {
+          "name": "invoice_id",
+          "value": "INV-20932"
+        },
+        {
+          "name": "duplicate_invoice",
+          "value": "INV-20931"
+        },
+        {
+          "name": "amount",
+          "value": "89.00 EUR"
+        }
+      ],
+      "resolving_tool": "issue_refund",
+      "tags": [
+        "billing",
+        "refund"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-2211",
+      "invoice_id": "INV-20932",
+      "duplicate_invoice": "INV-20931"
+    },
+    "expected_tool": "issue_refund"
+  },
+  "prod-88215": {
+    "reply": {
+      "title": "Customer reports a gas smell",
+      "goal": "Get urgent help for a gas smell in the kitchen.",
+      "facts": [
+        {
+          "name": "address",
+          "value": "14 Rue des Lilas"
+        }
+      ],
+      "resolving_tool": "escalate_to_human",
+      "tags": [
+        "emergency"
+      ]
+    },
+    "expected_facts": {
+      "address": "14 Rue des Lilas"
+    },
+    "expected_tool": "escalate_to_human"
+  },
+  "prod-88216": {
+    "reply": {
+      "title": "Customer requests an invoice copy",
+      "goal": "Receive a copy of the most recent invoice by email.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-3307"
+        },
+        {
+          "name": "first_name",
+          "value": "Marie"
+        },
+        {
+          "name": "invoice_id",
+          "value": "INV-30410"
+        }
+      ],
+      "resolving_tool": "send_invoice_copy",
+      "tags": [
+        "billing"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-3307",
+      "first_name": "Marie"
+    },
+    "expected_tool": "send_invoice_copy"
+  },
+  "prod-88217": {
+    "reply": {
+      "title": "Customer cancels a maintenance contract",
+      "goal": "Cancel the maintenance contract because of a move abroad.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-4410"
+        },
+        {
+          "name": "reason",
+          "value": "Moving abroad"
+        }
+      ],
+      "resolving_tool": "cancel_contract",
+      "tags": [
+        "contract"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-4410",
+      "reason": "Moving abroad"
+    },
+    "expected_tool": "cancel_contract"
+  },
+  "prod-88218": {
+    "reply": {
+      "title": "Customer books a repair for a leaking radiator",
+      "goal": "Get a technician to fix a leaking radiator as soon as possible, ideally today.",
+      "facts": [
+        {
+          "name": "postcode",
+          "value": "75011"
+        },
+        {
+          "name": "problem",
+          "value": "radiator is leaking"
+        }
+      ],
+      "resolving_tool": "book_appointment",
+      "tags": [
+        "repair",
+        "scheduling"
+      ]
+    },
+    "expected_facts": {
+      "postcode": "75011",
+      "problem": "radiator is leaking"
+    },
+    "expected_tool": "book_appointment"
+  },
+  "prod-88219": {
+    "reply": {
+      "title": "Customer updates a phone number",
+      "goal": "Change the phone number on file.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-5120"
+        },
+        {
+          "name": "new_phone",
+          "value": "06 12 34 56 78"
+        }
+      ],
+      "resolving_tool": "update_customer",
+      "tags": [
+        "account"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-5120",
+      "new_phone": "06 12 34 56 78"
+    },
+    "expected_tool": "update_customer"
+  },
+  "prod-88220": {
+    "reply": {
+      "title": "Customer complains about a missed visit",
+      "goal": "Complain about yesterday's no-show and get a new visit booked.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-6001"
+        },
+        {
+          "name": "waived_fee",
+          "value": "call-out fee"
+        }
+      ],
+      "resolving_tool": "book_appointment",
+      "tags": [
+        "complaint",
+        "scheduling"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-6001"
+    },
+    "expected_tool": "book_appointment"
+  },
+  "prod-88221": {
+    "reply": {
+      "title": "Customer asks about service pricing",
+      "goal": "Find out the price of an annual boiler service and whether seniors get a discount.",
+      "facts": [],
+      "resolving_tool": null,
+      "tags": [
+        "pricing"
+      ]
+    },
+    "expected_facts": {},
+    "expected_tool": null
+  },
+  "prod-88222": {
+    "reply": {
+      "title": "Customer's payment is not recorded",
+      "goal": "Get the transfer payment for an invoice recognized so it no longer shows unpaid.",
+      "facts": [
+        {
+          "name": "invoice_id",
+          "value": "INV-40022"
+        },
+        {
+          "name": "transfer_date",
+          "value": "12 October"
+        },
+        {
+          "name": "ticket",
+          "value": "T-901"
+        }
+      ],
+      "resolving_tool": "create_ticket",
+      "tags": [
+        "billing"
+      ]
+    },
+    "expected_facts": {
+      "invoice_id": "INV-40022",
+      "transfer_date": "12 October"
+    },
+    "expected_tool": "create_ticket"
+  },
+  "prod-88223": {
+    "reply": {
+      "title": "Customer adds a second account contact",
+      "goal": "Add a partner as a second contact on the account.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-7714"
+        },
+        {
+          "name": "contact_name",
+          "value": "Sofia Reyes"
+        },
+        {
+          "name": "contact_email",
+          "value": "sofia.reyes@example.com"
+        }
+      ],
+      "resolving_tool": "add_contact",
+      "tags": [
+        "account"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-7714",
+      "contact_name": "Sofia Reyes",
+      "contact_email": "sofia.reyes@example.com"
+    },
+    "expected_tool": "add_contact"
+  },
+  "prod-88224": {
+    "reply": {
+      "title": "Customer asks for a refund after a failed repair",
+      "goal": "Get a refund for a visit on the 3rd where nothing was fixed.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-8090"
+        },
+        {
+          "name": "visit_date",
+          "value": "the 3rd"
+        }
+      ],
+      "resolving_tool": "issue_refund",
+      "tags": [
+        "refund",
+        "complaint"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-8090",
+      "visit_date": "the 3rd"
+    },
+    "expected_tool": null
+  },
+  "prod-88225": {
+    "reply": {
+      "title": "Customer has no heating with boiler fault F28",
+      "goal": "Get the heating working again; the boiler shows error F28.",
+      "facts": [
+        {
+          "name": "error_code",
+          "value": "F28"
+        },
+        {
+          "name": "postcode",
+          "value": "69003"
+        }
+      ],
+      "resolving_tool": "book_appointment",
+      "tags": [
+        "repair"
+      ]
+    },
+    "expected_facts": {
+      "error_code": "F28",
+      "postcode": "69003"
+    },
+    "expected_tool": "book_appointment"
+  },
+  "prod-88226": {
+    "reply": {
+      "title": "Customer tries to move an appointment to Wednesday afternoon",
+      "goal": "Move Monday's appointment to Wednesday afternoon; no other day works.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-9112"
+        },
+        {
+          "name": "current_day",
+          "value": "Monday"
+        },
+        {
+          "name": "wanted_slot",
+          "value": "Wednesday afternoon"
+        }
+      ],
+      "resolving_tool": "reschedule_appointment",
+      "tags": [
+        "scheduling"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-9112",
+      "current_day": "Monday",
+      "wanted_slot": "Wednesday afternoon"
+    },
+    "expected_tool": null
+  },
+  "prod-88227": {
+    "reply": {
+      "title": "Customer requests a heat pump quote",
+      "goal": "Get a quote for installing a heat pump in a 120 m2 house.",
+      "facts": [
+        {
+          "name": "postcode",
+          "value": "33000"
+        },
+        {
+          "name": "city",
+          "value": "Bordeaux"
+        },
+        {
+          "name": "house_size",
+          "value": "120 m2"
+        },
+        {
+          "name": "surveyor_name",
+          "value": "Paul Martin"
+        }
+      ],
+      "resolving_tool": "book_appointment",
+      "tags": [
+        "sales",
+        "scheduling"
+      ]
+    },
+    "expected_facts": {
+      "postcode": "33000",
+      "city": "Bordeaux",
+      "house_size": "120 m2"
+    },
+    "expected_tool": "book_appointment"
+  },
+  "prod-88228": {
+    "reply": {
+      "title": "Customer claims damage after a visit",
+      "goal": "Get compensation for a kitchen floor scratched during a visit.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-1550"
+        },
+        {
+          "name": "visit_date",
+          "value": "14/10"
+        },
+        {
+          "name": "name",
+          "value": "J. Okafor"
+        }
+      ],
+      "resolving_tool": "create_ticket",
+      "tags": [
+        "complaint",
+        "claims"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-1550",
+      "visit_date": "14/10",
+      "name": "J. Okafor"
+    },
+    "expected_tool": "create_ticket"
+  },
+  "prod-88229": {
+    "reply": {
+      "title": "Customer turns off contract auto-renewal",
+      "goal": "Check whether the contract auto-renews and turn auto-renewal off.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-2675"
+        }
+      ],
+      "resolving_tool": "update_contract",
+      "tags": [
+        "contract"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-2675"
+    },
+    "expected_tool": "update_contract"
+  },
+  "prod-88230": {
+    "reply": {
+      "title": "Customer negotiates a water heater quote",
+      "goal": "Accept the water heater installation quote at a lower price.",
+      "facts": [
+        {
+          "name": "quote_id",
+          "value": "Q-7781"
+        }
+      ],
+      "resolving_tool": "accept_quote",
+      "tags": [
+        "sales"
+      ]
+    },
+    "expected_facts": {
+      "quote_id": "Q-7781"
+    },
+    "expected_tool": "accept_quote"
+  },
+  "prod-88231": {
+    "reply": {
+      "title": "Customer unsubscribes from marketing emails",
+      "goal": "Stop receiving marketing emails.",
+      "facts": [
+        {
+          "name": "email",
+          "value": "lena.k@example.org"
+        }
+      ],
+      "resolving_tool": "unsubscribe",
+      "tags": [
+        "account"
+      ]
+    },
+    "expected_facts": {
+      "email": "lena.k@example.org"
+    },
+    "expected_tool": "unsubscribe"
+  },
+  "prod-88232": {
+    "reply": {
+      "title": "Customer reports a blank thermostat display",
+      "goal": "Fix a wired thermostat whose display has been blank since this morning.",
+      "facts": [
+        {
+          "name": "customer_id",
+          "value": "C-3390"
+        },
+        {
+          "name": "thermostat_type",
+          "value": "wired"
+        }
+      ],
+      "resolving_tool": null,
+      "tags": [
+        "repair"
+      ]
+    },
+    "expected_facts": {
+      "customer_id": "C-3390",
+      "thermostat_type": "wired"
+    },
+    "expected_tool": null
+  }
+}
