@@ -1,10 +1,17 @@
+import logging
+
 import pytest
+import structlog
+import typer
 from typer.testing import CliRunner
 
 import hecklr
-from hecklr.cli import NOT_IMPLEMENTED_EXIT_CODE, PLANNED_COMMANDS, app, main
+from hecklr import exit_codes
+from hecklr.cli import app, configure_logging, main
+from hecklr.commands.stubs import PENDING_COMMANDS
 
 runner = CliRunner()
+IMPLEMENTED = {"init", "run", "replay", "doctor"}
 
 
 def test_version_command_prints_package_version() -> None:
@@ -17,15 +24,15 @@ def test_version_command_prints_package_version() -> None:
 def test_no_arguments_shows_help_listing_every_command() -> None:
     result = runner.invoke(app, [])
 
-    for name in PLANNED_COMMANDS:
+    for name in [*IMPLEMENTED, *PENDING_COMMANDS]:
         assert name in result.output
 
 
-@pytest.mark.parametrize("command", sorted(PLANNED_COMMANDS))
-def test_planned_command_fails_loudly_until_implemented(command: str) -> None:
+@pytest.mark.parametrize("command", sorted(PENDING_COMMANDS))
+def test_pending_command_fails_loudly_until_implemented(command: str) -> None:
     result = runner.invoke(app, [command, "--some-flag", "value"])
 
-    assert result.exit_code == NOT_IMPLEMENTED_EXIT_CODE
+    assert result.exit_code == exit_codes.NOT_IMPLEMENTED
     assert "not implemented yet" in result.output
 
 
@@ -35,7 +42,36 @@ def test_spec_command_surface_is_complete() -> None:
         "mine", "fix", "calibrate", "bench", "ui", "doctor",
     }  # fmt: skip
 
-    assert set(PLANNED_COMMANDS) == spec_commands
+    registered = set(typer.main.get_command(app).commands)  # type: ignore[attr-defined]  # a Typer group
+
+    assert registered == spec_commands | {"version"}
+    assert set(PENDING_COMMANDS) == spec_commands - IMPLEMENTED
+
+
+def test_exit_codes_never_collide_with_the_gate_codes() -> None:
+    gate = {0, 1, 2, 3}
+
+    assert {exit_codes.BUDGET, exit_codes.CONFIG_ERROR, exit_codes.NOT_IMPLEMENTED}.isdisjoint(gate)
+
+
+@pytest.mark.parametrize(
+    ("verbosity", "shown", "hidden"),
+    [(0, logging.WARNING, logging.INFO), (1, logging.INFO, logging.DEBUG), (5, logging.DEBUG, 0)],
+)
+def test_verbosity_sets_the_log_level(
+    verbosity: int, shown: int, hidden: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure_logging(verbosity)
+    log = structlog.get_logger("test")
+
+    log.log(shown, "visible-line", run_id="r1")
+    if hidden:
+        log.log(hidden, "hidden-line")
+
+    err = capsys.readouterr().err
+    assert "visible-line" in err
+    assert "run_id=r1" in err
+    assert "hidden-line" not in err
 
 
 def test_console_script_entry_point_runs_the_app(
