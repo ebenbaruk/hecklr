@@ -1,14 +1,39 @@
-"""Fixtures: starter projects written by ``hecklr init``'s scaffold, run on scripted models."""
+"""Fixtures: starter projects written by ``hecklr init``'s scaffold, run on scripted models, and
+synthetic runs written to a real ``ResultStore`` for ``compare``, ``gate``, ``report`` tests.
+
+A synthetic trial gets one deterministic criterion grade, so a run's pass rates are exactly what
+the test asks for, at any number of scenarios (a starter project has only 5, too few for a
+significant verdict).
+"""
 
 import importlib.util
+import random
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
+import anyio
 import pytest
 import structlog
 
 from hecklr.scaffold import STARTER_AGENT_MODULE, AgentChoice, ModelChoice, write_project
+from hecklr_core import ResultStore
+from hecklr_schemas import (
+    AgentRef,
+    Budget,
+    Channel,
+    Grade,
+    GradeId,
+    Run,
+    RunId,
+    RunStatus,
+    Trial,
+    TrialId,
+    WorldSnapshot,
+    new_id,
+)
 
 FAKE_MODELS = ModelChoice("fake/customer", "fake/judge", "tests")
 
@@ -65,3 +90,108 @@ def http_agent_url() -> Iterator[str]:
     spec.loader.exec_module(module)
     with module.serve_in_thread() as url:
         yield url
+
+
+# --- synthetic stored runs ------------------------------------------------------------------
+
+_START = datetime(2026, 10, 21, 9, 0, tzinfo=UTC)
+_EMPTY_WORLD = WorldSnapshot(world_id="acme-starter", taken_at_ms=0, collections={})
+
+
+def store_run(
+    runs_dir: Path,
+    pass_rates: Mapping[str, float],
+    *,
+    trials: int = 3,
+    suite: str = "ci",
+    order: int = 0,
+    seed: int = 0,
+    status: RunStatus = RunStatus.COMPLETED,
+    baseline_id: str | None = None,
+    grader: str = "tool_called",
+) -> Run:
+    """Store a run whose scenario ``s`` passes each of ``trials`` trials with ``pass_rates[s]``.
+
+    ``order`` sets ``created_at`` (later runs are newer); ``seed`` draws the trial outcomes.
+    """
+    rng = random.Random(seed)
+    run = Run(
+        id=RunId(new_id()),
+        created_at=_START + timedelta(minutes=order),
+        agent=AgentRef(name="shop-agent"),
+        config_hash="0" * 64,
+        seed=seed,
+        suite=suite,
+        baseline_id=RunId(baseline_id) if baseline_id is not None else None,
+        matrix=[],
+        budget=Budget(usd=Decimal(5)),
+        status=status,
+    )
+
+    async def write() -> None:
+        async with ResultStore(runs_dir) as store:
+            await store.write_run(run)
+            for scenario_id, rate in pass_rates.items():
+                for index in range(trials):
+                    trial = _trial(run, scenario_id, index)
+                    grade = _grade(trial.id, grader, passed=rng.random() < rate)
+                    await store.append_trial_result(trial, (), (grade,))
+
+    anyio.run(write)
+    return run
+
+
+def _trial(run: Run, scenario_id: str, index: int) -> Trial:
+    return Trial(
+        id=TrialId(new_id()),
+        run_id=run.id,
+        scenario_id=scenario_id,
+        persona_id="polite-regular",
+        channel=Channel.CHAT,
+        index=index,
+        seed=index,
+        status="ok",
+        started_at=run.created_at,
+        duration_ms=1_000,
+        cost_usd=Decimal("0.001"),
+        world_before=_EMPTY_WORLD,
+        world_after=_EMPTY_WORLD,
+        turns=2,
+    )
+
+
+def _grade(trial_id: TrialId, grader: str, *, passed: bool) -> Grade:
+    return Grade.model_validate(
+        {
+            "id": GradeId(new_id()),
+            "trial_id": trial_id,
+            "grader": grader,
+            "judge_model": "fake/judge" if grader.startswith("judge:") else None,
+            "grader_version": "1",
+            "criterion_index": 0,
+            "status": "ok",
+            "value": passed,
+            "passed": passed,
+            "rationale": None if passed else "the booking tool was never called",
+        }
+    )
+
+
+StoreRun = Callable[..., Run]
+"""``store(pass_rates, **options)``: ``store_run`` into the starter project's run store."""
+
+
+@pytest.fixture
+def runs_dir(project_dir: Path) -> Path:
+    """Where the starter project stores its runs."""
+    return project_dir / ".hecklr" / "runs"
+
+
+@pytest.fixture
+def store(runs_dir: Path) -> StoreRun:
+    """Write synthetic runs into the starter project's run store."""
+
+    def write(pass_rates: Mapping[str, float], **options: object) -> Run:
+        return store_run(runs_dir, pass_rates, **options)  # type: ignore[arg-type]  # forwarded
+
+    return write

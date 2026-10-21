@@ -11,6 +11,7 @@ import httpx2
 from pydantic import JsonValue
 
 from hecklr_adapters._http import agent_http_errors, check_status, new_client, parse_json
+from hecklr_adapters.context import session_headers
 from hecklr_adapters.errors import AdapterConfigError, AgentError
 from hecklr_adapters.http import SSE_DONE
 from hecklr_adapters.templates import extract
@@ -50,7 +51,7 @@ class OpenAICompatibleChatTarget:
     async def open(self, ctx: SessionContext) -> "OpenAICompatibleChatSession":
         """Start a conversation with an empty history."""
         client = new_client(self._config.timeout_s, self._transport)
-        headers = {**self._config.headers, **self._auth, **ctx.headers()}
+        headers = {**self._config.headers, **self._auth, **session_headers(ctx)}
         return OpenAICompatibleChatSession(self._config, headers, client)
 
 

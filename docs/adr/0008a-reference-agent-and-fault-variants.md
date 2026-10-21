@@ -2,6 +2,10 @@
 
 Date: 2026-10-21 · Status: proposed · Workstream: WS8
 
+> Amended by ADR 0007d: Hecklr's chat adapters now send the trial's world URL
+> (`X-Hecklr-World-Url`, `{{world_url}}`), which the agent prefers to `ACME_WORLD_BASE_URL`, and the
+> default agent model is `openai/gpt-6-luna` (Ollama is the free override).
+
 ## Context
 
 SC8 needs a reference agent (`acme-maintenance`) and seeded faults that Hecklr must catch, with

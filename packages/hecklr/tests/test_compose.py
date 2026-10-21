@@ -15,11 +15,12 @@ from hecklr.compose import (
     execute_run,
     prepare_run,
 )
-from hecklr.outcomes import trial_outcomes
 from hecklr.testing import scripted_models
 from hecklr_adapters import AdapterConfigError
 from hecklr_core import BudgetEstimateError, ConfigError
 from hecklr_grade import InvalidCriterionError
+from hecklr_llm import FakeLLM
+from hecklr_report.outcomes import convert
 from hecklr_schemas import Channel, Grade, LLMRequest, RunStatus, Trial
 
 Edit = Callable[[Path, str, str], None]
@@ -57,7 +58,10 @@ async def test_us01_run_stores_graded_trials_for_every_scenario(config_path: Pat
     criterion_grades = [g for g in results.grades if g.criterion_index is not None]
     assert criterion_grades
     assert all(g.status == "ok" and g.passed for g in criterion_grades)
-    assert all(outcome.passed for outcome in trial_outcomes(results).outcomes)
+    suite = prepared.plan.suite
+    outcomes = convert(results, suite.scenarios, suite.personas).outcomes
+    assert outcomes
+    assert all(outcome.passed for outcome in outcomes)
     assert (prepared.runs_dir / results.run.id / "results.duckdb").is_file()
 
 
@@ -124,8 +128,8 @@ async def test_adaptive_pass_weighs_scenarios_that_flipped_vs_the_baseline(
 async def test_adaptive_pass_is_skipped_when_nothing_could_be_counted(config_path: Path) -> None:
     prepared = prepare_run(_request(config_path, trials=1, adaptive=True))
 
-    # The default FakeLLM cannot play a customer, so every trial is a harness error.
-    results = await execute_run(prepared)
+    # A stock FakeLLM cannot play a customer, so every trial is a harness error.
+    results = await execute_run(prepared, llm_providers={"fake": FakeLLM()})
 
     assert not results.run.adaptive
     assert {trial.status for trial in results.trials} == {"harness_error"}
@@ -230,3 +234,12 @@ def test_git_sha_comes_from_ci_then_the_repository(
     monkeypatch.delenv("GITHUB_SHA")
     assert detect_git_sha(tmp_path) is None
     assert detect_git_sha(Path(__file__).parent) is not None
+
+
+@pytest.mark.anyio
+async def test_fake_models_default_to_the_scripted_customer_and_judge(config_path: Path) -> None:
+    prepared = prepare_run(_request(config_path, trials=1))
+
+    results = await execute_run(prepared)
+
+    assert {trial.status for trial in results.trials} == {"ok"}

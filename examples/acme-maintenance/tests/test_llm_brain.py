@@ -104,7 +104,7 @@ async def test_requests_are_reproducible_and_carry_the_catalog(world: World) -> 
     request: LLMRequest = first.calls[0]
     assert request == second.calls[0]
     assert request.seed == step_seed(0, 1, 0)
-    assert request.temperature == 0.0
+    assert request.temperature is None  # the model's default: luna keeps reasoning (ADR 0007d)
     assert request.json_schema is not None
     system = request.system or ""
     assert "Today is Wednesday 21 October 2026." in system

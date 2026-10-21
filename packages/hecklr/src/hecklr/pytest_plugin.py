@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING, Final
 import pytest
 
 if TYPE_CHECKING:
-    from hecklr_core import RunResults
+    from hecklr_core import RunResults, Suite
+    from hecklr_stats import TrialOutcome
 
 DEFAULT_MIN_PASS_RATE: Final = 0.8
 
@@ -87,14 +88,16 @@ class HecklrSuite(pytest.File):
         self.suite = suite
         self._results: RunResults | None = None
         self._error: str | None = None
+        self._suite: Suite | None = None
+        self._outcomes: list[TrialOutcome] | None = None
 
     def collect(self) -> Iterator["ScenarioItem"]:
         """One item per scenario the suite selects."""
         from hecklr.compose import load_run_project
         from hecklr_core import resolve_suite
 
-        project = load_run_project(self.path)
-        for scenario_id in sorted(resolve_suite(project, self.suite).scenarios):
+        self._suite = resolve_suite(load_run_project(self.path), self.suite)
+        for scenario_id in sorted(self._suite.scenarios):
             yield ScenarioItem.from_parent(self, name=scenario_id, scenario_id=scenario_id)
 
     def results(self) -> "RunResults":
@@ -116,6 +119,16 @@ class HecklrSuite(pytest.File):
             pytest.fail(self._error, pytrace=False)
         return self._results
 
+    def outcomes(self) -> "list[TrialOutcome]":
+        """The run's analyzable trials, by ``hecklr-report``'s trial verdict rule."""
+        if self._outcomes is None:
+            from hecklr_report.outcomes import convert
+
+            assert self._suite is not None  # noqa: S101 -- set by collect, before any item runs
+            converted = convert(self.results(), self._suite.scenarios, self._suite.personas)
+            self._outcomes = converted.outcomes
+        return self._outcomes
+
 
 class ScenarioItem(pytest.Item):
     """One scenario of the suite, judged on all its trials."""
@@ -126,7 +139,6 @@ class ScenarioItem(pytest.Item):
 
     def runtest(self) -> None:
         """Fail by the pass rule in the module docstring."""
-        from hecklr.outcomes import trial_outcomes
         from hecklr_schemas import RunStatus
 
         assert isinstance(self.parent, HecklrSuite)  # noqa: S101 -- created only by HecklrSuite
@@ -138,9 +150,7 @@ class ScenarioItem(pytest.Item):
                 pytrace=False,
             )
         counted = [
-            outcome
-            for outcome in trial_outcomes(results).outcomes
-            if outcome.scenario_id == self.scenario_id
+            outcome for outcome in self.parent.outcomes() if outcome.scenario_id == self.scenario_id
         ]
         if not counted:
             pytest.fail(

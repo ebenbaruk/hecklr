@@ -1,5 +1,6 @@
 """``hecklr init``: starter projects that validate and run, and agent and model detection."""
 
+from decimal import Decimal
 from pathlib import Path
 
 import click
@@ -12,11 +13,11 @@ from hecklr.cli import app
 from hecklr.compose import load_run_project
 from hecklr.probe import AgentProbe
 from hecklr.scaffold import (
-    DEFAULT_OLLAMA_MODEL,
     AgentChoice,
     ModelChoice,
     choose_models,
     render_config,
+    write_project,
 )
 from hecklr_core import resolve_suite
 from hecklr_schemas import HttpAdapterConfig, OpenAICompatibleAdapterConfig, PythonAdapterConfig
@@ -157,7 +158,8 @@ def test_interactive_init_prompts_for_agent_and_models(
 
     assert code == exit_codes.OK, output
     models = load_run_project(tmp_path / "hecklr.yaml").config.models
-    assert (models.simulator, models.judge) == ("fake/customer", DEFAULT_OLLAMA_MODEL)
+    assert (models.simulator, models.judge) == ("fake/customer", "fake/judge")
+    assert "WARNING: no OPENAI_API_KEY" in output
 
 
 def test_invalid_model_names_are_refused_before_writing(tmp_path: Path) -> None:
@@ -180,14 +182,20 @@ def test_agent_name_falls_back_when_the_directory_name_is_unusable(tmp_path: Pat
     ("env", "ollama", "expected"),
     [
         ({}, ["llama3:8b", "qwen3:8b"], ("ollama/qwen3:8b", "ollama/qwen3:8b")),
+        ({"OPENAI_API_KEY": "k"}, ["qwen3:8b"], ("openai/gpt-6-luna", "openai/gpt-6-luna")),
+        (
+            {"OPENAI_API_KEY": "k", "ANTHROPIC_API_KEY": "k"},
+            None,
+            ("openai/gpt-6-luna", "openai/gpt-6-luna"),
+        ),
         ({}, ["llama3:8b"], ("ollama/llama3:8b", "ollama/llama3:8b")),
         (
             {"ANTHROPIC_API_KEY": "k"},
             None,
             ("anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5"),
         ),
-        ({"OPENAI_API_KEY": "k"}, None, ("openai/gpt-4.1-mini", "openai/gpt-4.1")),
-        ({}, None, (DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_MODEL)),
+        ({"OPENAI_API_KEY": "k"}, None, ("openai/gpt-6-luna", "openai/gpt-6-luna")),
+        ({}, None, ("fake/customer", "fake/judge")),
     ],
 )
 def test_models_follow_what_this_machine_has(
@@ -209,3 +217,26 @@ def test_starter_concurrency_matches_what_a_local_ollama_serves(
     config = render_config("a", AgentChoice("python"), ModelChoice(simulator, "fake/judge", "x"))
 
     assert concurrency in config
+
+
+def test_luna_projects_carry_its_price_so_budgets_work(tmp_path: Path) -> None:
+    choice = ModelChoice("openai/gpt-6-luna", "openai/gpt-6-luna", "OPENAI_API_KEY is set")
+    write_project(tmp_path, "a", AgentChoice("python"), choice)
+
+    models = load_run_project(tmp_path / "hecklr.yaml").config.models
+
+    price = models.prices["openai/gpt-6-luna"]
+    assert (price.input_per_mtok, price.output_per_mtok) == (Decimal("0.10"), Decimal("0.50"))
+
+
+def test_a_key_skips_probing_ollama(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_probe() -> list[str]:
+        raise AssertionError("Ollama was probed although a key decides")
+
+    monkeypatch.setattr("hecklr.commands.init.ollama_models", no_probe)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    code, output = _init(tmp_path, "--yes")
+
+    assert code == exit_codes.OK, output
+    assert "simulator openai/gpt-6-luna, judge openai/gpt-6-luna" in output
