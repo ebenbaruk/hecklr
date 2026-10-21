@@ -7,8 +7,10 @@ requires-python = ">=3.12"
 license = "Apache-2.0"
 authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
-    "hecklr-schemas",
-    "hecklr-llm",
+    "hecklr-schemas>=0.1,<0.2",
+    "hecklr-llm>=0.1,<0.2",
+    "anyio>=4.10",
+    "pyyaml>=6.0",
 ]
 
 [build-system]

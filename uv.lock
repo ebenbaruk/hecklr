@@ -507,14 +507,18 @@ name = "hecklr-sim"
 version = "0.1.0"
 source = { editable = "packages/hecklr-sim" }
 dependencies = [
+    { name = "anyio" },
     { name = "hecklr-llm" },
     { name = "hecklr-schemas" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.10" },
     { name = "hecklr-llm", editable = "packages/hecklr-llm" },
     { name = "hecklr-schemas", editable = "packages/hecklr-schemas" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
