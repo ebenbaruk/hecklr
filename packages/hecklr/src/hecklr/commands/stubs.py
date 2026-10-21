@@ -9,9 +9,6 @@ from hecklr import __version__, exit_codes
 from hecklr.commands._common import stderr
 
 PENDING_COMMANDS: Final[dict[str, str]] = {
-    "compare": "Statistical comparison of two runs.",
-    "gate": "Compare against the stored baseline and set the CI exit code.",
-    "report": "Build HTML, Markdown, JSON or JUnit output for a run.",
     "mine": "Mine production logs into failure clusters and proposed scenarios.",
     "fix": "Generate and validate prompt patches for a failure cluster.",
     "calibrate": "Self-tests: A/A false-positive rate, judge agreement, voice loopback.",
