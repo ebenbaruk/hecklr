@@ -13,4 +13,4 @@ success:
     args: { customer_id: C-1001 }
   - type: judge
     rubric: resolved
-limits: { max_turns: 10, max_duration_s: 120 }
+limits: { max_turns: 10 }

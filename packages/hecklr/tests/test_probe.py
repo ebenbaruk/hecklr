@@ -5,7 +5,7 @@ from collections.abc import Callable
 import httpx2
 import pytest
 
-from hecklr.probe import ollama_models, probe_agent
+from hecklr.probe import ollama_models, probe_agent, reply_path
 
 Handler = Callable[[httpx2.Request], httpx2.Response]
 
@@ -73,3 +73,31 @@ def test_ollama_models_are_listed() -> None:
 
 def test_no_ollama() -> None:
     assert ollama_models(transport=_transport({})) is None
+
+
+@pytest.mark.parametrize(
+    ("reply", "path"),
+    [
+        ({"session": "s", "reply": "hi"}, "reply"),
+        ({"id": "x", "say": "hi"}, "id"),
+        ({"count": 1}, None),
+        (["hi"], None),
+    ],
+)
+def test_reply_path_is_found_by_sending_one_message(reply: object, path: str | None) -> None:
+    sent: list[bytes] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request.content)
+        return httpx2.Response(200, json=reply)
+
+    assert reply_path("http://a/chat", transport=httpx2.MockTransport(handle)) == path
+    assert b'"message"' in sent[0]
+
+
+def test_reply_path_of_a_non_json_or_failing_agent() -> None:
+    text = httpx2.MockTransport(lambda request: httpx2.Response(200, text="plain"))
+    error = httpx2.MockTransport(lambda request: httpx2.Response(500, json={"reply": "x"}))
+
+    assert reply_path("http://a/chat", transport=text) is None
+    assert reply_path("http://a/chat", transport=error) is None

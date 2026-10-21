@@ -12,7 +12,7 @@ from rich.markup import escape
 from hecklr import exit_codes
 from hecklr.commands._common import config_errors, fail, stdout
 from hecklr.compose import load_run_project
-from hecklr.probe import ollama_models, probe_agent
+from hecklr.probe import ollama_models, probe_agent, reply_path
 from hecklr.scaffold import (
     CONFIG_FILE,
     AdapterType,
@@ -76,7 +76,10 @@ def init(
     stdout.print(f"Wrote {len(written)} files to {escape(str(root))}:", soft_wrap=True)
     for path in written:
         stdout.print(f"  {escape(str(path.relative_to(root)))}")
-    stdout.print(f"Models: simulator {models.simulator}, judge {models.judge} ({models.reason}).")
+    stdout.print(
+        f"Models: simulator {models.simulator}, judge {models.judge}; {models.reason}.",
+        soft_wrap=True,
+    )
     location = "" if root == Path.cwd() else f"cd {escape(str(root))} && "
     stdout.print(f"Next: [bold]{location}hecklr doctor && hecklr run[/]", soft_wrap=True)
 
@@ -104,7 +107,13 @@ def _agent_choice(
     stdout.print(f"[{style}]{escape(probe.detail)}[/]: using the {probe.adapter} adapter.")
     if not probe.reachable:
         stdout.print("Start the agent before `hecklr run`; `hecklr doctor` checks it.")
-    return AgentChoice(probe.adapter, probe.url, model or next(iter(probe.models), None))
+        return AgentChoice(probe.adapter, probe.url, model)
+    if probe.adapter == "openai-compatible":
+        return AgentChoice(probe.adapter, probe.url, model or next(iter(probe.models), None))
+    path = reply_path(probe.url)
+    if path is not None:
+        stdout.print(f"The agent answers in the JSON field [bold]{escape(path)}[/].")
+    return AgentChoice(probe.adapter, probe.url, response_path=path)
 
 
 def _models(simulator: str | None, judge: str | None, *, yes: bool) -> ModelChoice:

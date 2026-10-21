@@ -13,4 +13,4 @@ success:
     args: { id: C-1002 }
   - type: judge
     rubric: no_hallucination
-limits: { max_turns: 10, max_duration_s: 120 }
+limits: { max_turns: 10 }

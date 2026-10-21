@@ -9,7 +9,13 @@ from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.compose import load_run_project
 from hecklr.probe import AgentProbe
-from hecklr.scaffold import DEFAULT_OLLAMA_MODEL, choose_models
+from hecklr.scaffold import (
+    DEFAULT_OLLAMA_MODEL,
+    AgentChoice,
+    ModelChoice,
+    choose_models,
+    render_config,
+)
 from hecklr_core import resolve_suite
 from hecklr_schemas import HttpAdapterConfig, OpenAICompatibleAdapterConfig, PythonAdapterConfig
 
@@ -80,6 +86,21 @@ def test_init_probes_the_agent_url_to_pick_the_adapter(
     assert (str(chat.url), chat.model) == ("http://gpu:8000/v1", "m1")
 
 
+def test_init_records_the_reply_field_of_an_http_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    probe = AgentProbe("http", "http://localhost:8000/chat", True, "HTTP 405")
+    monkeypatch.setattr("hecklr.commands.init.probe_agent", lambda url: probe)
+    monkeypatch.setattr("hecklr.commands.init.reply_path", lambda url: "answer")
+
+    code, output = _init(tmp_path, "--yes", "--agent-url", "http://localhost:8000/chat", *FAKE)
+
+    assert code == exit_codes.OK, output
+    chat = load_run_project(tmp_path / "hecklr.yaml").config.agent.adapters.chat
+    assert isinstance(chat, HttpAdapterConfig)
+    assert chat.response_path == "answer"
+
+
 def test_init_warns_when_nothing_answers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     probe = AgentProbe("http", "http://localhost:9/chat", False, "nothing answered")
     monkeypatch.setattr("hecklr.commands.init.probe_agent", lambda url: probe)
@@ -148,3 +169,15 @@ def test_models_follow_what_this_machine_has(
 
     assert (choice.simulator, choice.judge) == expected
     assert choice.reason
+
+
+@pytest.mark.parametrize(
+    ("simulator", "concurrency"),
+    [("ollama/qwen3:8b", "concurrency: 4"), ("fake/customer", "concurrency: 8")],
+)
+def test_starter_concurrency_matches_what_a_local_ollama_serves(
+    simulator: str, concurrency: str
+) -> None:
+    config = render_config("a", AgentChoice("python"), ModelChoice(simulator, "fake/judge", "x"))
+
+    assert concurrency in config

@@ -13,6 +13,8 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Final, Literal
 
+from hecklr_core import DEFAULT_PROVIDER_LIMITS
+from hecklr_llm import split_model
 from hecklr_schemas.common import ModelName
 
 CONFIG_FILE: Final = "hecklr.yaml"
@@ -20,6 +22,7 @@ STARTER_AGENT_MODULE: Final = "hecklr_agent"
 STARTER_AGENT_ENTRYPOINT: Final = f"{STARTER_AGENT_MODULE}:reply"
 PREFERRED_OLLAMA_MODELS: Final = ("qwen3:4b-instruct", "qwen3:8b")
 DEFAULT_OLLAMA_MODEL: Final = "ollama/qwen3:4b-instruct"
+DEFAULT_CONCURRENCY: Final = 8
 
 _STARTER_DIRS: Final = ("worlds", "scenarios", "personas")
 
@@ -35,6 +38,8 @@ class AgentChoice:
     """Endpoint for ``http`` and ``openai-compatible``; ``python`` uses the starter agent."""
     model: str | None = None
     """Model name an ``openai-compatible`` agent serves, when the server needs one."""
+    response_path: str | None = None
+    """Field of an ``http`` agent's JSON reply that holds the text."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +126,7 @@ models:
   judge: {models.judge}
 stats: {{ alpha: 0.05, min_effect: 0.03 }}
 # A hard cap on model spend; local Ollama models are free.
-budget: {{ usd: 5, concurrency: 8 }}
+budget: {{ usd: 5, concurrency: {_concurrency(models)} }}
 """
 
 
@@ -132,7 +137,17 @@ def _adapter_yaml(choice: AgentChoice) -> str:
     adapter: dict[str, str] = {"type": choice.adapter, "url": choice.url or ""}
     if choice.adapter == "openai-compatible" and choice.model:
         adapter["model"] = choice.model
+    if choice.adapter == "http" and choice.response_path:
+        adapter["response_path"] = choice.response_path
     return json.dumps(adapter)
+
+
+def _concurrency(models: ModelChoice) -> int:
+    # Trials beyond what a local Ollama serves at once only queue for it, and queueing time counts
+    # against each trial's duration limit.
+    if any(split_model(model)[0] == "ollama" for model in (models.simulator, models.judge)):
+        return DEFAULT_PROVIDER_LIMITS["ollama"].max_concurrent
+    return DEFAULT_CONCURRENCY
 
 
 def _starter() -> Traversable:

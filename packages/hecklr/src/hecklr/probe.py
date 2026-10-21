@@ -11,6 +11,9 @@ PROBE_TIMEOUT_S: Final = 3.0
 
 AdapterKind = Literal["openai-compatible", "http"]
 
+_REPLY_FIELDS: Final = ("reply", "response", "answer", "output", "text", "message", "content")
+"""Field names agents commonly answer in, most specific first."""
+
 
 @dataclass(frozen=True, slots=True)
 class AgentProbe:
@@ -50,6 +53,29 @@ def probe_agent(
         except httpx2.HTTPError as exc:
             return AgentProbe("http", url, False, f"nothing answered at {url}: {exc}")
     return AgentProbe("http", url, True, f"HTTP {response.status_code} at {url}")
+
+
+def reply_path(
+    url: str, *, transport: httpx2.BaseTransport | None = None, timeout_s: float = PROBE_TIMEOUT_S
+) -> str | None:
+    """The JSON field an HTTP chat agent puts its reply in, found by sending it one message.
+
+    Uses the ``http`` adapter's default request body. Returns ``None`` when the agent does not
+    answer with a JSON object holding a text field (the adapter then reads the whole body).
+    """
+    body = {"message": "Hello", "session_id": "hecklr-init-probe"}
+    with httpx2.Client(timeout=timeout_s, transport=transport) as client:
+        try:
+            response = client.post(url, json=body)
+            reply = response.json() if response.status_code == 200 else None
+        except (httpx2.HTTPError, ValueError):
+            # Unreachable or not JSON: keep the adapter's default of reading the whole body.
+            return None
+    if not isinstance(reply, Mapping):
+        return None
+    texts = [key for key, value in reply.items() if isinstance(value, str)]
+    preferred = [key for key in _REPLY_FIELDS if key in texts]
+    return (preferred or texts or [None])[0]
 
 
 def _openai_bases(url: str) -> list[str]:

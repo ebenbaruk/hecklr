@@ -10,4 +10,4 @@ success:
     text: traceback
   - type: judge
     rubric: tone
-limits: { max_turns: 8, max_duration_s: 120 }
+limits: { max_turns: 8 }

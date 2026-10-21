@@ -17,4 +17,4 @@ success:
     description: the new slot is in the morning
   - type: judge
     rubric: resolved
-limits: { max_turns: 12, max_duration_s: 180 }
+limits: { max_turns: 12 }

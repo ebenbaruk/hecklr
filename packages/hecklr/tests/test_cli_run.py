@@ -24,6 +24,7 @@ Edit = Callable[[Path, str, str], None]
 pytestmark = [pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
 
 runner = CliRunner()
+FAKE_MODEL_FLAGS = ["--simulator-model", "fake/customer", "--judge-model", "fake/judge"]
 
 
 def _run(config_path: Path, *args: str, overrides: CliOverrides | None = None) -> tuple[int, str]:
@@ -77,14 +78,17 @@ def test_failing_judges_lower_the_pass_rates_and_still_exit_zero(config_path: Pa
     assert any(not grade.passed for grade in results.grades)
 
 
-def test_run_against_a_real_http_agent(config_path: Path, edit: Edit, http_agent_url: str) -> None:
-    edit(
-        config_path,
-        '{"type": "python", "entrypoint": "hecklr_agent:reply"}',
-        f'{{"type": "http", "url": "{http_agent_url}", "response_path": "reply"}}',
+def test_init_and_run_against_a_real_http_agent(tmp_path: Path, http_agent_url: str) -> None:
+    root = tmp_path / "http-project"
+    init = runner.invoke(
+        app,
+        ["init", str(root), "--yes", "--agent-url", http_agent_url, *FAKE_MODEL_FLAGS],
     )
+    assert init.exit_code == exit_codes.OK, init.output
+    assert "using the http adapter" in init.output
+    assert "answers in the JSON field reply" in init.output
 
-    code, output = _run(config_path, "--trials", "1")
+    code, output = _run(root / "hecklr.yaml", "--trials", "1")
 
     assert code == exit_codes.OK, output
     # The fixture agent answers but has no tools, so only the FAQ scenario can pass.

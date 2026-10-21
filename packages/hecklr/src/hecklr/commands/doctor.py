@@ -62,7 +62,7 @@ def doctor(
         table.add_column(column)
     for check in checks:
         style = _STYLE[check.status]
-        table.add_row(check.name, f"[{style}]{check.status}[/]", escape(check.detail))
+        table.add_row(escape(check.name), f"[{style}]{check.status}[/]", escape(check.detail))
     stdout.print(table)
     failed = sum(check.status == "fail" for check in checks)
     if failed:
