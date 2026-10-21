@@ -19,12 +19,13 @@ uv run hecklr version
 ```bash
 uv run ruff check . && uv run ruff format --check .
 scripts/mypy-all.sh                      # mypy --strict on every package
-uv run pytest -n auto                    # unit tests; never touch the network
+uv run pytest -n auto                    # unit tests; sockets are blocked (pytest-socket)
 uv run pytest tests/e2e -m fake          # end-to-end on FakeLLM
 ```
 
 Tests that call a real model are marked `@pytest.mark.live`, excluded by default, and capped by
-`HECKLR_TEST_BUDGET_USD`. Run them with `uv run pytest -m live`. A local
+`HECKLR_TEST_BUDGET_USD`. Run them with `uv run pytest -m live`; they are the only tests allowed
+to open network sockets. A local
 [Ollama](https://ollama.com) (`ollama serve`) is enough for most of them.
 
 ## Ground rules

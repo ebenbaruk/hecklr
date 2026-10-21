@@ -28,6 +28,7 @@ dev = [
     "pre-commit>=4.3",
     "pytest>=8.4",
     "pytest-cov>=7.0",
+    "pytest-socket>=0.8.1",
     "pytest-xdist>=3.8",
     "pyyaml>=6.0",
     "ruff>=0.14",
@@ -94,7 +95,12 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 # importlib mode lets every package keep its own tests/ and conftest.py without name clashes.
-addopts = ["--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live", "-ra"]
+# Sockets are blocked so unit tests cannot reach the network (AF_UNIX stays open for the asyncio
+# self-pipe); tests marked `live` get them back in conftest.py.
+addopts = [
+    "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live", "-ra",
+    "--disable-socket", "--allow-unix-socket",
+]
 testpaths = ["packages", "tests"]
 xfail_strict = true
 filterwarnings = ["error"]

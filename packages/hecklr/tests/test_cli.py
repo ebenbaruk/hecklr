@@ -2,7 +2,7 @@ import pytest
 from typer.testing import CliRunner
 
 import hecklr
-from hecklr.cli import NOT_IMPLEMENTED_EXIT_CODE, PLANNED_COMMANDS, app
+from hecklr.cli import NOT_IMPLEMENTED_EXIT_CODE, PLANNED_COMMANDS, app, main
 
 runner = CliRunner()
 
@@ -36,3 +36,15 @@ def test_spec_command_surface_is_complete() -> None:
     }  # fmt: skip
 
     assert set(PLANNED_COMMANDS) == spec_commands
+
+
+def test_console_script_entry_point_runs_the_app(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["hecklr", "version"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        main()
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == hecklr.__version__

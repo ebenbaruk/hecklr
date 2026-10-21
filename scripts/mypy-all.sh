@@ -8,5 +8,6 @@ status=0
 for package in packages/*/; do
   uv run --frozen mypy --strict "$package" || status=1
 done
+uv run --frozen mypy --strict conftest.py tests/test_network_guard.py || status=1
 uv run --frozen mypy --strict tests/e2e || status=1
 exit "$status"
