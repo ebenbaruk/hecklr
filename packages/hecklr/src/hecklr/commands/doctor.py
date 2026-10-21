@@ -23,6 +23,7 @@ from hecklr import exit_codes
 from hecklr.commands._common import CONFIG_ERRORS, stdout
 from hecklr.compose import load_run_project
 from hecklr.probe import DEFAULT_OLLAMA_URL, ollama_models, probe_agent
+from hecklr.scaffold import MODEL_KEYS, choose_models
 from hecklr_adapters import AdapterConfigError, load_agent
 from hecklr_core import Project
 from hecklr_llm import LLMError, ProviderRouter, split_model
@@ -36,6 +37,8 @@ from hecklr_schemas import (
 
 MIN_PYTHON: Final = (3, 12)
 _EXTRAS: Final = {"voice": "hecklr_voice", "mine": "hecklr_mine"}
+
+FAKE_NOTE: Final = "scripted fake model: tests the wiring, not the agent"
 
 Status = Literal["ok", "warn", "fail"]
 _STYLE: Final = {"ok": "green", "warn": "yellow", "fail": "red"}
@@ -83,6 +86,7 @@ def run_checks(config_path: Path) -> Iterator[Check]:
         return
     yield Check("config", "ok", f"{config_path} with {len(project.config.suites)} suite(s)")
     yield from _model_keys(project)
+    yield _available_models()
     yield from _ollama(project)
     yield from _agent(project)
 
@@ -122,9 +126,21 @@ def _model_keys(project: Project) -> Iterator[Check]:
             except LLMError as exc:
                 yield Check(f"{role} model", "fail", f"{model}: {exc}")
             else:
-                yield Check(f"{role} model", "ok", f"{model}: provider configured")
+                if split_model(model)[0] == "fake":
+                    yield Check(f"{role} model", "warn", f"{model}: {FAKE_NOTE}")
+                else:
+                    yield Check(f"{role} model", "ok", f"{model}: provider configured")
     finally:
         anyio.run(router.aclose)
+
+
+def _available_models() -> Check:
+    """Which models this machine can use, as ``hecklr init`` would choose them."""
+    has_key = any(os.environ.get(key) for key in MODEL_KEYS)
+    found = None if has_key else ollama_models(DEFAULT_OLLAMA_URL)
+    choice = choose_models(os.environ, found)
+    detail = f"{choice.simulator} / {choice.judge}: {choice.reason}"
+    return Check("models available", "warn" if choice.warning else "ok", detail)
 
 
 def _ollama(project: Project) -> Iterator[Check]:
