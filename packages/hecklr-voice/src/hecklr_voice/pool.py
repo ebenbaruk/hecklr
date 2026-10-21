@@ -20,6 +20,7 @@ from anyio import CapacityLimiter
 from anyio.lowlevel import RunVar
 
 _LIMITER: RunVar[CapacityLimiter] = RunVar("hecklr_voice_dsp_limiter")
+_WARM: RunVar[bool] = RunVar("hecklr_voice_dsp_warm", default=False)
 
 
 def dsp_workers() -> int:
@@ -53,11 +54,14 @@ def _ready() -> None:
 
 
 async def warm_dsp_pool() -> None:
-    """Start every DSP worker now.
+    """Start every DSP worker now (once per event loop; later calls return at once).
 
     Spawning a worker costs the parent tens of milliseconds of CPU on the event loop, so do it
     before calls start, not in the middle of one.
     """
+    if _WARM.get():
+        return
+    _WARM.set(True)
     async with anyio.create_task_group() as group:
         for _ in range(dsp_workers()):
             group.start_soon(run_dsp, _ready)
