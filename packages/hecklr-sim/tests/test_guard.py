@@ -12,7 +12,7 @@ from hecklr_sim import (
     ConsistencyGuard,
     GuidedSimulator,
     SimulatorError,
-    derive_seed,
+    derive_subseed,
     make_simulator,
 )
 from hecklr_sim.decision import SimDecision
@@ -194,7 +194,7 @@ async def test_ws2_guard_regenerates_a_wrong_id_and_counts_the_contradiction(
     assert simulator.contradictions == 1
     assert [issue.kind for issue in simulator.issues] == ["wrong_fact_value"]
     retry = llm.calls[1]
-    assert retry.seed == derive_seed(5, "turn", 1, 1) != llm.calls[0].seed
+    assert retry.seed == derive_subseed(5, "turn", 1, 1) != llm.calls[0].seed
     assert "previous draft was rejected" in retry.messages[-1].content
     assert "'C-1043'" in retry.messages[-1].content
 
@@ -253,7 +253,7 @@ async def test_ws2_guard_llm_check_catches_a_changed_goal(
     assert simulator.contradictions == 1
     assert [issue.kind for issue in simulator.issues] == ["llm_flagged"]
     checks = [call for call in llm.calls if call.schema_name == "ConsistencyVerdict"]
-    assert [call.seed for call in checks] == [derive_seed(9, "check", 1, a) for a in (0, 1)]
+    assert [call.seed for call in checks] == [derive_subseed(9, "check", 1, a) for a in (0, 1)]
     assert "Move Thursday's visit" in checks[0].messages[-1].content
     assert "the goal changed to a cancellation" in llm.calls[-2].messages[-1].content
 

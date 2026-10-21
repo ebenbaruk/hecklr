@@ -27,7 +27,7 @@ from hecklr_sim.decision import ConsistencyVerdict, SimDecision
 from hecklr_sim.errors import SimulatorError
 from hecklr_sim.guard import ConsistencyGuard, GuardIssue
 from hecklr_sim.limits import limit_reached, user_turn_count
-from hecklr_sim.seeds import derive_seed, unit_draw
+from hecklr_sim.seeds import derive_subseed, unit_draw
 from hecklr_sim.strategies import AttackStrategy
 
 _CHECKER_SYSTEM = (
@@ -200,7 +200,7 @@ class GuidedSimulator:
             feedback=feedback,
         )
         return self._request(
-            self._system, prompt, derive_seed(self._brief.seed, "turn", turn, attempt)
+            self._system, prompt, derive_subseed(self._brief.seed, "turn", turn, attempt)
         )
 
     async def _llm_check(
@@ -219,7 +219,7 @@ class GuidedSimulator:
             f"## Latest agent message\n{last_agent}\n\n"
             f"## Draft to check\n{decision.text}"
         )
-        seed = derive_seed(self._brief.seed, "check", turn, attempt)
+        seed = derive_subseed(self._brief.seed, "check", turn, attempt)
         verdict, _ = await complete_structured(
             self._llm, self._request(_CHECKER_SYSTEM, prompt, seed), ConsistencyVerdict
         )

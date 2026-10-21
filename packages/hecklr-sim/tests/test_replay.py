@@ -27,7 +27,7 @@ from hecklr_sim import (
     ExtractedFact,
     GuidedSimulator,
     ReplayExtractionError,
-    derive_seed,
+    derive_subseed,
     extract_scenario,
     grounded_facts,
     load_conversations,
@@ -116,7 +116,7 @@ async def test_us02_extraction_request_is_seeded_by_conversation_and_carries_too
 
     first, second = llm.calls
     assert first == second
-    assert first.seed == derive_seed(3, "replay", conversation.id)
+    assert first.seed == derive_subseed(3, "replay", conversation.id)
     assert first.schema_name == "ReplayExtraction"
     prompt = first.messages[-1].content
     assert "CUSTOMER: Hi, I need to move my boiler service on Thursday" in prompt
