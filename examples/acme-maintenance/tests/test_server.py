@@ -23,7 +23,7 @@ from acme_agent.server import sse_frame
 from acme_testing import ListSink
 from fastapi import FastAPI
 
-from hecklr_adapters import AgentSession, HttpChatTarget
+from hecklr_adapters import WORLD_URL_HEADER, AgentSession, HttpChatTarget
 from hecklr_schemas import (
     TRIAL_ID_HEADER,
     AgentChunk,
@@ -126,9 +126,11 @@ async def test_json_endpoint_keeps_the_conversation(world: World) -> None:
     assert "is cancelled" in replies[2]
 
 
-async def test_tools_go_to_the_trial_sandbox_when_configured(
-    world: World, personas: dict[str, Persona]
+@pytest.mark.parametrize("via", ["world_url_header", "world_base_url"])
+async def test_tools_go_to_the_trial_sandbox(
+    world: World, personas: dict[str, Persona], via: str
 ) -> None:
+    """The adapter's world URL header (what ``hecklr run`` uses) or the base URL setting."""
     trial_id = TrialId(new_id())
     scenario = Scenario.model_validate(
         {
@@ -151,16 +153,21 @@ async def test_tools_go_to_the_trial_sandbox_when_configured(
     sink = ListSink(trial_id)
     async with Sandbox() as sandbox:
         trial_world = await sandbox.open(brief, world, sink)
-        app = rules_app(world, world_base_url=sandbox.base_url)
-        async with serving(app) as url:
+        by_header = via == "world_url_header"
+        app = rules_app(world, world_base_url=None if by_header else sandbox.base_url)
+        ctx = SessionContext(
+            trial_id=trial_id, seed=7, world_http_url=trial_world.http_url if by_header else None
+        )
+        async with serving(app) as url, httpx2.AsyncClient() as client:
             config = http_config(f"{url}/chat/stream", stream="sse")
-            session = await HttpChatTarget(config).open(SessionContext(trial_id=trial_id, seed=7))
+            session = await HttpChatTarget(config).open(ctx)
             chunks = [
                 chunk
                 for text in ("Please cancel my visit", "C-1188 75005", "yes")
                 for chunk in await turn(session, text)
             ]
             await session.close()
+            health = (await client.get(f"{url}/healthz")).json()
         after = trial_world.snapshot()
         await trial_world.close()
     assert after.collections["appointments"]["A-3003"]["status"] == "cancelled"
@@ -168,6 +175,14 @@ async def test_tools_go_to_the_trial_sandbox_when_configured(
     assert all(chunk.tool_call is None for chunk in chunks)
     tools = [e.payload.tool for e in sink.events if isinstance(e.payload, ToolCallPayload)]
     assert tools == ["verify_customer", "list_appointments", "get_policy", "cancel_appointment"]
+    source = "header" if by_header else "base_url"
+    assert health["requests_by_world_source"] == {
+        "body": 0,
+        "header": 0,
+        "base_url": 0,
+        "local": 0,
+        source: 3,
+    }
 
 
 async def test_a_sandbox_agent_without_a_trial_id_is_a_client_error(world: World) -> None:
@@ -196,7 +211,7 @@ async def test_an_unreachable_sandbox_becomes_an_apology(world: World) -> None:
 
 async def test_request_world_url_and_health(world: World) -> None:
     async with serving(rules_app(world)) as url, httpx2.AsyncClient() as client:
-        health = (await client.get(f"{url}/healthz")).json()
+        before = (await client.get(f"{url}/healthz")).json()
         response = await client.post(
             f"{url}/chat",
             json={
@@ -204,9 +219,24 @@ async def test_request_world_url_and_health(world: World) -> None:
                 "session_id": "s",
                 "world_url": "http://127.0.0.1:9/t/x",
             },
+            # The body wins over the header.
+            headers={WORLD_URL_HEADER: "http://127.0.0.1:9/t/y"},
         )
-    assert health == {"status": "ok", "brain": "rules", "variant": "clean", "tools": "local"}
+        # An empty body URL (a ``{{world_url}}`` template without a sandbox) is no URL.
+        await client.post(
+            f"{url}/chat", json={"message": "Book a visit", "session_id": "t", "world_url": ""}
+        )
+        after = (await client.get(f"{url}/healthz")).json()
+    assert before == {
+        "status": "ok",
+        "brain": "rules",
+        "variant": "clean",
+        "model": None,
+        "fallback_tools": "local",
+        "requests_by_world_source": {"body": 0, "header": 0, "base_url": 0, "local": 0},
+    }
     assert response.json()["tool_calls"] == []
+    assert after["requests_by_world_source"] == {"body": 1, "header": 0, "base_url": 0, "local": 1}
 
 
 def test_multi_line_text_becomes_several_data_lines() -> None:

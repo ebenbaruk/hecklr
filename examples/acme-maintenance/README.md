@@ -53,24 +53,26 @@ Every flag has an environment variable: `ACME_BRAIN`, `ACME_MODEL`, `ACME_FAULT`
 | --- | --- | --- |
 | `POST /chat` | `{"message", "session_id", "trial_id"?, "world_url"?}` | `{"reply", "handoff", "ended", "tool_calls"}` |
 | `POST /chat/stream` | same | SSE: unnamed events are text deltas; `tool_call`, `tool_result`, `handoff`, `end` carry `hecklr_schemas` payloads |
-| `GET /healthz` | | `{"status", "brain", "variant", "tools"}` |
+| `GET /healthz` | | `{"status", "brain", "variant", "model", "fallback_tools", "requests_by_world_source"}` |
 
 Both routes match Hecklr's `http` adapter (`hecklr.yaml` uses `/chat/stream` with `stream: sse`).
 The conversation is keyed by `session_id`.
 
 ### Which world the tools act on
 
-Per conversation, the first of:
+Per request, the first of:
 
-1. `world_url` in the request body: the trial's world sandbox (`.../t/<trial id>`);
-2. `ACME_WORLD_BASE_URL` + `/t/<trial id>`, the trial id read from the `X-Hecklr-Trial-Id`
+1. `world_url` in the request body (a `{{world_url}}` request template placeholder);
+2. the `X-Hecklr-World-Url` header: the trial's world sandbox (`.../t/<trial id>`). Hecklr's
+   chat adapters send it with every request, so `hecklr run` needs no extra setup (ADR 0007d);
+3. `ACME_WORLD_BASE_URL` + `/t/<trial id>`, the trial id read from the `X-Hecklr-Trial-Id`
    header (Hecklr's sandbox routes every trial under `/t/<trial id>`, ADR 0003a);
-3. a private in-process copy of `worlds/acme-maintenance.yaml`, for manual runs. Hecklr cannot
+4. a private in-process copy of `worlds/acme-maintenance.yaml`, for manual runs. Hecklr cannot
    see these calls, so the agent then streams its `tool_call` / `tool_result` events itself.
 
-Today Hecklr's `http` adapter does not send the trial's world URL, so a `hecklr run` needs the
-sandbox on a known port and `ACME_WORLD_BASE_URL` pointing at it (see ADR 0008a and
-`PROGRESS.md`).
+`GET /healthz` counts the requests served from each source (`requests_by_world_source`): after
+a `hecklr run`, only `header` should have grown. A growing `local` count means the agent graded
+nothing Hecklr can see.
 
 ### In process
 

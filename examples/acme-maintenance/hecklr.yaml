@@ -6,8 +6,9 @@ version: 1
 agent:
   name: acme-maintenance
   adapters:
-    # The default request template sends {message, session_id}; the trial id travels in the
-    # X-Hecklr-Trial-Id header, which the agent uses to find its trial's world sandbox.
+    # The default request template sends {message, session_id}. Every request also carries the
+    # X-Hecklr-Trial-Id and X-Hecklr-World-Url headers; the agent calls its tools at the trial's
+    # world sandbox URL (ADR 0007d).
     chat: { type: http, url: "http://127.0.0.1:8000/chat/stream", stream: sse, timeout_s: 180 }
   editable: [prompts/system.md, tools/descriptions.yaml]
 world: worlds/acme-maintenance.yaml
