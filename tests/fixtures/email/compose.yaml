@@ -1,0 +1,15 @@
+# A local mail server for trying the smtp-imap email adapter by hand:
+#   docker compose -f tests/fixtures/email/compose.yaml up -d
+# Ports match the SmtpImapAdapterConfig defaults (SMTP 1025, IMAP 1143). Authentication is off:
+# every address is a mailbox, created on first use, with any password.
+# Tests start their own throwaway copy on ephemeral ports (hecklr_adapters.email.testing).
+services:
+  greenmail:
+    image: greenmail/standalone:2.1.5
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap
+        -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+    ports:
+      - "127.0.0.1:1025:3025"
+      - "127.0.0.1:1143:3143"

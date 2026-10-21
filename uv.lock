@@ -1171,7 +1171,9 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "fastapi" },
+    { name = "hecklr-grade" },
     { name = "hecklr-llm" },
+    { name = "hecklr-sim" },
     { name = "uvicorn" },
 ]
 
@@ -1185,7 +1187,9 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "fastapi", specifier = ">=0.156.8" },
+    { name = "hecklr-grade", editable = "packages/hecklr-grade" },
     { name = "hecklr-llm", editable = "packages/hecklr-llm" },
+    { name = "hecklr-sim", editable = "packages/hecklr-sim" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 

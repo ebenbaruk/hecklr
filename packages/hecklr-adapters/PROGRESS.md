@@ -1,7 +1,7 @@
 # hecklr-adapters progress
 
-Owner: WS6 (chat), WS10 (voice). Spec: `docs/SPEC.md` → "Agent adapters". ADRs: 0006, 0006a,
-0009a, 0010a. RFC: 0010a (websocket voice config, proposed).
+Owner: WS6 (chat), WS10 (voice), WS12 (email). Spec: `docs/SPEC.md` → "Agent adapters". ADRs:
+0006, 0006a, 0009a, 0010a. RFC: 0010a (websocket voice config, proposed).
 
 ## Done (WS6, Wave 1)
 
@@ -70,6 +70,26 @@ Owner: WS6 (chat), WS10 (voice). Spec: `docs/SPEC.md` → "Agent adapters". ADRs
 - Proof: `hecklr run --suite smoke` over the `http` adapter against the reference agent (rules
   brain): 18/33 before (all 15 booking, cancel and reschedule scenarios failed), 33/33 after.
 
+## Done (WS12, Wave 2a)
+
+- Email adapters in `hecklr_adapters.email`, implementing the frozen `EmailTarget`;
+  `make_email_target(config)` for `smtp-imap` / `smtp` and `webhook`:
+  - `smtp-imap`: stdlib `smtplib`/`imaplib` in worker threads, IMAP polling with `SEARCH TO`,
+    optional single-account credentials. Round trip through GreenMail in Docker:
+    `test_ws12_smtp_imap_round_trip_through_greenmail`,
+    `test_ws12_smtp_imap_with_credentials_searches_by_recipient`; failure mapping (unreachable,
+    silent, failed IMAP command, empty FETCH) and config errors in `tests/email/test_smtp_imap.py`.
+  - `webhook`: inbound-parse style POST out, replies POSTed to a local endpoint and routed by
+    recipient (`202` / `400` / `404` / `413`). `tests/email/test_webhook_email.py` runs against a
+    real FastAPI agent on 127.0.0.1.
+  - In-process `PythonEmailTarget`: `tests/email/test_python_email.py`.
+  - Threading and MIME helpers (`make_reply`, `reply_references`, `to_mime`, `from_mime`):
+    `tests/email/test_messages.py`, including a lossless MIME round trip with attachments and a
+    hypothesis property for `Re:`/`Fwd:` prefix stripping.
+  - `email.testing`: `greenmail()` (throwaway Docker server on ephemeral ports) and
+    `run_mailbox_agent` (a minimal IMAP/SMTP agent) for this and the next batch's reference agent.
+- 31 email tests; package coverage 98%.
+
 ## Next
 
 - `webhook` chat adapter (P1, spec table). `make_chat_target` refuses it with a clear error.
@@ -95,6 +115,8 @@ Owner: WS6 (chat), WS10 (voice). Spec: `docs/SPEC.md` → "Agent adapters". ADRs
 
 ## Decisions
 
+- ADR 0012a: email routing by recipient address, stdlib mail clients in threads, GreenMail for
+  tests (Mailpit has no IMAP), the webhook wire format.
 - ADR 0006a: failure split, session ids (fresh ULID per session), SSE event protocol, and why the
   WebSocket adapter uses the `websockets` library rather than `httpx2`.
 - ADR 0010a: playout clock, exact resampling, background reading, LiveKit backlog handling,
