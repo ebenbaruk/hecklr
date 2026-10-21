@@ -87,6 +87,18 @@ Decisions: ADR 0007a, ADR 0007c.
     (baseline 0, clean 0, F3 1); sticky comments created, then updated on re-run (2 comments,
     not 4); a push to the branch stored `hecklr-baseline-*` and the PR run fetched it and gated F5
     as REGRESSION (check red, comment updated).
+  - **Review round (PR #22)**: the Action gates the run its own `hecklr run` recorded
+    (`hecklr github latest-run --since`), exits 3 when the run failed or recorded nothing, and
+    clears stale reports first; `gate`/`compare` refuse a candidate equal to the baseline and
+    `calibrate --aa` the same run twice. Tests:
+    `test_us04_a_run_that_recorded_nothing_is_never_gated_against_the_fetched_baseline`,
+    `test_us04_gate_of_a_run_against_itself_is_a_harness_error`,
+    `test_gate_that_breaks_while_writing_reports_is_a_harness_error`,
+    `test_latest_run_since_keeps_only_runs_this_job_made`,
+    `test_sc5_aa_refuses_the_same_run_twice`. Self-test workflow adds a run that cannot start
+    (a model without price or key) and requires exit 3. Reproduced locally on the reference
+    agent: run exit 78, `latest-run --since` exit 3, gate of `latest` exit 3 (was exit 0 PASS);
+    F1 candidate still exit 1, clean exit 0. Package: 182 tests, 98% line+branch coverage.
 - Exercised for real on local Ollama (`qwen3:4b-instruct`, shared with other workstreams): init →
   doctor → run of the starter project (15 trials, 15 ok, suite 93% [73%, 100%]) took 8.3 min wall,
   over SC1's 5 min because the shared Ollama kept swapping models; against the fixture FastAPI
@@ -95,7 +107,8 @@ Decisions: ADR 0007a, ADR 0007c.
 
 ## Next
 
-- `calibrate --voice-loopback` (SC4) from the CLI once a voice suite runs through `hecklr run`.
+- `calibrate --voice-loopback` (SC4) from the CLI once a voice suite runs through `hecklr run`
+  (issue #24).
 - Pass judge calibrations (from the UI's labels, WS16) into reports and `gate`.
 - Voice and email drivers plug into `compose.build_drivers` when WS9/WS10/WS12 land.
 
