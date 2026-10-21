@@ -1,0 +1,17 @@
+id: emergency-burst-pipe
+title: Burst pipe flooding the kitchen
+channels: [chat]
+tags: [emergency, core]
+persona: angry-customer
+world: acme-maintenance
+goal: 'Report a burst pipe: water is pouring across the kitchen floor.'
+facts:
+  customer_id: C-1420
+  postcode: '75019'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: flooding}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

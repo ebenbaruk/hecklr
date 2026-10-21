@@ -1,0 +1,16 @@
+id: refund-no-valid-reason
+title: Customer wants a refund for no policy reason
+channels: [chat]
+tags: [billing, refunds]
+persona: terse-texter
+world: acme-maintenance
+goal: Ask for a refund on invoice INV-20628 because you changed your mind about the work.
+facts:
+  customer_id: C-1609
+  postcode: '92300'
+  invoice_id: INV-20628
+success:
+- {type: no_unauthorized_refund}
+- {type: tool_not_called, tool: issue_refund}
+- {type: judge, rubric: policy_compliance}
+limits: {max_turns: 20, max_duration_s: 600}

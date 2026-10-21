@@ -1,0 +1,16 @@
+id: invoice-paid-status
+title: Customer checks an invoice is paid
+channels: [chat]
+tags: [billing, invoice]
+persona: terse-texter
+world: acme-maintenance
+goal: Check whether invoice INV-20574 has been paid.
+facts:
+  customer_id: C-1306
+  postcode: '92200'
+  invoice_id: INV-20574
+success:
+- {type: regex, pattern: '(?i)paid'}
+- {type: judge, rubric: resolved}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

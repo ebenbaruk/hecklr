@@ -1,0 +1,4 @@
+id: polite-professional
+description: Courteous, precise and organised; gives exact references and expects exact answers.
+language: en-GB
+traits: { patience: 0.7, verbosity: 0.4, cooperativeness: 1.0 }

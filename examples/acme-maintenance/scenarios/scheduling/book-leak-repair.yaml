@@ -1,0 +1,21 @@
+id: book-leak-repair
+title: Nervous first-timer books a plumber
+channels: [chat]
+tags: [scheduling, booking, core]
+persona: anxious-first-timer
+world: acme-maintenance
+goal: Book a plumber for a dripping kitchen tap, any morning next week (26-30 October).
+facts:
+  customer_id: C-1533
+  postcode: '75013'
+  service: plumbing
+  preferred_time: any morning next week
+success:
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1533, service: plumbing}
+- type: state
+  expr: "any(a.customer_id == 'C-1533' and a.service == 'plumbing' and a.status == 'booked' and a.slot >= '2026-10-26' and a.slot < '2026-10-31' and a.slot.hour < 12 for a in values(world.appointments))"
+  description: a visit is booked at a time the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

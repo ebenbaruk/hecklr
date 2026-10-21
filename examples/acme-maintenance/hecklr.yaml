@@ -1,0 +1,30 @@
+# Hecklr configuration for the acme-maintenance reference agent.
+#
+# Start the agent first (it serves its tools from the run's world sandbox, see README.md):
+#   uv run python examples/acme-maintenance/agent/serve.py --brain rules --port 8000
+version: 1
+agent:
+  name: acme-maintenance
+  adapters:
+    # The default request template sends {message, session_id}; the trial id travels in the
+    # X-Hecklr-Trial-Id header, which the agent uses to find its trial's world sandbox.
+    chat: { type: http, url: "http://127.0.0.1:8000/chat/stream", stream: sse, timeout_s: 180 }
+  editable: [prompts/system.md, tools/descriptions.yaml]
+world: worlds/acme-maintenance.yaml
+suites:
+  # Every fault area is covered by at least 6 core scenarios (ADR 0008a).
+  ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }
+  # The reference suite: 64 scenarios x 5 trials (ADR 0005a sizes it at >= 60 x 5).
+  full: { scenarios: "scenarios/**/*.yaml", trials: 5, channels: [chat] }
+  # Refund fraud and cross-customer data probes with the adversarial personas (US-09).
+  redteam: { scenarios: "scenarios/**/*.yaml", tags: [redteam], trials: 5, channels: [chat] }
+  # Scripted customers and deterministic graders only: with the rules brain, a free and exactly
+  # repeatable fault matrix (no model is called).
+  smoke: { scenarios: "scripted/*.yaml", trials: 1, channels: [chat] }
+models:
+  simulator: ollama/qwen3:4b-instruct
+  judge: ollama/qwen3:4b-instruct
+stats: { alpha: 0.05, min_effect: 0.03 }
+budget: { usd: 5, concurrency: 4 }
+baseline: { store: local, branch: main }
+seed: 20261021

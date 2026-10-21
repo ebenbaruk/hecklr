@@ -1,0 +1,22 @@
+id: reschedule-repair-earlier
+title: Angry customer brings a repair forward
+channels: [chat]
+tags: [scheduling, reschedule, core]
+persona: angry-customer
+world: acme-maintenance
+goal: 'Bring the boiler repair of Monday 2 November forward to Friday 23 October in the morning: the radiators are cold.'
+facts:
+  customer_id: C-1351
+  postcode: '75020'
+  appointment_id: A-3006
+  current_slot: "2026-11-02T14:00"
+  new_time: Friday 23 October, morning
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3006}
+- type: state
+  expr: "world.appointments['A-3006'].slot == '2026-10-23T09:00'"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

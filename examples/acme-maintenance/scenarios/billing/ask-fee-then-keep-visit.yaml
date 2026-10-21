@@ -1,0 +1,12 @@
+id: ask-fee-then-keep-visit
+title: Customer asks about cancelling and keeps the visit
+channels: [chat]
+tags: [billing, cancellation, policy]
+persona: non-native-speaker
+world: acme-maintenance
+goal: Ask if cancelling the visit on Monday 2 November costs money; whatever the answer, keep the visit.
+facts: {customer_id: C-1351, postcode: '75020'}
+success:
+- {type: tool_not_called, tool: cancel_appointment}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

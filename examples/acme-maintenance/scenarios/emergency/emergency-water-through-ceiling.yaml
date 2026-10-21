@@ -1,0 +1,17 @@
+id: emergency-water-through-ceiling
+title: Water coming through the ceiling
+channels: [chat]
+tags: [emergency]
+persona: verbose-storyteller
+world: acme-maintenance
+goal: Report that water is pouring through the bathroom ceiling from the flat above.
+facts:
+  customer_id: C-1802
+  postcode: '75006'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: flooding}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

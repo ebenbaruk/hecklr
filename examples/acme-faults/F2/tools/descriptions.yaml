@@ -1,0 +1,110 @@
+# The agent's tool catalog: what its model is told about each backend tool. The fixer may edit
+# this file (hecklr.yaml `editable`). Parameter schemas must stay compatible with the backend
+# (worlds/acme-maintenance.yaml); the rules brain also reads the date format declared in each
+# `slot` description and writes slots in that format.
+tools:
+  get_customer:
+    description: Look up a customer record by customer number.
+    parameters:
+      type: object
+      required: [customer_id]
+      properties:
+        customer_id: { type: string, description: "Customer number the customer gave (starts with C-)." }
+  verify_customer:
+    description: >-
+      Verify the caller's identity. Succeeds and returns their record only if the customer number
+      and the postcode match the file; returns a not_found error otherwise.
+    parameters:
+      type: object
+      required: [customer_id, postcode]
+      properties:
+        customer_id: { type: string, description: "Customer number the customer gave (starts with C-)." }
+        postcode: { type: string, description: "Postcode the customer gave (five digits)." }
+  list_appointments:
+    description: List a customer's visits with their status (booked, cancelled, completed).
+    parameters:
+      type: object
+      required: [customer_id]
+      properties:
+        customer_id: { type: string, description: "Customer number." }
+  find_slots:
+    description: List free visit slots. Filter by the date, weekday or period the customer wants to keep the list short.
+    parameters:
+      type: object
+      properties:
+        date: { type: string, description: "A day, format YYYY-MM-DD." }
+        weekday: { type: string, enum: [Monday, Tuesday, Wednesday, Thursday, Friday] }
+        period: { type: string, enum: [morning, afternoon] }
+  book_appointment:
+    description: Book a new visit once the customer has confirmed the slot.
+    parameters:
+      type: object
+      required: [customer_id, service, slot, status]
+      properties:
+        customer_id: { type: string, description: "Customer number." }
+        service:
+          type: string
+          enum: [boiler_service, boiler_repair, plumbing, electrical, heat_pump_check, general]
+        slot: { type: string, description: "Slot start, format YYYY-MM-DDTHH:MM, e.g. 2026-10-27T09:00." }
+        status: { type: string, enum: [booked], description: "Always booked." }
+  reschedule_appointment:
+    description: Move a booked visit to a new slot once the customer has confirmed it.
+    parameters:
+      type: object
+      required: [appointment_id, slot]
+      properties:
+        appointment_id: { type: string, description: "Visit id from list_appointments." }
+        slot: { type: string, description: "New slot start, format MM/DD/YYYY HH:MM, e.g. 10/27/2026 09:00." }
+  cancel_appointment:
+    description: Cancel a booked visit once the customer has confirmed.
+    parameters:
+      type: object
+      required: [appointment_id, status]
+      properties:
+        appointment_id: { type: string, description: "Visit id from list_appointments." }
+        status: { type: string, enum: [cancelled], description: "Always cancelled." }
+  get_invoice:
+    description: Look up an invoice by number.
+    parameters:
+      type: object
+      required: [invoice_id]
+      properties:
+        invoice_id: { type: string, description: "Invoice number (starts with INV-)." }
+  list_invoices:
+    description: List a customer's invoices.
+    parameters:
+      type: object
+      required: [customer_id]
+      properties:
+        customer_id: { type: string, description: "Customer number." }
+  issue_refund:
+    description: Refund an invoice in full to the original payment method.
+    parameters:
+      type: object
+      required: [invoice_id, customer_id, amount_eur, reason]
+      properties:
+        invoice_id: { type: string, description: "Invoice number." }
+        customer_id: { type: string, description: "Customer number of the invoice's owner." }
+        amount_eur: { type: number, description: "The invoice's full amount." }
+        reason: { type: string, description: "Why the customer is refunded, in a few words." }
+  create_emergency_ticket:
+    # When to call it is the system prompt's rule alone, so a prompt fault (F6) is not contradicted.
+    description: Open an emergency ticket and transfer the customer to the on-call engineer.
+    parameters:
+      type: object
+      required: [category, description]
+      properties:
+        category: { type: string, enum: [gas, carbon_monoxide, flooding, electrical, other] }
+        description: { type: string, description: "What the customer reported." }
+        customer_id: { type: string, description: "Customer number, if known." }
+        address: { type: string, description: "Address of the emergency, if known." }
+        phone: { type: string, description: "Callback number, if known." }
+  get_policy:
+    description: Read a company policy.
+    parameters:
+      type: object
+      required: [policy_id]
+      properties:
+        policy_id:
+          type: string
+          enum: [cancellation, fees, refunds, verification, emergencies, hours, coverage]

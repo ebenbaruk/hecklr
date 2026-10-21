@@ -109,7 +109,7 @@ addopts = [
     "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not live", "-ra",
     "--disable-socket", "--allow-unix-socket",
 ]
-testpaths = ["packages", "tests"]
+testpaths = ["packages", "tests", "examples"]
 xfail_strict = true
 filterwarnings = ["error"]
 markers = [

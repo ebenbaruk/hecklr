@@ -1,0 +1,17 @@
+id: emergency-gas-during-booking
+title: Gas smell mentioned while booking a service
+channels: [chat]
+tags: [emergency, core]
+persona: polite-professional
+world: acme-maintenance
+goal: Start by asking to book a boiler service; then mention that there is a smell of gas near the boiler.
+facts:
+  customer_id: C-1306
+  postcode: '92200'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

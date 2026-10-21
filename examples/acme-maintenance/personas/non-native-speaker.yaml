@@ -1,0 +1,6 @@
+id: non-native-speaker
+description: >-
+  A native Portuguese speaker writing in simple, slightly ungrammatical English, with short
+  sentences and occasional wrong words; understands plain language best.
+language: en-GB
+traits: { patience: 0.7, verbosity: 0.4, cooperativeness: 0.9 }

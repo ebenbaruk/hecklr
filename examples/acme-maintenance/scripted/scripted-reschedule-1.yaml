@@ -1,0 +1,21 @@
+id: scripted-reschedule-1
+title: Scripted reschedule of A-3001
+channels: [chat]
+tags: [scripted, catches-f1, catches-f2]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted reschedule of A-3001
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  appointment_id: A-3001
+user_turns:
+- Hi, I need to move my boiler visit on Friday to next week, mornings only please.
+- C-1042, postcode 92000
+- Yes please
+success:
+- type: state
+  expr: "world.appointments['A-3001'].slot >= '2026-10-26' and world.appointments['A-3001'].slot < '2026-10-31' and world.appointments['A-3001'].slot.hour < 12"
+  description: the visit moved to the slot asked for
+limits: {max_turns: 12, max_duration_s: 600}

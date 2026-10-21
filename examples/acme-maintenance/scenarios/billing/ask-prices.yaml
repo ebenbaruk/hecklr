@@ -1,0 +1,12 @@
+id: ask-prices
+title: Prospective customer asks for prices
+channels: [chat]
+tags: [billing, policy]
+persona: anxious-first-timer
+world: acme-maintenance
+goal: Find out the price of an annual boiler service and of the call-out fee. You are not a customer yet.
+success:
+- {type: regex, pattern: '89'}
+- {type: regex, pattern: '49'}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

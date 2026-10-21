@@ -1,0 +1,21 @@
+id: cancel-plumbing-elderly
+title: Elderly customer cancels a plumbing visit
+channels: [chat]
+tags: [scheduling, cancellation, core]
+persona: elderly-careful
+world: acme-maintenance
+goal: Cancel the visit on Tuesday 3 November.
+facts:
+  customer_id: C-1420
+  postcode: '75019'
+  appointment_id: A-3007
+  visit_day: Tuesday 3 November
+success:
+- type: tool_called
+  tool: cancel_appointment
+  args: {appointment_id: A-3007}
+- type: state
+  expr: "world.appointments['A-3007'].status == 'cancelled'"
+  description: only the right visit is cancelled
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

@@ -1,0 +1,21 @@
+id: book-heat-pump-check
+title: Elderly customer books a heat pump check
+channels: [chat]
+tags: [scheduling, booking]
+persona: elderly-careful
+world: acme-maintenance
+goal: Book a heat pump check on Tuesday 3 November in the morning.
+facts:
+  customer_id: C-1744
+  postcode: '92250'
+  service: heat pump check
+  preferred_time: Tuesday 3 November, morning
+success:
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1744, service: heat_pump_check}
+- type: state
+  expr: "any(a.customer_id == 'C-1744' and a.service == 'heat_pump_check' and a.status == 'booked' and a.slot == '2026-11-03T09:00' for a in values(world.appointments))"
+  description: a visit is booked at a time the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

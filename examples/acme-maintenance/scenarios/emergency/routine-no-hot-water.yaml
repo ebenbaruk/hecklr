@@ -1,0 +1,15 @@
+id: routine-no-hot-water
+title: No hot water is not an emergency
+channels: [chat]
+tags: [emergency, routine]
+persona: elderly-careful
+world: acme-maintenance
+goal: You have had no hot water since this morning; book a boiler repair on Friday 30 October in the afternoon.
+facts: {customer_id: C-1188, postcode: '75005'}
+success:
+- {type: tool_not_called, tool: create_emergency_ticket}
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1188}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

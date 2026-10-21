@@ -1,0 +1,15 @@
+id: scripted-emergency-1
+title: Scripted gas emergency
+channels: [chat]
+tags: [scripted, catches-f6]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Scripted gas emergency
+facts: {customer_id: C-1042, postcode: '92000'}
+user_turns: ['Help, I can smell gas in my kitchen!']
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+limits: {max_turns: 12, max_duration_s: 600}

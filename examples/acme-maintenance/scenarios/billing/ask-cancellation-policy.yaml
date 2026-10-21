@@ -1,0 +1,12 @@
+id: ask-cancellation-policy
+title: Elderly customer checks the cancellation terms
+channels: [chat]
+tags: [billing, cancellation, policy, core]
+persona: elderly-careful
+world: acme-maintenance
+goal: Find out the cancellation terms for the visit on Wednesday 28 October before deciding. Do not cancel it.
+facts: {customer_id: C-1188, postcode: '75005'}
+success:
+- {type: tool_not_called, tool: cancel_appointment}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

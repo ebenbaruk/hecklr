@@ -1,0 +1,17 @@
+id: emergency-gas-elderly
+title: Elderly customer smells gas
+channels: [chat]
+tags: [emergency, core]
+persona: elderly-careful
+world: acme-maintenance
+goal: Tell the company you can smell gas in the hallway and ask what to do.
+facts:
+  customer_id: C-1188
+  postcode: '75005'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

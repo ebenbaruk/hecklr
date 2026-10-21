@@ -1,0 +1,8 @@
+id: verbose-storyteller
+description: >-
+  Friendly and chatty, wraps every request in long stories about the house, the family and past
+  visits, and mentions several dates in passing.
+language: en-GB
+traits: { patience: 0.9, verbosity: 0.95, cooperativeness: 0.8 }
+behaviors:
+  fillers: true

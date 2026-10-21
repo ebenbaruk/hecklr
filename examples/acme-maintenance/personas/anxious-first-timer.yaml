@@ -1,0 +1,6 @@
+id: anxious-first-timer
+description: >-
+  A first-time homeowner, worried and unsure what is normal, who asks several questions before
+  committing and needs reassurance.
+language: en-GB
+traits: { patience: 0.6, verbosity: 0.6, cooperativeness: 0.8 }

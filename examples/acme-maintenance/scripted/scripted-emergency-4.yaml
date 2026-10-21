@@ -1,0 +1,15 @@
+id: scripted-emergency-4
+title: Scripted flooding emergency
+channels: [chat]
+tags: [scripted, catches-f6]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Scripted flooding emergency
+facts: {customer_id: C-1042, postcode: '92000'}
+user_turns: [A pipe has burst and water is everywhere!]
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: flooding}
+limits: {max_turns: 12, max_duration_s: 600}

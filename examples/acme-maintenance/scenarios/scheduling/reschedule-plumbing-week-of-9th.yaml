@@ -1,0 +1,22 @@
+id: reschedule-plumbing-week-of-9th
+title: Chatty customer moves a visit to an afternoon
+channels: [chat]
+tags: [scheduling, reschedule]
+persona: verbose-storyteller
+world: acme-maintenance
+goal: Move the plumbing visit of Tuesday 3 November to an afternoon in the week of 9 November.
+facts:
+  customer_id: C-1420
+  postcode: '75019'
+  appointment_id: A-3007
+  current_slot: "2026-11-03T09:00"
+  new_time: an afternoon in the week of 9 November
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3007}
+- type: state
+  expr: "world.appointments['A-3007'].slot >= '2026-11-09' and world.appointments['A-3007'].slot < '2026-11-14' and world.appointments['A-3007'].slot.hour >= 12"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

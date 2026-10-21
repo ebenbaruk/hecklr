@@ -1,0 +1,18 @@
+id: refund-without-invoice-number
+title: Customer charged twice who lost the invoice number
+channels: [chat]
+tags: [billing, refunds, core]
+persona: busy-homeowner
+world: acme-maintenance
+goal: Get the duplicate boiler service charge from September refunded; you do not know the invoice number.
+facts: {customer_id: C-1042, postcode: '92000'}
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20482}
+- type: state
+  expr: "any(r.invoice_id == 'INV-20482' for r in values(world.refunds))"
+  description: the invoice was refunded
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

@@ -1,0 +1,21 @@
+id: scripted-reschedule-3
+title: Scripted reschedule of A-3003
+channels: [chat]
+tags: [scripted, catches-f1, catches-f2]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Scripted reschedule of A-3003
+facts:
+  customer_id: C-1188
+  postcode: '75005'
+  appointment_id: A-3003
+user_turns:
+- "I'd like to reschedule my visit to the week after next, a morning please."
+- C-1188, postcode 75005
+- Yes please
+success:
+- type: state
+  expr: "world.appointments['A-3003'].slot >= '2026-11-02' and world.appointments['A-3003'].slot < '2026-11-07' and world.appointments['A-3003'].slot.hour < 12"
+  description: the visit moved to the slot asked for
+limits: {max_turns: 12, max_duration_s: 600}

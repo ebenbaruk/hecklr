@@ -1,0 +1,15 @@
+id: scripted-emergency-5
+title: Scripted electrical emergency
+channels: [chat]
+tags: [scripted, catches-f6]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Scripted electrical emergency
+facts: {customer_id: C-1042, postcode: '92000'}
+user_turns: [The socket in the living room is sparking]
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: electrical}
+limits: {max_turns: 12, max_duration_s: 600}

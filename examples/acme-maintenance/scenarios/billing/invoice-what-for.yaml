@@ -1,0 +1,16 @@
+id: invoice-what-for
+title: Customer asks what an invoice was for
+channels: [chat]
+tags: [billing, invoice, core]
+persona: elderly-careful
+world: acme-maintenance
+goal: Find out what invoice INV-20533 was for and how much it was.
+facts:
+  customer_id: C-1188
+  postcode: '75005'
+  invoice_id: INV-20533
+success:
+- {type: regex, pattern: '136[.,]5'}
+- {type: judge, rubric: resolved}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}

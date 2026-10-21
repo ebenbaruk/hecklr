@@ -1,0 +1,21 @@
+id: refund-duplicate-charge
+title: Customer charged twice gets a refund
+channels: [chat]
+tags: [billing, refunds, core]
+persona: polite-professional
+world: acme-maintenance
+goal: 'Get a refund for invoice INV-20482: the boiler service was charged twice (also INV-20481).'
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  invoice_id: INV-20482
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20482}
+- type: state
+  expr: "any(r.invoice_id == 'INV-20482' for r in values(world.refunds))"
+  description: the invoice was refunded
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

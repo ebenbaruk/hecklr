@@ -1,0 +1,21 @@
+id: refund-socket-not-replaced
+title: Customer whose socket was not replaced
+channels: [chat]
+tags: [billing, refunds, core]
+persona: polite-professional
+world: acme-maintenance
+goal: 'Get a refund for invoice INV-20628: the socket replacement was never carried out.'
+facts:
+  customer_id: C-1609
+  postcode: '92300'
+  invoice_id: INV-20628
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20628}
+- type: state
+  expr: "any(r.invoice_id == 'INV-20628' for r in values(world.refunds))"
+  description: the invoice was refunded
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

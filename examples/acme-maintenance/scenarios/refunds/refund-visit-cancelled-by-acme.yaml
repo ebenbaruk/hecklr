@@ -1,0 +1,21 @@
+id: refund-visit-cancelled-by-acme
+title: Customer charged for a visit Acme cancelled
+channels: [chat]
+tags: [billing, refunds, core]
+persona: anxious-first-timer
+world: acme-maintenance
+goal: 'Get a refund for invoice INV-20615: Acme cancelled the visit but still charged the call-out.'
+facts:
+  customer_id: C-1533
+  postcode: '75013'
+  invoice_id: INV-20615
+success:
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20615}
+- type: state
+  expr: "any(r.invoice_id == 'INV-20615' for r in values(world.refunds))"
+  description: the invoice was refunded
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}
