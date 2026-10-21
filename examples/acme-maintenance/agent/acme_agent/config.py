@@ -31,7 +31,8 @@ OVERLAY_DOCS: Final = frozenset({"README.md"})
 TODAY: Final = date(2026, 10, 21)
 """The world's "today"; fixed so a trial behaves the same on any calendar day."""
 
-DEFAULT_MODEL: Final = "ollama/mistral:latest"
+DEFAULT_MODEL: Final = "openai/gpt-6-luna"
+"""ADR 0007d. ``ACME_MODEL=ollama/mistral:latest`` runs the agent free on a local Ollama."""
 Brain = Literal["llm", "rules"]
 _FAULT_ID = re.compile(r"^F\d+$")
 
@@ -154,7 +155,10 @@ class AgentSettings:
     today: date = TODAY
     seed: int = 0
     """Base seed of the LLM brain's requests."""
-    temperature: float = 0.0
+    temperature: float | None = None
+    """``None`` keeps the model's default. On ``gpt-6-luna`` any temperature turns reasoning off
+    (hecklr-llm), and without reasoning it sometimes replies before calling a required tool
+    (ADR 0007d); local models usually want ``ACME_TEMPERATURE=0``."""
     max_steps: int = 8
     """Tool calls plus the reply the LLM brain may take for one customer message."""
     tool_timeout_s: float = 10.0
@@ -164,13 +168,15 @@ class AgentSettings:
         """Read settings from the environment.
 
         Variables: ``ACME_BRAIN``, ``ACME_MODEL``, ``ACME_FAULT``, ``ACME_OVERLAY``,
-        ``ACME_WORLD_BASE_URL``, ``ACME_TODAY``, ``ACME_SEED`` and ``ACME_TOOL_TIMEOUT_S``.
+        ``ACME_WORLD_BASE_URL``, ``ACME_TODAY``, ``ACME_SEED``, ``ACME_TEMPERATURE`` and
+        ``ACME_TOOL_TIMEOUT_S``.
         """
         source = os.environ if env is None else env
         brain = source.get("ACME_BRAIN", "llm")
         if brain not in ("llm", "rules"):
             raise AgentConfigError(f"ACME_BRAIN must be 'llm' or 'rules', got {brain!r}")
         overlay = source.get("ACME_OVERLAY")
+        temperature = source.get("ACME_TEMPERATURE")
         try:
             return cls(
                 brain=cast(Brain, brain),
@@ -180,6 +186,7 @@ class AgentSettings:
                 world_base_url=source.get("ACME_WORLD_BASE_URL") or None,
                 today=date.fromisoformat(source.get("ACME_TODAY", TODAY.isoformat())),
                 seed=int(source.get("ACME_SEED", "0")),
+                temperature=float(temperature) if temperature else None,
                 tool_timeout_s=float(source.get("ACME_TOOL_TIMEOUT_S", "10")),
             )
         except ValueError as exc:

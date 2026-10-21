@@ -21,8 +21,9 @@ tests/                      world, suite, brains, faults, HTTP/SSE, live LLM
 ## Two brains
 
 - **LLM brain** (default, `--brain llm`): the real reference agent. A tool-calling loop over
-  `hecklr_llm` (`ACME_MODEL`, default `ollama/mistral:latest`): each step the model answers one JSON
-  object, either a tool call or the reply to the customer.
+  `hecklr_llm` (`ACME_MODEL`, default `openai/gpt-6-luna`, needs `OPENAI_API_KEY`): each step
+  the model answers one JSON object, either a tool call or the reply to the customer. For a free
+  local run use `ACME_MODEL=ollama/mistral:latest ACME_TEMPERATURE=0`.
 - **Rules brain** (`--brain rules`): a deterministic CI stand-in, **not** an example of agent
   design. It understands customers by keywords and runs one task at a time, calling the same
   tools. It reads the same `prompts/system.md` and `tools/descriptions.yaml`
@@ -45,7 +46,8 @@ curl -sN localhost:8000/chat/stream -H 'content-type: application/json' \
 
 Every flag has an environment variable: `ACME_BRAIN`, `ACME_MODEL`, `ACME_FAULT`,
 `ACME_OVERLAY`, `ACME_WORLD_BASE_URL`, `ACME_TODAY` (default 2026-10-21, the world's "today"),
-`ACME_SEED`, `ACME_TOOL_TIMEOUT_S`.
+`ACME_SEED`, `ACME_TEMPERATURE` (default: the model's own; on `gpt-6-luna` any value turns its
+reasoning off, see ADR 0007d), `ACME_TOOL_TIMEOUT_S`.
 
 ### HTTP API
 
@@ -88,8 +90,13 @@ async with InProcessAgent(AcmeAgent(files, AgentSettings(brain="rules")), world)
 
 ```bash
 uv run pytest examples/acme-maintenance               # everything but the live test
-uv run pytest examples/acme-maintenance -m live       # LLM brain on local Ollama (mistral)
+uv run pytest examples/acme-maintenance -m live       # LLM brain on gpt-6-luna (~$0.002)
+ACME_LIVE_MODEL=ollama/mistral:latest uv run pytest examples/acme-maintenance -m live  # free
 ```
+
+The live tests need `OPENAI_API_KEY` and `HECKLR_TEST_BUDGET_USD` (e.g. `uv run --env-file .env
+pytest ...`); they book a visit, refund an invoice after verification, hand a gas smell to a
+human and check that the F4 overlay leaks an address the clean agent refuses.
 
 `tests/test_suite.py` runs the 33 scripted scenarios as graded trials in process (scripted
 customer, `python` adapter, chat driver, `TrialWorld`, `hecklr_grade`): the clean agent passes

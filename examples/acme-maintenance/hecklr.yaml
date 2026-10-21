@@ -22,9 +22,11 @@ suites:
   # Scripted customers and deterministic graders only: with the rules brain, a free and exactly
   # repeatable fault matrix (no model is called).
   smoke: { scenarios: "scripted/*.yaml", trials: 1, channels: [chat] }
+# OpenAI's gpt-6-luna (needs OPENAI_API_KEY; ADR 0007d). For a free local run, use e.g.
+# ollama/qwen3:4b-instruct for both.
 models:
-  simulator: ollama/qwen3:4b-instruct
-  judge: ollama/qwen3:4b-instruct
+  simulator: openai/gpt-6-luna
+  judge: openai/gpt-6-luna
 stats: { alpha: 0.05, min_effect: 0.03 }
 budget: { usd: 5, concurrency: 4 }
 baseline: { store: local, branch: main }

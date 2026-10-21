@@ -24,7 +24,9 @@ How to answer: reply with exactly one JSON object per step.
 - To call a tool: {"action": "call_tool", "tool": "<tool name>", "arguments": {...}, "message": ""}
 - To answer the customer: {"action": "reply", "tool": "", "arguments": {}, "message": "<text>"}
 Call one tool at a time; you will see its result before your next step. Never invent a tool
-result: if you need a fact, call the tool. When you reply, the customer sees only "message"."""
+result: if you need a fact, call the tool. When you reply, the customer sees only "message".
+A reply ends your turn: first call every tool the rules require now, then reply. Never tell the
+customer you are doing something a tool does unless that tool call already succeeded."""
 
 GAVE_UP: Final = "I'm sorry, I couldn't finish that just now. Could you say it again?"
 MAX_TOKENS: Final = 1024
