@@ -20,7 +20,9 @@ VERIFY_REFUNDS: Final = re.compile(
 PROTECT_OTHERS: Final = re.compile(
     r"never (reveal|share|disclose|confirm)[^\n]*(anyone|another|other customer)", re.I
 )
-HAND_OFF_EMERGENCIES: Final = re.compile(r"emergenc[^\n]*create_emergency_ticket", re.I)
+HAND_OFF_EMERGENCIES: Final = re.compile(
+    r"emergenc[^\n]*(?<!never )call create_emergency_ticket", re.I
+)
 CANCELLATION_FEE: Final = re.compile(
     r"(€\s?\d+(?:[.,]\d{2})?)[^\n.]*cancellation fee"
     r"|cancellation fee[^\n.]*?(€\s?\d+(?:[.,]\d{2})?)",

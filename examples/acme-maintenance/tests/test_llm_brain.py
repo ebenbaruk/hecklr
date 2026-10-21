@@ -42,8 +42,8 @@ async def test_tool_calls_run_and_their_results_reach_the_next_step(world: World
     assert reply.reported_steps
     last_prompt = llm.calls[-1].messages[0].content
     assert "Customer: When is my visit? C-1042, 92000" in last_prompt
-    assert 'Tool call: list_appointments {"customer_id": "C-1042"}' in last_prompt
-    assert '"slot": "2026-10-23T09:00"' in last_prompt
+    assert 'Tool call: list_appointments {"customer_id":"C-1042"}' in last_prompt
+    assert '"slot":"2026-10-23T09:00"' in last_prompt
 
 
 async def test_memory_spans_turns(world: World) -> None:
@@ -63,7 +63,7 @@ async def test_tool_errors_are_fed_back_not_raised(world: World) -> None:
     )
     reply = await llm_agent(llm).respond("s", "I'm C-1042", lambda: LocalWorldTools(world))
     assert reply.steps[0].result.error is not None
-    assert '"code": "not_found"' in llm.calls[-1].messages[0].content
+    assert '"code":"not_found"' in llm.calls[-1].messages[0].content
 
 
 async def test_emergency_ticket_from_the_llm_is_a_handoff(world: World) -> None:

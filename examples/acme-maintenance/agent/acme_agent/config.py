@@ -31,7 +31,7 @@ OVERLAY_DOCS: Final = frozenset({"README.md"})
 TODAY: Final = date(2026, 10, 21)
 """The world's "today"; fixed so a trial behaves the same on any calendar day."""
 
-DEFAULT_MODEL: Final = "ollama/qwen3:8b"
+DEFAULT_MODEL: Final = "ollama/mistral:latest"
 Brain = Literal["llm", "rules"]
 _FAULT_ID = re.compile(r"^F\d+$")
 

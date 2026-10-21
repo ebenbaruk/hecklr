@@ -12,7 +12,7 @@ from acme_agent.config import DEFAULT_MODEL, TODAY, ToolSpec, fault_overlay
 def test_defaults_run_the_clean_llm_agent() -> None:
     settings = AgentSettings.from_env({})
     assert settings.brain == "llm"
-    assert settings.model == DEFAULT_MODEL == "ollama/qwen3:8b"
+    assert settings.model == DEFAULT_MODEL == "ollama/mistral:latest"
     assert settings.today == TODAY
     assert settings.overlay_dir() is None
     assert load_agent_files().variant == "clean"
@@ -22,7 +22,7 @@ def test_environment_overrides() -> None:
     settings = AgentSettings.from_env(
         {
             "ACME_BRAIN": "rules",
-            "ACME_MODEL": "ollama/qwen3:4b-instruct",
+            "ACME_MODEL": "ollama/qwen3:8b",
             "ACME_OVERLAY": "/tmp/x",  # noqa: S108 -- a path value, never opened
             "ACME_WORLD_BASE_URL": "http://127.0.0.1:8765",
             "ACME_TODAY": "2026-11-01",

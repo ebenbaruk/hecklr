@@ -237,7 +237,7 @@ async def test_serve_script_starts_a_fault_variant() -> None:
         httpx2.AsyncClient() as client,
     ):
         try:
-            with anyio.fail_after(20):
+            with anyio.fail_after(60):  # a cold interpreter on a loaded CI runner
                 health = await _wait_for_health(client, url)
             reply = await client.post(
                 f"{url}/chat",

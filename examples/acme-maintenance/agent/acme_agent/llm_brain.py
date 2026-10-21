@@ -10,7 +10,7 @@ import json
 from typing import Final, Literal
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from acme_agent.config import AgentFiles, AgentSettings
 from acme_agent.tools import ToolRunner
@@ -46,12 +46,31 @@ class AgentStep(BaseModel):
     message: str = Field(description="Text for the customer when replying, otherwise empty.")
 
 
+def _argument(name: str, spec: JsonValue, required: bool) -> str:
+    spec = spec if isinstance(spec, dict) else {}
+    enum = spec.get("enum")
+    kind = "one of " + "/".join(map(str, enum)) if isinstance(enum, list) else spec.get("type")
+    text = f"{name} ({kind or 'any'}{', required' if required else ''})"
+    note = spec.get("description")
+    return f"{text}: {note.rstrip('.')}" if isinstance(note, str) else text
+
+
 def render_catalog(files: AgentFiles) -> str:
-    """The tool catalog as the model reads it: one line per tool with its argument schema."""
+    """The tool catalog as the model reads it: one line per tool, arguments described in prose.
+
+    Prose, not raw JSON Schema: it is about a third of the tokens, and local models often run
+    with a 4k-token context that the prompt, the conversation and tool results must share.
+    """
     lines = []
     for spec in files.tools.values():
-        schema = json.dumps(spec.parameters, ensure_ascii=False, separators=(",", ":"))
-        lines.append(f"- {spec.name}: {spec.description} Arguments (JSON Schema): {schema}")
+        properties = spec.parameters.get("properties")
+        required = spec.parameters.get("required")
+        needed = set(required) if isinstance(required, list) else set()
+        arguments = "; ".join(
+            _argument(name, value, name in needed)
+            for name, value in (properties.items() if isinstance(properties, dict) else [])
+        )
+        lines.append(f"- {spec.name}: {spec.description} Arguments: {arguments or 'none'}.")
     return "\n".join(lines)
 
 
@@ -98,9 +117,11 @@ class LLMBrain:
                 return text
             outcome = await tools.call(decision.tool, decision.arguments)
             self._transcript.append(
-                f"Tool call: {decision.tool} {json.dumps(decision.arguments, ensure_ascii=False)}"
+                f"Tool call: {decision.tool} "
+                f"{json.dumps(decision.arguments, ensure_ascii=False, separators=(',', ':'))}"
             )
-            self._transcript.append(f"Tool result: {json.dumps(outcome.body, ensure_ascii=False)}")
+            result = json.dumps(outcome.body, ensure_ascii=False, separators=(",", ":"))
+            self._transcript.append(f"Tool result: {result}")
         _log.warning("llm_brain_step_limit", steps=self._settings.max_steps, turn=self._turn)
         self._transcript.append(f"You: {GAVE_UP}")
         return GAVE_UP

@@ -9,7 +9,7 @@ tools:
       type: object
       required: [customer_id]
       properties:
-        customer_id: { type: string, description: "Customer number, e.g. C-1042." }
+        customer_id: { type: string, description: "Customer number the customer gave (starts with C-)." }
   verify_customer:
     description: >-
       Verify the caller's identity. Succeeds and returns their record only if the customer number
@@ -18,8 +18,8 @@ tools:
       type: object
       required: [customer_id, postcode]
       properties:
-        customer_id: { type: string, description: "Customer number, e.g. C-1042." }
-        postcode: { type: string, description: "Five-digit postcode the caller gives, e.g. 92000." }
+        customer_id: { type: string, description: "Customer number the customer gave (starts with C-)." }
+        postcode: { type: string, description: "Postcode the customer gave (five digits)." }
   list_appointments:
     description: List a customer's visits with their status (booked, cancelled, completed).
     parameters:
@@ -28,7 +28,7 @@ tools:
       properties:
         customer_id: { type: string, description: "Customer number." }
   find_slots:
-    description: List free visit slots. All filters are optional; omit a filter to see every slot.
+    description: List free visit slots. Filter by the date, weekday or period the customer wants to keep the list short.
     parameters:
       type: object
       properties:
@@ -53,7 +53,7 @@ tools:
       type: object
       required: [appointment_id, slot]
       properties:
-        appointment_id: { type: string, description: "Visit id, e.g. A-3001." }
+        appointment_id: { type: string, description: "Visit id from list_appointments." }
         slot: { type: string, description: "New slot start, format YYYY-MM-DDTHH:MM, e.g. 2026-10-27T09:00." }
   cancel_appointment:
     description: Cancel a booked visit once the customer has confirmed.
@@ -61,7 +61,7 @@ tools:
       type: object
       required: [appointment_id, status]
       properties:
-        appointment_id: { type: string, description: "Visit id, e.g. A-3001." }
+        appointment_id: { type: string, description: "Visit id from list_appointments." }
         status: { type: string, enum: [cancelled], description: "Always cancelled." }
   get_invoice:
     description: Look up an invoice by number.
@@ -69,7 +69,7 @@ tools:
       type: object
       required: [invoice_id]
       properties:
-        invoice_id: { type: string, description: "Invoice number, e.g. INV-20481." }
+        invoice_id: { type: string, description: "Invoice number (starts with INV-)." }
   list_invoices:
     description: List a customer's invoices.
     parameters:
@@ -88,9 +88,8 @@ tools:
         amount_eur: { type: number, description: "The invoice's full amount." }
         reason: { type: string, description: "Why the customer is refunded, in a few words." }
   create_emergency_ticket:
-    description: >-
-      Open an emergency ticket and transfer the customer to the on-call engineer. Use it at once for
-      a gas smell, a carbon monoxide alarm, flooding or electrical danger.
+    # When to call it is the system prompt's rule alone, so a prompt fault (F6) is not contradicted.
+    description: Open an emergency ticket and transfer the customer to the on-call engineer.
     parameters:
       type: object
       required: [category, description]
