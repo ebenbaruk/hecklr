@@ -1,0 +1,102 @@
+# --- Local-only files (never commit) -----------------------------------------
+CLAUDE.md
+.history/
+.claude/settings.local.json
+.claude/worktrees/
+PROGRESS.local.md
+
+# --- Secrets & environment ----------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/secrets/
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+.venv/
+venv/
+/env/
+.python-version.local
+
+# Tooling caches
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.tox/
+.nox/
+.pyre/
+.pytype/
+
+# Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+junit*.xml
+
+# --- Hecklr runtime outputs ---------------------------------------------------
+# Run artifacts, response cache, DuckDB results, recorded audio
+.hecklr/
+*.duckdb
+*.duckdb.wal
+# Downloaded models / audio assets fetched on demand (not bundled)
+.cache/
+/models/
+*.onnx
+*.ckpt
+noise-cache/
+
+# --- Node / UI ----------------------------------------------------------------
+node_modules/
+ui/dist/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.eslintcache
+
+# --- Docs ---------------------------------------------------------------------
+/site/
+
+# --- Logs & temp --------------------------------------------------------------
+*.log
+/logs/
+/tmp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# --- OS -----------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# --- Editors / IDEs -----------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.iml
+.fleet/
+.zed/
