@@ -27,6 +27,14 @@ class _EmbeddedServer(uvicorn.Server):
         yield
 
 
+async def _serve(server: _EmbeddedServer, sock: socket.socket) -> None:
+    try:
+        await server.serve([sock])
+    except SystemExit as exc:
+        # uvicorn exits the process when its lifespan startup fails; the harness must not exit.
+        raise RuntimeError(f"the world sandbox server failed to start (exit {exc.code})") from exc
+
+
 class Sandbox:
     """Serves one isolated world per trial from a single localhost server.
 
@@ -131,7 +139,7 @@ class Sandbox:
         stack.callback(sock.close)
         task_group = await stack.enter_async_context(anyio.create_task_group())
         stack.push_async_callback(self._shutdown, server)
-        task_group.start_soon(server.serve, [sock])
+        task_group.start_soon(_serve, server, sock)
         try:
             with anyio.fail_after(self._startup_timeout_s):
                 while not server.started:  # noqa: ASYNC110 - uvicorn exposes readiness only as a flag

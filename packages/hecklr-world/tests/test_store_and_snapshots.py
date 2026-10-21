@@ -67,6 +67,12 @@ def test_integer_keys_are_indexed_by_their_string_form() -> None:
     assert store.state() == {"orders": {"1": {"n": 1, "total": 5}}}
 
 
+def test_non_string_keys_use_their_json_text() -> None:
+    store = Store(_world(flags={"key": "on", "records": [{"on": True}, {"on": 1.5}]}))
+    assert sorted(store.state()["flags"]) == ["1.5", "true"]
+    assert store.get("flags", "true") == {"on": True}
+
+
 def test_find_without_a_match_says_what_it_searched_for() -> None:
     store = Store(_world(items={"records": [{"id": "a"}]}, empty={}))
     with pytest.raises(NotFoundError, match="no empty record matches the query"):

@@ -3,8 +3,10 @@
 from collections.abc import Callable
 from typing import Any
 
+import anyio
 import httpx2
 import pytest
+from fastapi import FastAPI
 from mcp import Client, MCPError
 from mcp.client.streamable_http import streamable_http_client
 
@@ -74,6 +76,30 @@ async def test_a_key_param_missing_from_the_arguments_is_an_argument_error(
     assert outcome.body() == {
         "error": {"code": "invalid_arguments", "message": "missing required argument 'id'"}
     }
+
+
+@pytest.mark.anyio
+@pytest.mark.enable_socket
+@pytest.mark.allow_hosts(["127.0.0.1"])
+async def test_a_server_whose_startup_fails_raises_fast_without_exiting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingLifespan:
+        async def __aenter__(self) -> None:
+            raise OSError("cannot start")
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "hecklr_world.sandbox.create_app",
+        lambda *_, **__: FastAPI(lifespan=lambda _app: FailingLifespan()),
+    )
+    sandbox = Sandbox(startup_timeout_s=30)
+    with anyio.fail_after(5), pytest.raises(BaseExceptionGroup) as info:
+        await sandbox.__aenter__()
+    assert info.group_contains(RuntimeError, match="failed to start")
+    assert not info.group_contains(SystemExit)
 
 
 @pytest.mark.anyio

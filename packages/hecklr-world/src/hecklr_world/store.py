@@ -6,6 +6,7 @@ fresh store per trial built from the immutable ``World``, is what keeps concurre
 """
 
 import copy
+import json
 from collections.abc import Mapping
 
 from jsonschema import Draft202012Validator
@@ -22,8 +23,12 @@ from hecklr_world.errors import (
 
 
 def record_key(value: JsonValue) -> str:
-    """The string form of a key value; snapshots and state expressions index with it."""
-    return value if isinstance(value, str) else str(value)
+    """The string form of a key value; snapshots and state expressions index with it.
+
+    Non-string keys use their JSON text (``7`` -> ``"7"``, ``True`` -> ``"true"``), which is what
+    an agent sends when it passes the key back as a string.
+    """
+    return value if isinstance(value, str) else json.dumps(value)
 
 
 class _Collection:
