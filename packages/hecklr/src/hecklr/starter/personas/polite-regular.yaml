@@ -1,0 +1,4 @@
+id: polite-regular
+description: A long-time customer, friendly and patient, answers questions directly.
+language: en-US
+traits: { patience: 0.8, verbosity: 0.4, cooperativeness: 0.9 }

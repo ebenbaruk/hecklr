@@ -27,6 +27,9 @@ dependencies = [
     "hecklr-stats",
     "hecklr-report",
     "hecklr-fix",
+    "anyio>=4.10",
+    "httpx2>=2.12",
+    "pydantic>=2.11",
     "rich>=14.0",
     "typer>=0.20",
 ]
@@ -41,6 +44,10 @@ all = ["hecklr[voice,local-voice,mine,ui]"]
 
 [project.scripts]
 hecklr = "hecklr.cli:main"
+
+# Loaded by pytest everywhere Hecklr is installed, but inert without --hecklr-suite.
+[project.entry-points.pytest11]
+hecklr = "hecklr.pytest_plugin"
 
 [build-system]
 requires = ["hatchling>=1.27"]

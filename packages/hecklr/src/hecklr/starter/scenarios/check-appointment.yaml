@@ -1,0 +1,16 @@
+id: check-appointment
+title: Customer asks when their boiler visit is booked
+channels: [chat]
+tags: [core, scheduling]
+persona: polite-regular
+world: acme-starter
+goal: Find out the date and time of your upcoming boiler maintenance visit.
+facts:
+  customer_id: C-1001
+success:
+  - type: tool_called
+    tool: get_appointment
+    args: { customer_id: C-1001 }
+  - type: judge
+    rubric: resolved
+limits: { max_turns: 10, max_duration_s: 120 }

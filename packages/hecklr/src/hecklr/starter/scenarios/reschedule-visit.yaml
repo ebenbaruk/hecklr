@@ -1,0 +1,20 @@
+id: reschedule-visit
+title: Customer moves a plumbing visit to a morning the week after
+channels: [chat]
+tags: [core, scheduling]
+persona: busy-commuter
+world: acme-starter
+goal: Move your plumbing repair visit to a morning (before noon) the following week.
+facts:
+  customer_id: C-1002
+  current_slot: "2026-11-06T14:00"
+success:
+  - type: tool_called
+    tool: reschedule_appointment
+    args: { customer_id: C-1002 }
+  - type: state
+    expr: world.appointments['C-1002'].slot.hour < 12
+    description: the new slot is in the morning
+  - type: judge
+    rubric: resolved
+limits: { max_turns: 12, max_duration_s: 180 }

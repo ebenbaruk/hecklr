@@ -1,0 +1,37 @@
+# The world your agent's tools act on during a test. Every trial gets a fresh copy, so trials
+# never see each other's changes. Edit the records and tools to mirror your own backend.
+id: acme-starter
+description: A small home-maintenance company with customers and their booked visits.
+collections:
+  customers:
+    key: id
+    records:
+      - { id: C-1001, name: Ada Lovelace, postcode: "75001", plan: premium }
+      - { id: C-1002, name: Alan Turing, postcode: "69002", plan: basic }
+  appointments:
+    key: customer_id
+    records:
+      - { customer_id: C-1001, service: boiler maintenance, slot: "2026-11-05T09:00" }
+      - { customer_id: C-1002, service: plumbing repair, slot: "2026-11-06T14:00" }
+tools:
+  - name: get_customer
+    description: Look up a customer by customer id (e.g. C-1001).
+    params:
+      type: object
+      properties: { id: { type: string } }
+      required: [id]
+    op: { kind: get, collection: customers }
+  - name: get_appointment
+    description: The visit booked for a customer.
+    params:
+      type: object
+      properties: { customer_id: { type: string } }
+      required: [customer_id]
+    op: { kind: get, collection: appointments }
+  - name: reschedule_appointment
+    description: Move a customer's visit to a new slot, an ISO 8601 local time like 2026-11-12T09:00.
+    params:
+      type: object
+      properties: { customer_id: { type: string }, slot: { type: string } }
+      required: [customer_id, slot]
+    op: { kind: update, collection: appointments }

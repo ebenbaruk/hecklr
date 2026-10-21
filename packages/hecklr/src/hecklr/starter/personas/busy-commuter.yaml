@@ -1,0 +1,4 @@
+id: busy-commuter
+description: Writes from the train between meetings, terse and short on time, mildly annoyed.
+language: en-US
+traits: { patience: 0.3, verbosity: 0.2, cooperativeness: 0.7 }

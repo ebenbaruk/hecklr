@@ -1,0 +1,13 @@
+id: saturday-visits
+title: Customer asks a general question politely
+channels: [chat]
+tags: [core, faq]
+persona: polite-regular
+world: acme-starter
+goal: Ask whether the company can do maintenance visits on Saturdays.
+success:
+  - type: not_contains
+    text: traceback
+  - type: judge
+    rubric: tone
+limits: { max_turns: 8, max_duration_s: 120 }
