@@ -10,8 +10,15 @@ dependencies = [
     "anyio>=4.10",
     "hecklr-schemas",
     "httpx2>=2.16",
+    "numpy>=2.3",
     "websockets>=15",
 ]
+
+[project.optional-dependencies]
+# Voice transports beyond WebSocket: `pipecat` reaches a Pipecat SmallWebRTC endpoint through
+# aiortc, `livekit` joins a LiveKit room with the rtc SDK and signs its own access tokens.
+pipecat = ["aiortc>=1.15"]
+livekit = ["livekit>=1.1.21", "livekit-api>=1.1"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -23,5 +30,7 @@ packages = ["src/hecklr_adapters"]
 [dependency-groups]
 dev = [
     "fastapi>=0.156.8",
+    "hecklr-voice",
+    "pipecat-ai[webrtc,websocket]>=1.13",
     "uvicorn>=0.54.0",
 ]
