@@ -9,7 +9,7 @@ import pytest
 
 from hecklr_schemas import StatsConfig, Verdict
 from hecklr_stats.outcomes import ScenarioCounts
-from hecklr_stats.rates import suite_pass_rate
+from hecklr_stats.rates import suite_pass_at_k, suite_pass_hat_k, suite_pass_rate
 from hecklr_stats.validation import (
     REALISTIC_SUITE,
     BetaComponent,
@@ -101,6 +101,24 @@ def test_suite_pass_rate_interval_covers_the_population_mean() -> None:
         estimate = suite_pass_rate(counts, seed=replicate, resamples=1_000)
         hits += estimate.ci_low <= target <= estimate.ci_high
     assert 0.92 <= hits / 300 <= 0.99
+
+
+@pytest.mark.parametrize(("metric", "power"), [("pass^3", 3), ("pass@3", 3)])
+def test_suite_pass_k_interval_covers_the_population_value(metric: str, power: int) -> None:
+    # pass^k is nonlinear in p, so the two-stage bootstrap needs recentring to cover ~95%.
+    population = REALISTIC_SUITE.sample_pass_rates(1_000_000, np.random.default_rng(0))
+    target = float(
+        np.mean(population**power if metric.startswith("pass^") else 1 - (1 - population) ** power)
+    )
+    estimator = suite_pass_hat_k if metric.startswith("pass^") else suite_pass_at_k
+    rng = np.random.default_rng(12)
+    hits = 0
+    for replicate in range(300):
+        rates = REALISTIC_SUITE.sample_pass_rates(60, rng)
+        counts = ScenarioCounts.from_arrays(np.full(60, 5), rng.binomial(5, rates))
+        estimate = estimator(counts, power, seed=replicate, resamples=1_000)
+        hits += estimate.ci_low <= target <= estimate.ci_high
+    assert 0.92 <= hits / 300 <= 0.995
 
 
 def test_realistic_suite_is_heterogeneous() -> None:
