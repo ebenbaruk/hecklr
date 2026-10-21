@@ -1,8 +1,9 @@
 # hecklr (meta-package + CLI) progress
 
-Owner: WS7a (composition, run/init/doctor/replay, SDK, pytest plugin); WS7b owns `hecklr-report`
-and the compare/gate/report commands. Spec: `docs/SPEC.md` → "Developer experience", "Run
-lifecycle", "Agent adapters". Decisions: ADR 0007a.
+Owners: WS7a (composition, run/init/doctor/replay, SDK, pytest plugin); WS7c (compare, gate,
+report, calibrate, model defaults, the GitHub Action in `action/`). Spec: `docs/SPEC.md` →
+"Developer experience", "Run lifecycle", "Agent adapters", "Statistics and reporting".
+Decisions: ADR 0007a, ADR 0007c.
 
 ## Plan (WS7c, Wave 2a)
 
@@ -48,7 +49,44 @@ lifecycle", "Agent adapters". Decisions: ADR 0007a.
   (`test_a_missing_provider_key_is_a_config_error_before_the_run_starts`); a crashed run exits 3
   naming every cause (`test_a_crashed_run_is_a_harness_error_naming_every_cause`); `init`
   refuses `--adapter python --agent-url` and explains a failed validation.
-- Package: 120 tests, 98% line+branch coverage; `mypy --strict` and ruff clean.
+- Package (WS7a): 120 tests, 98% line+branch coverage; `mypy --strict` and ruff clean.
+- **WS7c** (ADR 0007c):
+  - `hecklr run` prints `hecklr_report.render_terminal` (compared with `--baseline`) plus every
+    scenario's Wilson interval and writes `report.html`; `summary.py`/`outcomes.py` deleted, the
+    adaptive pass and pytest plugin use `hecklr_report.outcomes.convert`.
+    `test_us01_run_prints_suite_and_scenario_pass_rates_with_intervals`.
+  - `results.py` (run ids, `latest`, `baseline`), `reports.py` (md/html/json/junit files).
+  - `hecklr compare`, `hecklr gate`, `hecklr report`: `tests/test_cli_compare_gate_report.py`, e.g.
+    `test_us04_gate_exits_1_on_a_significant_regression`,
+    `test_us04_gate_passes_an_unchanged_agent`, `test_gate_inconclusive_exit_code_is_configurable`,
+    `test_gate_on_a_failed_candidate_run_is_a_harness_error`,
+    `test_a_first_run_without_baseline_fails_or_passes_as_asked`,
+    `test_us05_gate_comment_stays_under_30_lines`.
+  - `hecklr calibrate --aa` / `--judges`: `tests/test_cli_calibrate.py`, e.g.
+    `test_sc5_aa_runs_the_same_agent_twice_with_different_seeds`,
+    `test_sc7_a_judge_humans_disagree_with_is_untrusted`.
+  - Model defaults (`gpt-6-luna` > Anthropic > Ollama > fake with a warning; luna price written
+    into `hecklr.yaml`; `fake/` models default to the scripted customer and judge); doctor's
+    `models available` row. `test_models_follow_what_this_machine_has`,
+    `test_doctor_reports_which_models_this_machine_can_use`.
+  - PR #11 round-2 nits: providers (including judge-criterion `model` overrides) checked before
+    the plan and run id print (`test_a_judge_criterion_model_without_its_key_is_a_config_error`);
+    errors after the run is recorded are harness errors
+    (`test_a_config_error_raised_mid_run_is_a_harness_error`).
+  - `hecklr github` (hidden; the Action's plumbing over `gh`): `tests/test_cli_github.py`, e.g.
+    `test_us05_one_sticky_comment_per_suite_is_created_then_updated`.
+  - Package: 173 tests, 98% line+branch coverage; `mypy --strict`, ruff, actionlint and
+    shellcheck (the action's `run:` blocks) clean.
+  - **Real runs on the reference agent** (in process, rules brain, scripted `smoke` suite, 33
+    scenarios, `action/selftest/`): clean 33/33; `hecklr run` + `hecklr gate` against the clean
+    baseline: F1 exit 1 (−27.3 pts [−42.4, −12.1], p=0.004), F2-F6 exit 1 (−18.2 pts
+    [−33.3, −6.1], p 0.027-0.035), clean exit 0 (NO CHANGE). `calibrate --aa --runs` on two
+    clean runs: passed, simulated false-alarm rate 0.0% [0.0%, 1.9%] (33 x 1, 200 comparisons).
+    `hecklr report -f html -f junit -f json -f md` wrote all four files.
+  - **Action proven on a real draft PR** (#18, closed, branch deleted): self-test job green
+    (baseline 0, clean 0, F3 1); sticky comments created, then updated on re-run (2 comments,
+    not 4); a push to the branch stored `hecklr-baseline-*` and the PR run fetched it and gated F5
+    as REGRESSION (check red, comment updated).
 - Exercised for real on local Ollama (`qwen3:4b-instruct`, shared with other workstreams): init →
   doctor → run of the starter project (15 trials, 15 ok, suite 93% [73%, 100%]) took 8.3 min wall,
   over SC1's 5 min because the shared Ollama kept swapping models; against the fixture FastAPI
@@ -57,20 +95,23 @@ lifecycle", "Agent adapters". Decisions: ADR 0007a.
 
 ## Next
 
-- Wire `compare`, `gate`, `report` once `hecklr-report` (WS7b) merges; replace `summary.py` /
-  `outcomes.py` with its `analyze` + `render_terminal`.
+- `calibrate --voice-loopback` (SC4) from the CLI once a voice suite runs through `hecklr run`.
+- Pass judge calibrations (from the UI's labels, WS16) into reports and `gate`.
 - Voice and email drivers plug into `compose.build_drivers` when WS9/WS10/WS12 land.
 
 ## Open questions
 
 - HTTP agents in sandbox mode cannot learn their trial's world URLs from the `http` adapter
-  (no `{{world_http_url}}` placeholder or header). Needs a WS6 decision (adapter change, no
-  schema change: `SessionContext` already carries the URLs).
+  (WS7d). Compose already gives every trial a reachable `SessionContext.world_http_url`
+  (`http://127.0.0.1:<port>/t/<trial id>`); the Action's self-test uses the `python` adapter.
 - SC1 on a laptop with a local model is model-bound (8.3 min measured): issue #13.
 - The suite pass rate's cluster-bootstrap interval collapses to [100%, 100%] when every trial
   passes: issue #14 (WS5/WS7b).
 
 ## Decisions
 
+- ADR 0007c: run aliases, gate only compares (3 on any lookup failure, `--missing-baseline`),
+  A/A with seeds s and s+1, judges from JSONL labels, scripted `fake/` models, model defaults,
+  the Action's `hecklr github` plumbing.
 - ADR 0007a: grading ownership, composition steps, exit codes, CLI test injection, run summary
   statistics, adaptive pass size, pytest pass rule, starter project.
