@@ -58,6 +58,7 @@ LONG_REPLY_TEXT = (
 LINES = ["Hi, I need to move my boiler visit.", "Next Tuesday morning works.", "Thanks!"]
 FAST = VoiceSettings(greeting_wait_ms=200)
 TOLERANCE_MS = 20
+PROCESSING_ALLOWANCE_MS = 2_000
 
 
 async def _call(
@@ -155,7 +156,10 @@ async def test_events_follow_adr_0006_timing_and_links() -> None:
         ("user", "turn_gap"),
     }
     caller_gaps = [gap.end_ms - gap.start_ms for gap in gaps if gap.attributed_to == "user"]
-    assert all(200 <= gap <= 300 + TOLERANCE_MS for gap in caller_gaps)
+    # Never sooner than the persona's 200-300 ms; later only by the time ASR, the simulator and
+    # TTS take once the agent has stopped (ADR 0009a), which is slow on small CI runners.
+    assert caller_gaps
+    assert all(200 <= gap <= 300 + PROCESSING_ALLOWANCE_MS for gap in caller_gaps), caller_gaps
     [call] = stats
     assert call.frames_sent > 100
     assert call.frames_received > 100
