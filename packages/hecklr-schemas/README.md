@@ -11,6 +11,6 @@ Part of [Hecklr](../../README.md). Owned by WS0; frozen after Wave 0 (changes ne
 ```python
 from hecklr_schemas import Scenario, authoring_json_schemas
 
-scenario = Scenario.model_validate(yaml_data)   # typos fail fast: extra="forbid"
-schemas = authoring_json_schemas()               # for editors and validation
+scenario = Scenario.model_validate(yaml_data)  # typos fail fast: extra="forbid"
+schemas = authoring_json_schemas()  # for editors and validation
 ```

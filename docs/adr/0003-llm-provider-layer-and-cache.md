@@ -24,8 +24,9 @@ refuse runs that would exceed the budget.
 - **Structured output** is a JSON Schema on the request (`json_schema`), mapped to each API's
   native mechanism (Anthropic `output_config.format`, OpenAI `response_format: json_schema`).
   `complete_structured()` validates the reply into a Pydantic model. No provider-specific types leak.
-- **Sampling**: `temperature=None` sends nothing, because current Anthropic models reject explicit
-  sampling parameters; determinism comes from the cache and `seed`, not from temperature 0.
+- **Sampling**: the OpenAI-compatible provider forwards `temperature` and `seed` when set; the
+  Anthropic provider never sends them (the 1.x SDK and current Claude models reject sampling
+  parameters, and there is no seed). Reproducibility comes from the cache, not from temperature 0.
 - **Cache**: SQLite (stdlib) under `.hecklr/cache/llm.sqlite3`, keyed by SHA-256 of the canonical
   JSON of the request. WAL mode for concurrent processes; SQLite calls run in a worker thread; a
   per-key lock stops two concurrent identical calls from paying twice. A hit returns the stored
