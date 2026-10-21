@@ -16,6 +16,9 @@ from hecklr_schemas import Slice
 TAG_DIMENSION = "tag"
 """Slice key for scenario tags: a trial belongs to one ``{"tag": t}`` slice per tag it carries."""
 
+SCENARIO_DIMENSION = "scenario"
+"""Slice key of per-scenario summaries, ``{"scenario": id}``."""
+
 IntArray = npt.NDArray[np.int64]
 FloatArray = npt.NDArray[np.float64]
 
@@ -40,8 +43,9 @@ class TrialOutcome:
     latencies_ms: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
-        if TAG_DIMENSION in self.labels:
-            raise ValueError(f"label key {TAG_DIMENSION!r} is reserved for scenario tags")
+        reserved = {TAG_DIMENSION, SCENARIO_DIMENSION} & self.labels.keys()
+        if reserved:
+            raise ValueError(f"label keys {sorted(reserved)} are reserved slice dimensions")
         if any(latency < 0 for latency in self.latencies_ms):
             raise ValueError("latencies must be non-negative milliseconds")
 
@@ -56,6 +60,22 @@ class TrialOutcome:
             tag in self.tags if key == TAG_DIMENSION else self.labels.get(key) == tag
             for key, tag in slice_.items()
         )
+
+
+def slices_of(*runs: Iterable[TrialOutcome]) -> list[Slice]:
+    """Every slice any trial of ``runs`` belongs to (excluding ``{}``), sorted by key."""
+    keys = {
+        tuple(sorted(slice_.items()))
+        for outcomes in runs
+        for outcome in outcomes
+        for slice_ in outcome.slices()
+    }
+    return [dict(key) for key in sorted(keys)]
+
+
+def slice_key(slice_: Slice) -> str:
+    """Stable text form of a slice, e.g. ``channel=voice``; empty for the whole suite."""
+    return "&".join(f"{key}={value}" for key, value in sorted(slice_.items()))
 
 
 @dataclass(frozen=True, slots=True)

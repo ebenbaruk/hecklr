@@ -76,9 +76,10 @@ def test_boundaries_are_monotone_in_information(gaps: list[float]) -> None:
 
 
 def test_a_look_that_spends_nothing_never_rejects() -> None:
-    first, _ = group_sequential_boundaries([0.001, 1.0], alpha=0.05)
+    first, last = group_sequential_boundaries([0.001, 1.0], alpha=0.05)
     assert first.z == pytest.approx(40.0)
     assert first.nominal_alpha == 0.0
+    assert last.z == pytest.approx(1.96, abs=1e-3)
 
 
 def test_spending_function_shape() -> None:

@@ -32,7 +32,13 @@ from hecklr_schemas import (
     new_id,
 )
 from hecklr_stats.intervals import chunk_sizes, derive_rng, percentile_interval, z_value
-from hecklr_stats.outcomes import FloatArray, ScenarioCounts, TrialOutcome
+from hecklr_stats.outcomes import (
+    FloatArray,
+    ScenarioCounts,
+    TrialOutcome,
+    slice_key,
+    slices_of,
+)
 from hecklr_stats.sequential import group_sequential_boundaries
 
 PASS_RATE = "pass_rate"  # noqa: S105 - a metric name; "pass" here is not a password
@@ -282,7 +288,7 @@ def compare_runs(
         threshold, look, alpha_spent = boundary.nominal_alpha, boundary.look, boundary.alpha_spent
 
     results: list[tuple[Slice, PairedResult]] = []
-    for slice_ in [{}, *_slices(baseline, candidate)]:
+    for slice_ in [{}, *slices_of(baseline, candidate)]:
         base_counts, cand_counts = pair(
             ScenarioCounts.from_outcomes(o for o in baseline if o.in_slice(slice_)),
             ScenarioCounts.from_outcomes(o for o in candidate if o.in_slice(slice_)),
@@ -291,7 +297,7 @@ def compare_runs(
             if not slice_:
                 raise ValueError("no scenarios in common between baseline and candidate")
             continue
-        rng = derive_rng(stats_seed, PASS_RATE, _slice_key(slice_))
+        rng = derive_rng(stats_seed, PASS_RATE, slice_key(slice_))
         result = paired_comparison(
             base_counts,
             cand_counts,
@@ -338,17 +344,3 @@ def compare_runs(
             )
         )
     return comparisons
-
-
-def _slices(*runs: Sequence[TrialOutcome]) -> list[Slice]:
-    keys = {
-        tuple(sorted(slice_.items()))
-        for outcomes in runs
-        for outcome in outcomes
-        for slice_ in outcome.slices()
-    }
-    return [dict(key) for key in sorted(keys)]
-
-
-def _slice_key(slice_: Slice) -> str:
-    return "&".join(f"{key}={value}" for key, value in sorted(slice_.items()))

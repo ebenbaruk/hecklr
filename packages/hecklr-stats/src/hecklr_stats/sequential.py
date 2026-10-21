@@ -33,7 +33,7 @@ MIN_LOOK_GAP = 0.01
 loses accuracy when one step's spread is narrower than the grid spacing."""
 
 _Z_MAX = 40.0
-"""Cap for a look that spends (numerically) no alpha: it can never reject."""
+"""Cap for a first look so early that it spends (numerically) no alpha: it can never reject."""
 
 FLIP_WEIGHT = 2.0
 """Flipped scenarios count double when allocating adaptive trials: a pass-to-fail flip is direct
@@ -111,8 +111,8 @@ def _solve_boundary(
     def excess(z: float) -> float:
         return _crossing_probability(grid, density, z * math.sqrt(t), step_sd) - increment
 
-    if excess(_Z_MAX) >= 0:
-        return _Z_MAX
+    # Looks are at least MIN_LOOK_GAP apart, so every look after the first spends alpha and the
+    # crossing chance falls from all remaining mass at z = 0 to ~0 at _Z_MAX: a sign change.
     return float(brentq(excess, 0.0, _Z_MAX, xtol=1e-10))
 
 
