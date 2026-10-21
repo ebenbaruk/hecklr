@@ -25,4 +25,9 @@ async with Sandbox(tool_mode="sandbox") as sandbox:  # one localhost server for 
 - `Sandbox(tool_mode="observed")`: sessions have no URLs. Point the agent's OTLP exporter at
   `sandbox.otlp_endpoint`. Its GenAI `execute_tool` spans become `source="observed"` events.
 - Python tools are `fn(store: Store, **params) -> JSON` and raise `ToolError` subclasses
-  (`NotFoundError`, `ConflictError`, ...) to fail a call.
+  (`NotFoundError`, `ConflictError`, `ToolTimeoutError`, ...) to fail a call. They must return
+  plain JSON (dict, list, str, int, float, bool, None). Anything else, such as a `datetime`, is a
+  500 to the agent and an `error` event. They run synchronously on the shared event loop, so they
+  must not block (no network I/O, no `time.sleep`). A blocking tool stalls every concurrent trial.
+  Use a `slow` fault to simulate latency.
+- Non-string record keys are indexed by their JSON text (`1` -> `"1"`, `True` -> `"true"`).

@@ -19,8 +19,10 @@ adapters" (`SessionContext`, `X-Hecklr-Trial-Id`). Contracts: ADR 0004 (declarat
   Kinds: `timeout` (held until `close()`), `http_500`, `slow`, `stale_data`.
 - `TrialWorld` (`session.py`, the `WorldSession`): a direct `call_tool` API that emits
   `tool_call` (actor `agent`) and `tool_result` (actor `tool`, `latency_ms`, `fault`) for every
-  call. Unknown tools and abandoned or held calls are recorded too. A crashing Python tool returns
-  a 500 to the agent and writes an `error` event. Also provides `snapshot()` and observed-mode
+  call. Unknown tools and abandoned or held calls are recorded too. A crashing Python tool, or one
+  that returns a value that is not JSON, returns a 500 to the agent and writes an `error` event. A
+  `ToolTimeoutError` raised by a Python tool is recorded like any other error. A `slow` call still
+  sleeping at `close()` is released and recorded there, and it never writes. Also provides `snapshot()` and observed-mode
   `record_observed`.
 - `diff_snapshots` (`diff.py`): sorted added / removed / changed paths in state-expression syntax.
 - `load_world` (`loader.py`): YAML world files, with `seed_file` (JSON / YAML / CSV) inlined.
@@ -28,8 +30,8 @@ adapters" (`SessionContext`, `X-Hecklr-Trial-Id`). Contracts: ADR 0004 (declarat
   ephemeral `127.0.0.1` port serves every trial under `/t/{trial_id}`. It exposes the OpenAPI tool
   routes plus a per-trial `openapi.json`, MCP (official SDK, stateless streamable HTTP), and OTLP/HTTP
   JSON at `/v1/traces` for observed mode (`app.py`, `otlp.py`).
-- Tests: 90 unit/integration tests (`uv run pytest packages/hecklr-world -n auto`), with 99% line and
-  branch coverage (780 statements, 0 missed). Evidence by requirement:
+- Tests: 97 unit/integration tests (`uv run pytest packages/hecklr-world -n auto`), with 99% line and
+  branch coverage (814 statements, 0 missed). Evidence by requirement:
   - HTTP server with a real client: `test_server_http.py`. It uses httpx2 against the live
     localhost server and covers the OpenAPI document, state changes, structured errors,
     404 for closed or unknown trials, the `http_500` and `timeout` faults, and teardown.
@@ -53,6 +55,15 @@ adapters" (`SessionContext`, `X-Hecklr-Trial-Id`). Contracts: ADR 0004 (declarat
   - In observed mode, an OTLP span posted with curl became observed events, and an unattributed
     span was reported as rejected.
   - Each trial's diff showed only its own writes.
+
+- Review round 1, with a regression test for each fix:
+  - `test_a_python_tool_raising_a_timeout_records_its_result`
+  - `test_a_python_tool_returning_non_json_is_a_500_with_both_events`
+  - `test_a_slow_call_in_flight_at_close_is_recorded_and_never_writes`
+  - `test_a_held_call_cancelled_right_after_close_is_recorded_once`
+  - `test_a_re_exported_span_is_recorded_once`
+  - `test_a_server_whose_startup_fails_raises_fast_without_exiting`
+  - `test_non_string_keys_use_their_json_text`
 
 ## Next
 
