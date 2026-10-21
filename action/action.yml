@@ -1,0 +1,198 @@
+name: Hecklr gate
+description: >-
+  Run a Hecklr suite against your agent, compare it with the baseline from the default branch,
+  post one sticky PR comment and fail the check only on a statistically significant regression.
+author: Hecklr
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  config:
+    description: Path to hecklr.yaml, relative to working-directory.
+    default: hecklr.yaml
+  suite:
+    description: Suite of hecklr.yaml to run and gate.
+    default: ci
+  working-directory:
+    description: Directory of the Hecklr project.
+    default: .
+  baseline-branch:
+    description: Branch whose runs are the baseline; its runs are stored as the new baseline.
+    default: main
+  baseline-run:
+    description: >-
+      A run id already in the project's run store to compare with, instead of fetching the
+      baseline artifact of baseline-branch.
+    default: ""
+  budget-usd:
+    description: Hard cap on model spend for the run (overrides budget.usd).
+    default: ""
+  trials:
+    description: Trials per scenario x persona x channel (overrides the suite's).
+    default: ""
+  on-inconclusive:
+    description: "`fail` (exit 2) or `pass` (exit 0) on an inconclusive verdict; empty: gate.on_inconclusive."
+    default: ""
+  missing-baseline:
+    description: "`pass` reports the run alone when no baseline exists yet (a first PR); `error` exits 3."
+    default: pass
+  comment:
+    description: Post or update the sticky PR comment.
+    default: "true"
+  install:
+    description: Shell command that installs Hecklr (run in working-directory).
+    default: uv tool install hecklr
+  hecklr:
+    description: Command that runs the Hecklr CLI after install.
+    default: hecklr
+  github-token:
+    description: Token for the PR comment (pull-requests write) and baseline artifacts (actions read).
+    default: ${{ github.token }}
+
+outputs:
+  exit-code:
+    description: "hecklr gate's exit code: 0 pass, 1 regression, 2 inconclusive, 3 harness error."
+    value: ${{ steps.gate.outputs.exit-code }}
+  run-id:
+    description: Id of the run this job made.
+    value: ${{ steps.latest.outputs.run-id }}
+  baseline-run-id:
+    description: Id of the baseline run compared with (empty if none).
+    value: ${{ steps.baseline.outputs.run-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v10.3.0
+
+    - name: Install Hecklr
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.install }}
+
+    - name: Restore the LLM response cache
+      uses: actions/cache@v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/.hecklr/cache
+        key: hecklr-llm-${{ inputs.suite }}-${{ github.run_id }}
+        restore-keys: hecklr-llm-${{ inputs.suite }}-
+
+    - name: Fetch the baseline run
+      id: baseline
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        HECKLR: ${{ inputs.hecklr }}
+        CONFIG: ${{ inputs.config }}
+        SUITE: ${{ inputs.suite }}
+        BRANCH: ${{ inputs.baseline-branch }}
+        BASELINE_RUN: ${{ inputs.baseline-run }}
+      run: |
+        if [ -n "$BASELINE_RUN" ]; then
+          echo "run-id=$BASELINE_RUN" >> "$GITHUB_OUTPUT"
+        elif [ "$GITHUB_EVENT_NAME" = "pull_request" ] || [ "$GITHUB_EVENT_NAME" = "pull_request_target" ]; then
+          $HECKLR github fetch-baseline --config "$CONFIG" \
+            --name "hecklr-baseline-$SUITE" --branch "$BRANCH"
+        else
+          echo "run-id=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Run the suite
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HECKLR: ${{ inputs.hecklr }}
+        CONFIG: ${{ inputs.config }}
+        SUITE: ${{ inputs.suite }}
+        BASELINE: ${{ steps.baseline.outputs.run-id }}
+        BUDGET: ${{ inputs.budget-usd }}
+        TRIALS: ${{ inputs.trials }}
+      run: |
+        args=(run --config "$CONFIG" --suite "$SUITE")
+        [ -n "$BASELINE" ] && args+=(--baseline "$BASELINE")
+        [ -n "$BUDGET" ] && args+=(--budget-usd "$BUDGET")
+        [ -n "$TRIALS" ] && args+=(--trials "$TRIALS")
+        set +e
+        $HECKLR "${args[@]}"
+        echo "exit-code=$?" >> "$GITHUB_OUTPUT"
+
+    - name: Gate
+      id: gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HECKLR: ${{ inputs.hecklr }}
+        CONFIG: ${{ inputs.config }}
+        SUITE: ${{ inputs.suite }}
+        BASELINE: ${{ steps.baseline.outputs.run-id }}
+        ON_INCONCLUSIVE: ${{ inputs.on-inconclusive }}
+        MISSING_BASELINE: ${{ inputs.missing-baseline }}
+        REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        args=(gate --config "$CONFIG" --suite "$SUITE" --out-dir hecklr-report
+              --missing-baseline "$MISSING_BASELINE" --report-url "$REPORT_URL")
+        [ -n "$BASELINE" ] && args+=(--baseline "$BASELINE")
+        [ -n "$ON_INCONCLUSIVE" ] && args+=(--on-inconclusive "$ON_INCONCLUSIVE")
+        set +e
+        $HECKLR "${args[@]}" > hecklr-gate.md
+        code=$?
+        cat hecklr-gate.md
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [ -f hecklr-report/report.md ]; then cat hecklr-report/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+    - name: Upload the report
+      if: always()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: hecklr-report-${{ inputs.suite }}
+        path: ${{ inputs.working-directory }}/hecklr-report
+        if-no-files-found: warn
+
+    - name: Comment on the pull request
+      if: >-
+        always() && inputs.comment == 'true' &&
+        (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        HECKLR: ${{ inputs.hecklr }}
+        SUITE: ${{ inputs.suite }}
+        PR: ${{ github.event.pull_request.number }}
+        RUN_EXIT: ${{ steps.run.outputs.exit-code }}
+      run: |
+        $HECKLR github comment --pr "$PR" --suite "$SUITE" --body-file hecklr-report/report.md \
+          --fallback "hecklr run exited $RUN_EXIT and no report was written; see the workflow logs."
+
+    - name: Find the run to store as the baseline
+      id: latest
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HECKLR: ${{ inputs.hecklr }}
+        CONFIG: ${{ inputs.config }}
+        SUITE: ${{ inputs.suite }}
+      run: |
+        $HECKLR github latest-run --config "$CONFIG" --suite "$SUITE" || echo "status=" >> "$GITHUB_OUTPUT"
+
+    - name: Store the run as the new baseline
+      if: >-
+        always() && github.event_name == 'push' &&
+        github.ref_name == inputs.baseline-branch && steps.latest.outputs.status == 'completed'
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: hecklr-baseline-${{ inputs.suite }}
+        path: ${{ inputs.working-directory }}/.hecklr/runs/${{ steps.latest.outputs.run-id }}
+        include-hidden-files: true
+        retention-days: 90
+
+    - name: Set the exit code
+      shell: bash
+      env:
+        CODE: ${{ steps.gate.outputs.exit-code }}
+      run: exit "${CODE:-3}"

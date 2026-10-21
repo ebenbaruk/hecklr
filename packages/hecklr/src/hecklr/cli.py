@@ -13,7 +13,7 @@ import structlog
 import typer
 
 from hecklr import __version__
-from hecklr.commands import stubs
+from hecklr.commands import github, stubs
 from hecklr.commands.calibrate import calibrate
 from hecklr.commands.compare import compare
 from hecklr.commands.doctor import doctor
@@ -79,6 +79,7 @@ app.command(help="Self-tests: A/A false-positive rate, judge agreement, voice lo
 app.command(help="Convert real transcripts into replay scenarios.")(replay)
 app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
 stubs.register(app)
+app.add_typer(github.app)
 
 
 def main() -> None:

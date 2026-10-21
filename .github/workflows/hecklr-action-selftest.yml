@@ -1,0 +1,90 @@
+name: Action self-test
+
+# Runs ./action on the acme-maintenance reference agent (in process, rules brain, scripted
+# customers, deterministic graders: no model, no cost): a clean run must pass the gate and a
+# seeded fault (F3) must fail it as a regression. Sticky PR comments are posted only from
+# branches named selftest/hecklr-action-*, so ordinary PRs stay quiet.
+
+on:
+  pull_request:
+    paths:
+      - action/**
+      - packages/hecklr/**
+      - packages/hecklr-report/**
+      - .github/workflows/hecklr-action-selftest.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group: hecklr-action-selftest-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROJECT: examples/acme-maintenance
+      COMMENT: ${{ startsWith(github.head_ref, 'selftest/hecklr-action') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Put the self-test project next to the reference agent
+        run: |
+          cp action/selftest/hecklr.yaml "$PROJECT/hecklr.action.yaml"
+          cp action/selftest/hecklr_action_agent.py "$PROJECT/"
+
+      - name: Baseline run (clean agent)
+        id: baseline
+        uses: ./action
+        with:
+          working-directory: ${{ env.PROJECT }}
+          config: hecklr.action.yaml
+          suite: smoke-baseline
+          install: uv sync --all-packages
+          hecklr: uv run hecklr
+          comment: "false"
+
+      - name: Clean candidate (must pass)
+        id: clean
+        continue-on-error: true
+        uses: ./action
+        with:
+          working-directory: ${{ env.PROJECT }}
+          config: hecklr.action.yaml
+          suite: smoke
+          baseline-run: ${{ steps.baseline.outputs.run-id }}
+          install: uv sync --all-packages
+          hecklr: uv run hecklr
+          comment: ${{ env.COMMENT }}
+
+      - name: Fault F3 candidate (must be a regression)
+        id: fault
+        continue-on-error: true
+        uses: ./action
+        env:
+          ACME_FAULT: F3
+        with:
+          working-directory: ${{ env.PROJECT }}
+          config: hecklr.action.yaml
+          suite: smoke-fault
+          baseline-run: ${{ steps.baseline.outputs.run-id }}
+          install: uv sync --all-packages
+          hecklr: uv run hecklr
+          comment: ${{ env.COMMENT }}
+
+      - name: Check the gate's exit codes
+        env:
+          BASELINE: ${{ steps.baseline.outputs.exit-code }}
+          CLEAN: ${{ steps.clean.outputs.exit-code }}
+          FAULT: ${{ steps.fault.outputs.exit-code }}
+        run: |
+          echo "baseline=$BASELINE clean=$CLEAN fault=$FAULT"
+          [ "$BASELINE" = 0 ] && [ "$CLEAN" = 0 ] && [ "$FAULT" = 1 ]

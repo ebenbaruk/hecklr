@@ -1,0 +1,21 @@
+# The Action's self-test project: the acme-maintenance reference agent in process (rules brain),
+# scripted customers and deterministic graders only, so no model is ever called.
+# The self-test workflow copies it to examples/acme-maintenance/hecklr.action.yaml. The three
+# suites are the same scenarios; separate names keep each step's artifacts and PR comment apart.
+version: 1
+agent:
+  name: acme-maintenance
+  adapters:
+    chat: { type: python, entrypoint: "hecklr_action_agent:reply" }
+  editable: [prompts/system.md, tools/descriptions.yaml]
+world: worlds/acme-maintenance.yaml
+suites:
+  smoke-baseline: { scenarios: "scripted/*.yaml", trials: 1, channels: [chat] }
+  smoke: { scenarios: "scripted/*.yaml", trials: 1, channels: [chat] }
+  smoke-fault: { scenarios: "scripted/*.yaml", trials: 1, channels: [chat] }
+models:
+  simulator: fake/customer
+  judge: fake/judge
+stats: { alpha: 0.05, min_effect: 0.03 }
+budget: { usd: 0, concurrency: 8 }
+seed: 20261021

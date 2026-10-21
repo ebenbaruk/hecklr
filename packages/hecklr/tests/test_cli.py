@@ -45,7 +45,7 @@ def test_spec_command_surface_is_complete() -> None:
 
     registered = set(typer.main.get_command(app).commands)  # type: ignore[attr-defined]  # a Typer group
 
-    assert registered == spec_commands | {"version"}
+    assert registered == spec_commands | {"version", "github"}  # github: the Action's, hidden
     assert set(PENDING_COMMANDS) == spec_commands - IMPLEMENTED
 
 
