@@ -32,6 +32,7 @@ from hecklr_schemas import (
 )
 from hecklr_schemas.scenario import SuccessCriterion
 from hecklr_sim.seeds import derive_seed
+from hecklr_sim.tokens import mentions
 
 _EXTRACTOR_SYSTEM = (
     "You turn a logged customer-support conversation into a test scenario for a customer "
@@ -150,14 +151,10 @@ def grounded_facts(
             name
             and len(value) >= _MIN_FACT_LENGTH
             and name not in kept
-            and _said(customer_text, value.casefold())
+            and mentions(customer_text, value.casefold())
         ):
             kept[name] = value
     return kept
-
-
-def _said(text: str, value: str) -> bool:
-    return re.search(rf"(?<!\w){re.escape(value)}(?!\w)", text) is not None
 
 
 def load_conversations(path: Path) -> list[Conversation]:

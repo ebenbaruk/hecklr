@@ -14,11 +14,10 @@ The deterministic checks are cheap and run on every draft:
 - **Malformed decision:** ``speak`` with no text, ``end`` with no reason, or JSON spilled into
   the text (seen with small local models).
 
-Tokens are matched whole (``ORD-558`` is not ``ORD-5581``). Tokens the agent itself said and an
-attack strategy's decoys (another customer's ID to probe) are never flagged, so "no, not C-1043,
-it's C-1042" passes. A changed
-goal cannot be detected by pattern matching; the optional LLM check (``ConsistencyVerdict``)
-covers it.
+Tokens are matched whole (``ORD-558`` is not ``ORD-5581``). Tokens the agent itself said and
+tokens inside an attack strategy's decoys (another customer's ID or address to probe) are never
+flagged, so "no, not C-1043, it's C-1042" passes. A changed goal cannot be detected by pattern
+matching; the optional LLM check (``ConsistencyVerdict``) covers it.
 """
 
 import re
@@ -32,12 +31,15 @@ from hecklr_schemas import DialogueTurn, Scenario
 from hecklr_sim.brief import render_fact_value
 from hecklr_sim.decision import SimDecision
 from hecklr_sim.strategies import AttackStrategy
+from hecklr_sim.tokens import WORD_EDGE_AFTER, WORD_EDGE_BEFORE, mentions
 
 IssueKind = Literal[
     "wrong_fact_value", "invented_identifier", "unknown_fact", "malformed", "llm_flagged"
 ]
 
-_ID_TOKEN = re.compile(r"(?<![A-Za-z\d])(?:[A-Za-z]{1,4}-?\d{3,}|\d{6,})(?![A-Za-z\d])")
+_ID_TOKEN = re.compile(
+    rf"{WORD_EDGE_BEFORE}(?:[A-Za-z]{{1,4}}-?\d{{3,}}|\d{{6,}}){WORD_EDGE_AFTER}"
+)
 """ID-like tokens: letters then digits (``C-1042``, ``ORD5581``) or long digit runs (phones)."""
 _RUNS = re.compile(r"[A-Za-z]+|\d+|[^A-Za-z\d]+")
 _FORMAT_LEAK = re.compile(
@@ -63,7 +65,7 @@ class ConsistencyGuard:
         self._values = {name: render_fact_value(value) for name, value in scenario.facts.items()}
         self._fact_names = {name.casefold() for name in scenario.facts}
         self._fact_values = {value.casefold() for value in _scalar_texts(scenario.facts)}
-        self._allowed_values = self._fact_values | {decoy.casefold() for decoy in decoys}
+        self._decoy_text = " ".join(decoys).casefold()
         self._brief_text = " ".join([scenario.goal, *self._values.values(), *decoys]).casefold()
         # Only scalar facts get a shape; a nested fact rendered as JSON is not an identifier.
         self._shapes = {
@@ -90,8 +92,9 @@ class ConsistencyGuard:
                 folded = token.casefold()
                 if (
                     folded in flagged
-                    or folded in self._allowed_values
-                    or _mentions(agent_text, folded)
+                    or folded in self._fact_values
+                    or mentions(self._decoy_text, folded)
+                    or mentions(agent_text, folded)
                 ):
                     continue
                 flagged.add(folded)
@@ -105,8 +108,8 @@ class ConsistencyGuard:
             folded = token.casefold()
             if (
                 folded in flagged
-                or _mentions(self._brief_text, folded)
-                or _mentions(agent_text, folded)
+                or mentions(self._brief_text, folded)
+                or mentions(agent_text, folded)
             ):
                 continue
             flagged.add(folded)
@@ -158,12 +161,7 @@ def _shape(value: str) -> re.Pattern[str] | None:
             parts.append(rf"[A-Za-z]{{{len(run)}}}")
         else:
             parts.append(re.escape(run))
-    return re.compile(rf"(?<![A-Za-z\d]){''.join(parts)}(?![A-Za-z\d])")
-
-
-def _mentions(text: str, token: str) -> bool:
-    """Whether ``token`` occurs in ``text`` as a whole token, not as part of a longer one."""
-    return re.search(rf"(?<![A-Za-z\d]){re.escape(token)}(?![A-Za-z\d])", text) is not None
+    return re.compile(rf"{WORD_EDGE_BEFORE}{''.join(parts)}{WORD_EDGE_AFTER}")
 
 
 def _scalar_texts(value: JsonValue) -> Iterable[str]:
