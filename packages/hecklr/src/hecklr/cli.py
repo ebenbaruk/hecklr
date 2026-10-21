@@ -13,10 +13,14 @@ import structlog
 import typer
 
 from hecklr import __version__
-from hecklr.commands import stubs
+from hecklr.commands import github, stubs
+from hecklr.commands.calibrate import calibrate
+from hecklr.commands.compare import compare
 from hecklr.commands.doctor import doctor
+from hecklr.commands.gate import gate
 from hecklr.commands.init import init
 from hecklr.commands.replay import replay
+from hecklr.commands.report import report
 from hecklr.commands.run import run
 
 app = typer.Typer(
@@ -68,9 +72,14 @@ app.command(help="Interactive setup: write hecklr.yaml, a starter world, scenari
     init
 )
 app.command(help="Run a suite against the agent and write results.")(run)
+app.command(help="Statistical comparison of two runs.")(compare)
+app.command(help="Compare against the stored baseline and set the CI exit code.")(gate)
+app.command(help="Build HTML, Markdown, JSON or JUnit output for a run.")(report)
+app.command(help="Self-tests: A/A false-positive rate, judge agreement, voice loopback.")(calibrate)
 app.command(help="Convert real transcripts into replay scenarios.")(replay)
 app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
 stubs.register(app)
+app.add_typer(github.app)
 
 
 def main() -> None:

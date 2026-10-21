@@ -2,6 +2,7 @@
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated
 
@@ -15,6 +16,7 @@ from hecklr.compose import load_run_project
 from hecklr.probe import ollama_models, probe_agent, reply_path
 from hecklr.scaffold import (
     CONFIG_FILE,
+    MODEL_KEYS,
     AdapterType,
     AgentChoice,
     ModelChoice,
@@ -82,8 +84,10 @@ def init(
     stdout.print(f"Wrote {len(written)} files to {escape(str(root))}:", soft_wrap=True)
     for path in written:
         stdout.print(f"  {escape(str(path.relative_to(root)))}")
+    style = "bold yellow" if models.warning else "default"
     stdout.print(
-        f"Models: simulator {models.simulator}, judge {models.judge}; {models.reason}.",
+        f"Models: simulator {models.simulator}, judge {models.judge}; "
+        f"[{style}]{escape(models.reason)}[/].",
         soft_wrap=True,
     )
     location = "" if root == Path.cwd() else f"cd {escape(str(root))} && "
@@ -131,8 +135,15 @@ def _agent_choice(
 def _models(simulator: str | None, judge: str | None, *, yes: bool) -> ModelChoice:
     if simulator is not None and judge is not None:
         return ModelChoice(simulator, judge, "chosen on the command line")
-    detected = choose_models(os.environ, ollama_models())
-    chosen = ModelChoice(simulator or detected.simulator, judge or detected.judge, detected.reason)
+    # Only probed when no key decides: a key present makes the local server irrelevant.
+    found = None if _has_key(os.environ) else ollama_models()
+    detected = choose_models(os.environ, found)
+    chosen = ModelChoice(
+        simulator or detected.simulator,
+        judge or detected.judge,
+        detected.reason,
+        detected.warning,
+    )
     if yes:
         return chosen
     return ModelChoice(
@@ -140,6 +151,10 @@ def _models(simulator: str | None, judge: str | None, *, yes: bool) -> ModelChoi
         typer.prompt("Judge model", default=chosen.judge),
         chosen.reason,
     )
+
+
+def _has_key(env: Mapping[str, str]) -> bool:
+    return any(env.get(name) for name in MODEL_KEYS)
 
 
 def _agent_name(root: Path) -> str:

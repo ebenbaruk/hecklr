@@ -20,6 +20,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import WebSocketException
 
 from hecklr_adapters._http import parse_json
+from hecklr_adapters.context import session_headers, template_values
 from hecklr_adapters.errors import AdapterConfigError, AgentError, AgentTimeoutError
 from hecklr_adapters.templates import check_path, check_template, find, render
 from hecklr_schemas import (
@@ -55,7 +56,7 @@ class WebSocketChatTarget:
         try:
             socket = await connect(
                 self._config.url,
-                additional_headers={**self._config.headers, **ctx.headers()},
+                additional_headers={**self._config.headers, **session_headers(ctx)},
                 open_timeout=self._config.timeout_s,
             )
         except TimeoutError as exc:
@@ -84,7 +85,7 @@ class WebSocketChatSession:
 
     async def send(self, text: str) -> AsyncIterator[AgentChunk]:
         """Send ``text`` and stream incoming messages until the turn is final."""
-        values = {"message": text, "session_id": self._session_id, "trial_id": self._ctx.trial_id}
+        values = template_values(self._ctx, message=text, session_id=self._session_id)
         try:
             await self._socket.send(json.dumps(render(self._template, values)))
             final = False

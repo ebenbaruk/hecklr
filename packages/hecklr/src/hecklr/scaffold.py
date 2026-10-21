@@ -21,7 +21,13 @@ CONFIG_FILE: Final = "hecklr.yaml"
 STARTER_AGENT_MODULE: Final = "hecklr_agent"
 STARTER_AGENT_ENTRYPOINT: Final = f"{STARTER_AGENT_MODULE}:reply"
 PREFERRED_OLLAMA_MODELS: Final = ("qwen3:4b-instruct", "qwen3:8b")
-DEFAULT_OLLAMA_MODEL: Final = "ollama/qwen3:4b-instruct"
+OPENAI_MODEL: Final = "openai/gpt-6-luna"
+OPENAI_MODEL_PRICE: Final = {"input_per_mtok": "0.10", "output_per_mtok": "0.50"}
+"""USD per million tokens; written into ``hecklr.yaml`` so budgets work on any Hecklr version."""
+MODEL_KEYS: Final = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+"""Provider keys ``choose_models`` prefers over a local Ollama, in order."""
+FAKE_SIMULATOR: Final = "fake/customer"
+FAKE_JUDGE: Final = "fake/judge"
 DEFAULT_CONCURRENCY: Final = 8
 
 _STARTER_DIRS: Final = ("worlds", "scenarios", "personas")
@@ -49,24 +55,34 @@ class ModelChoice:
     simulator: ModelName
     judge: ModelName
     reason: str
+    warning: bool = False
+    """The choice works but cannot test the agent (scripted fake models)."""
 
 
 def choose_models(env: Mapping[str, str], ollama: list[str] | None) -> ModelChoice:
-    """Pick models that work on this machine: a local Ollama first, then any API key present."""
-    if ollama:
-        local = next((m for m in PREFERRED_OLLAMA_MODELS if m in ollama), ollama[0])
-        model = f"ollama/{local}"
-        return ModelChoice(model, model, "local Ollama is running (free)")
+    """Pick models that work on this machine: an API key first, then a local Ollama, then fake.
+
+    OpenAI's ``gpt-6-luna`` is the project default for both roles (cheap, and good enough to
+    play customers and judge); Anthropic models when only that key is set. A running Ollama is
+    the free fallback. Without any, ``fake/`` scripted models let the first run prove the wiring.
+    """
+    if env.get("OPENAI_API_KEY"):
+        return ModelChoice(OPENAI_MODEL, OPENAI_MODEL, "OPENAI_API_KEY is set")
     if env.get("ANTHROPIC_API_KEY"):
         return ModelChoice(
             "anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5", "ANTHROPIC_API_KEY is set"
         )
-    if env.get("OPENAI_API_KEY"):
-        return ModelChoice("openai/gpt-4.1-mini", "openai/gpt-4.1", "OPENAI_API_KEY is set")
+    if ollama:
+        local = next((m for m in PREFERRED_OLLAMA_MODELS if m in ollama), ollama[0])
+        model = f"ollama/{local}"
+        return ModelChoice(model, model, "local Ollama is running (free)")
     return ModelChoice(
-        DEFAULT_OLLAMA_MODEL,
-        DEFAULT_OLLAMA_MODEL,
-        "no Ollama or API key found: start `ollama serve` and `ollama pull qwen3:4b-instruct`",
+        FAKE_SIMULATOR,
+        FAKE_JUDGE,
+        "WARNING: no OPENAI_API_KEY, ANTHROPIC_API_KEY or running Ollama found, so these are "
+        "scripted fake models: they test the wiring, not the agent. Set a key and re-run "
+        "`hecklr init --force`",
+        warning=True,
     )
 
 
@@ -124,7 +140,7 @@ models:
   # {models.reason}
   simulator: {models.simulator}
   judge: {models.judge}
-stats: {{ alpha: 0.05, min_effect: 0.03 }}
+{_prices(models)}stats: {{ alpha: 0.05, min_effect: 0.03 }}
 # A hard cap on model spend; local Ollama models are free.
 budget: {{ usd: 5, concurrency: {_concurrency(models)} }}
 """
@@ -140,6 +156,12 @@ def _adapter_yaml(choice: AgentChoice) -> str:
     if choice.adapter == "http" and choice.response_path:
         adapter["response_path"] = choice.response_path
     return json.dumps(adapter)
+
+
+def _prices(models: ModelChoice) -> str:
+    if OPENAI_MODEL not in (models.simulator, models.judge):
+        return ""
+    return f"  prices: {{ {OPENAI_MODEL}: {json.dumps(OPENAI_MODEL_PRICE)} }}\n"
 
 
 def _concurrency(models: ModelChoice) -> int:

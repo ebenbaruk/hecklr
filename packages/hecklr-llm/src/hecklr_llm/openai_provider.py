@@ -1,7 +1,7 @@
 """OpenAI Chat Completions provider, also used for any OpenAI-compatible endpoint."""
 
 from collections.abc import Mapping
-from typing import Literal
+from typing import Final, Literal
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam
@@ -14,6 +14,12 @@ from hecklr_llm.structured import decode_json_reply
 from hecklr_schemas import LLMRequest, LLMResponse, LLMUsage, ModelPrice
 
 OutputLimitParam = Literal["max_tokens", "max_completion_tokens"]
+
+SAMPLING_ONLY_WITHOUT_REASONING: Final = frozenset({"gpt-6-luna", "gpt-5.6-luna"})
+"""Reasoning models that reject any ``temperature`` but the default (1) unless reasoning is off
+(``reasoning_effort: none``); measured live on 2026-10-21, ADR 0007d. A request that sets a
+temperature asks for controlled, repeatable sampling (judges run at 0), so for these models the
+provider turns reasoning off instead of dropping the temperature."""
 
 
 class OpenAIProvider:
@@ -68,12 +74,14 @@ class OpenAIProvider:
                 "json_schema": {"name": request.schema_name, "schema": schema},
             }
         limit = request.max_tokens
+        reasoning_off = request.temperature is not None and model in SAMPLING_ONLY_WITHOUT_REASONING
         try:
             completion = await self._client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=request.temperature if request.temperature is not None else openai.omit,
                 seed=request.seed if request.seed is not None else openai.omit,
+                reasoning_effort="none" if reasoning_off else openai.omit,
                 response_format=response_format,
                 max_tokens=limit if self._output_limit_param == "max_tokens" else openai.omit,
                 max_completion_tokens=(
@@ -102,10 +110,13 @@ class OpenAIProvider:
         if reply.refusal:
             raise LLMRefusalError(f"{request.model} declined the request: {reply.refusal}")
         text = reply.content or ""
+        reported = completion.usage
         usage = LLMUsage(
-            input_tokens=completion.usage.prompt_tokens if completion.usage else 0,
-            output_tokens=completion.usage.completion_tokens if completion.usage else 0,
+            input_tokens=reported.prompt_tokens if reported else 0,
+            output_tokens=reported.completion_tokens if reported else 0,
         )
+        details = reported.prompt_tokens_details if reported else None
+        cached_tokens = (details.cached_tokens or 0) if details else 0
         truncated = choice.finish_reason == "length"
         return LLMResponse(
             model=request.model,
@@ -117,6 +128,8 @@ class OpenAIProvider:
                 else None
             ),
             usage=usage,
-            cost_usd=cost_usd(request.model, usage, self._prices),
+            cost_usd=cost_usd(
+                request.model, usage, self._prices, cached_input_tokens=cached_tokens
+            ),
             truncated=truncated,
         )

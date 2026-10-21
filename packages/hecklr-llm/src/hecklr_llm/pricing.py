@@ -42,8 +42,19 @@ PRICES: Final[Mapping[str, ModelPrice]] = {
     "openai/gpt-4.1-nano": _price("0.10", "0.40"),
     "openai/gpt-4o": _price("2.50", "10.00"),
     "openai/gpt-4o-mini": _price("0.15", "0.60"),
+    # Hecklr's default live model (ADR 0007d) and its larger sibling.
+    "openai/gpt-6-luna": _price("0.10", "0.50"),
+    "openai/gpt-5.6-luna": _price("0.20", "1.20"),
 }
 """Known prices keyed by full ``provider/model`` string."""
+
+CACHED_INPUT_PER_MTOK: Final[Mapping[str, Decimal]] = {
+    "openai/gpt-6-luna": Decimal("0.01"),
+    "openai/gpt-5.6-luna": Decimal("0.02"),
+}
+"""USD per million prompt tokens the provider served from its prompt cache. ``ModelPrice`` has
+no field for it (frozen schema), so it lives here; a model without an entry bills cached input at
+its full input price, which can only overstate spend."""
 
 FREE_PROVIDERS: Final = frozenset({"fake", "ollama"})
 """Providers that run locally and cost nothing."""
@@ -70,11 +81,25 @@ def price_for(model: str, prices: Mapping[str, ModelPrice] = PRICES) -> ModelPri
     return price
 
 
-def cost_usd(model: str, usage: LLMUsage, prices: Mapping[str, ModelPrice] = PRICES) -> Decimal:
-    """Cost of one completion with the given token usage."""
+def cost_usd(
+    model: str,
+    usage: LLMUsage,
+    prices: Mapping[str, ModelPrice] = PRICES,
+    *,
+    cached_input_tokens: int = 0,
+) -> Decimal:
+    """Cost of one completion with the given token usage.
+
+    ``cached_input_tokens`` of ``usage.input_tokens`` bill at the model's cached-input rate
+    (``CACHED_INPUT_PER_MTOK``), never above its input price.
+    """
     price = price_for(model, prices)
+    cached = min(cached_input_tokens, usage.input_tokens)
+    cached_rate = min(CACHED_INPUT_PER_MTOK.get(model, price.input_per_mtok), price.input_per_mtok)
     return (
-        usage.input_tokens * price.input_per_mtok + usage.output_tokens * price.output_per_mtok
+        (usage.input_tokens - cached) * price.input_per_mtok
+        + cached * cached_rate
+        + usage.output_tokens * price.output_per_mtok
     ) * _PER_TOKEN
 
 

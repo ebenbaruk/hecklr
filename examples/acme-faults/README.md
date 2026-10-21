@@ -24,7 +24,7 @@ F7-F12 (voice and email) belong to WS11 and WS12.
 uv run python examples/acme-maintenance/agent/serve.py --brain rules --port 8000
 uv run python examples/acme-maintenance/agent/serve.py --brain rules --fault F3 --port 8000
 
-# the real reference agent (LLM brain, local Ollama by default)
+# the real reference agent (LLM brain, openai/gpt-6-luna by default; ACME_MODEL=ollama/... is free)
 uv run python examples/acme-maintenance/agent/serve.py --fault F3 --port 8000
 ```
 

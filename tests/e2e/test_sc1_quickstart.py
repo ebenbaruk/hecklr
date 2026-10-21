@@ -54,7 +54,7 @@ def test_sc1_init_then_run_stores_a_graded_run(
     assert init.exit_code == exit_codes.OK, init.output
     assert run.exit_code == exit_codes.OK, output
     assert elapsed < SC1_LIMIT_S
-    assert "Suite pass rate" in output
+    assert "Run metrics (95% CI)" in output
     assert "Scenarios (Wilson 95% CI)" in output
     match = re.search(r"Run ([0-9A-Z]{26}) \(completed\)", output)
     assert match, output

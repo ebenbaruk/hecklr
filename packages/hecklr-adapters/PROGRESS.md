@@ -59,6 +59,17 @@ Owner: WS6 (chat), WS10 (voice). Spec: `docs/SPEC.md` → "Agent adapters". ADRs
 - Package coverage 97% (`uv run pytest packages/hecklr-adapters -n auto
   --cov=packages/hecklr-adapters/src`).
 
+## Done (WS7d, Wave 2a)
+
+- World URL forwarding (ADR 0007d): `hecklr_adapters.context.session_headers(ctx)` adds
+  `X-Hecklr-World-Url` / `X-Hecklr-World-Mcp-Url` (exported as `WORLD_URL_HEADER`,
+  `WORLD_MCP_URL_HEADER`) to every `http`, `openai-compatible` and `websocket` request; request
+  templates accept `{{world_url}}` and `{{world_mcp_url}}` (empty without a sandbox).
+  `tests/test_world_forwarding.py` (8 tests: headers in `none`/`sse`/`chunked`, body placeholders,
+  no-world case, openai-compatible headers, websocket template). 146 tests, 99% coverage.
+- Proof: `hecklr run --suite smoke` over the `http` adapter against the reference agent (rules
+  brain): 18/33 before (all 15 booking, cancel and reschedule scenarios failed), 33/33 after.
+
 ## Next
 
 - `webhook` chat adapter (P1, spec table). `make_chat_target` refuses it with a clear error.
