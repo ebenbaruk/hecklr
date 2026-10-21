@@ -25,6 +25,12 @@ def _checks(config_path: Path) -> dict[str, Check]:
     return {check.name: check for check in run_checks(config_path)}
 
 
+@pytest.fixture(autouse=True)
+def no_local_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests that want an Ollama patch it in; nothing reaches a real one."""
+    monkeypatch.setattr("hecklr.commands.doctor.ollama_models", lambda *args, **kwargs: None)
+
+
 def test_starter_project_is_ready(config_path: Path) -> None:
     result = runner.invoke(app, ["doctor", "--config", str(config_path)])
 
@@ -34,7 +40,9 @@ def test_starter_project_is_ready(config_path: Path) -> None:
     checks = _checks(config_path)
     assert checks["python"].status == "ok"
     assert checks["agent (chat)"].detail == "in-process agent hecklr_agent:reply imports"
-    assert checks["simulator model"].status == "ok"
+    # The starter project of these tests runs on scripted fake models: usable, but flagged.
+    assert checks["simulator model"].status == "warn"
+    assert "tests the wiring, not the agent" in checks["simulator model"].detail
     assert {checks["extra [voice]"].status, checks["extra [mine]"].status} <= {"ok", "warn"}
 
 
@@ -130,3 +138,33 @@ def test_invalid_config_is_reported(tmp_path: Path) -> None:
 
     assert result.exit_code == exit_codes.CHECK_FAILED
     assert _checks(tmp_path / "missing.yaml")["config"].status == "fail"
+
+
+@pytest.mark.parametrize(
+    ("env", "ollama", "status", "detail"),
+    [
+        ({"OPENAI_API_KEY": "sk-x"}, None, "ok", "openai/gpt-6-luna / openai/gpt-6-luna"),
+        ({"ANTHROPIC_API_KEY": "k"}, None, "ok", "anthropic/claude-haiku-5-5"),
+        ({}, ["qwen3:8b"], "ok", "ollama/qwen3:8b"),
+        ({}, None, "warn", "fake/customer / fake/judge"),
+    ],
+)
+def test_doctor_reports_which_models_this_machine_can_use(
+    config_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    env: dict[str, str],
+    ollama: list[str] | None,
+    status: str,
+    detail: str,
+) -> None:
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr("hecklr.commands.doctor.ollama_models", lambda *args, **kwargs: ollama)
+
+    check = _checks(config_path)["models available"]
+
+    assert check.status == status
+    assert check.detail.startswith(detail)
+    assert "sk-x" not in check.detail

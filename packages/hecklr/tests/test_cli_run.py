@@ -18,7 +18,7 @@ from hecklr.commands._common import CliOverrides
 from hecklr.commands.run import _exit_code
 from hecklr.testing import scripted_models
 from hecklr_core import ResultStore, RunResults
-from hecklr_llm import ProviderConfigError
+from hecklr_llm import FakeLLM, ProviderConfigError
 from hecklr_schemas import AgentRef, Budget, LLMRequest, Run, RunId, RunStatus, new_id
 
 Edit = Callable[[Path, str, str], None]
@@ -128,8 +128,8 @@ def test_config_errors_exit_with_ex_config(config_path: Path) -> None:
 
 
 def test_every_trial_failing_to_run_is_a_harness_error(config_path: Path) -> None:
-    # Without scripted models, the stock FakeLLM cannot play a customer.
-    code, output = _run(config_path, "--trials", "1", overrides=CliOverrides())
+    # A stock FakeLLM cannot play a customer.
+    code, output = _run(config_path, "--trials", "1", overrides=CliOverrides({"fake": FakeLLM()}))
 
     assert code == exit_codes.HARNESS_ERROR
     assert "Every trial failed to run." in output

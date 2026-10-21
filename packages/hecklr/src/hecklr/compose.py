@@ -21,6 +21,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
+from hecklr.testing import scripted_models
 from hecklr_adapters import make_chat_target
 from hecklr_channels import ChatDriver
 from hecklr_core import (
@@ -277,7 +278,8 @@ async def execute_run(
 
     Args:
         prepared: From ``prepare_run``.
-        llm_providers: Provider instances per model prefix (tests inject ``FakeLLM``).
+        llm_providers: Provider instances per model prefix (tests inject ``FakeLLM``); by
+            default ``fake/`` models are ``hecklr.testing.scripted_models`` (ADR 0007c).
         on_trial: Called after each trial is stored.
         on_adaptive: Called with the number of extra trials before an adaptive pass starts.
 
@@ -289,6 +291,8 @@ async def execute_run(
     project = prepared.project
     config = project.config
     overridden = judge_overrides(prepared.plan.suite.scenarios)
+    if llm_providers is None:
+        llm_providers = scripted_models()
     await check_model_providers(config.models, llm_providers, criterion_models=overridden)
     async with (
         open_llm(config, project.output_dir, providers=llm_providers) as llm,
