@@ -9,7 +9,7 @@ Typical wiring (done by the ``hecklr`` CLI)::
         ResultStore(project.output_dir / RUNS_DIR) as store,
     ):
         collaborators = Collaborators(sandbox=..., drivers=..., simulator_factory=...,
-                                      simulator_llm=llm, judge_llm=llm, grader_factory=...)
+                                      simulator_llm=llm, judge_llm=llm, grade_trial=...)
         run = await RunExecutor(plan.suite, collaborators, store).execute(plan.run)
 """
 
@@ -23,10 +23,9 @@ from hecklr_core.errors import (
 )
 from hecklr_core.executor import (
     Collaborators,
-    CriterionGrader,
-    GraderFactory,
     RetryPolicy,
     RunExecutor,
+    TrialGrader,
     is_retryable,
 )
 from hecklr_core.llm import (
@@ -76,8 +75,6 @@ __all__ = [
     "ConfigError",
     "ConfigIssue",
     "CostEstimate",
-    "CriterionGrader",
-    "GraderFactory",
     "MeteredProvider",
     "Project",
     "ProviderLimit",
@@ -93,6 +90,7 @@ __all__ = [
     "SuiteCell",
     "TokenBucket",
     "TrialEventSink",
+    "TrialGrader",
     "TrialSpend",
     "YamlDocument",
     "check_estimate",

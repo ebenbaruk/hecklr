@@ -7,10 +7,10 @@ graders are injected by the caller (the ``hecklr`` CLI wires them from ``hecklr.
 """
 
 import random
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Final, NamedTuple
+from typing import Final
 
 import anyio
 import structlog
@@ -35,8 +35,6 @@ from hecklr_schemas import (
     Event,
     Grade,
     GradeContext,
-    GradeId,
-    Grader,
     LLMProvider,
     MonotonicClock,
     Persona,
@@ -63,16 +61,15 @@ WORLD_CLOSE_TIMEOUT_S: Final = 10.0
 _log = structlog.get_logger(__name__)
 
 
-class CriterionGrader(NamedTuple):
-    """A grader and the scenario success criterion it answers."""
+TrialGrader = Callable[[GradeContext], Awaitable[Sequence[Grade]]]
+"""Grades one finished trial and returns every grade, in a stable order.
 
-    grader: Grader
-    criterion_index: int | None
-    """Position in ``scenario.success``; ``None`` for a diagnostic grader."""
-
-
-GraderFactory = Callable[[Scenario], Sequence[CriterionGrader]]
-"""Builds a scenario's graders, in the order they run: deterministic, then judges, then voice."""
+The executor passes a context without a criterion (``criterion`` and ``criterion_index`` are
+``None``), with ``llm`` metered against the trial's budget. The callable owns grading entirely:
+which graders run, their order and concurrency, and turning a failing grader into an ``error``
+grade (``hecklr_grade.grade_trial`` does all of this). If the callable itself raises, the run
+fails: that is a harness bug, not something one trial can absorb.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +81,7 @@ class Collaborators:
     simulator_factory: SimulatorFactory
     simulator_llm: LLMProvider
     judge_llm: LLMProvider
-    grader_factory: GraderFactory
+    grade_trial: TrialGrader
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,27 +485,15 @@ class RunExecutor:
         persona: Persona,
         spend: TrialSpend,
     ) -> list[Grade]:
-        judge_llm = MeteredProvider(self._collaborators.judge_llm, spend)
-        grades = []
-        for grader, index in self._collaborators.grader_factory(scenario):
-            ctx = GradeContext(
-                trial=trial,
-                events=events,
-                scenario=scenario,
-                persona=persona,
-                criterion=scenario.success[index] if index is not None else None,
-                criterion_index=index,
-                llm=judge_llm,
-                judge_model=self._suite.project.config.models.judge,
-            )
-            try:
-                grades.append(await grader.grade(ctx))
-            except BudgetExceededError:
-                raise
-            except Exception as exc:  # noqa: BLE001 -- a failing grader is recorded as an error grade, never fatal to the run
-                _log.warning("grade.error", grader=grader.name, error=repr(exc))
-                grades.append(_error_grade(trial, grader, index, exc))
-        return grades
+        ctx = GradeContext(
+            trial=trial,
+            events=events,
+            scenario=scenario,
+            persona=persona,
+            llm=MeteredProvider(self._collaborators.judge_llm, spend),
+            judge_model=self._suite.project.config.models.judge,
+        )
+        return list(await self._collaborators.grade_trial(ctx))
 
 
 def _snapshot_after_failure(world: WorldSession) -> WorldSnapshot | None:
@@ -521,17 +506,3 @@ def _snapshot_after_failure(world: WorldSession) -> WorldSnapshot | None:
 
 def _describe(exc: BaseException | None) -> str:
     return f"{type(exc).__name__}: {exc}" if exc is not None else "unknown harness failure"
-
-
-def _error_grade(trial: Trial, grader: Grader, index: int | None, exc: Exception) -> Grade:
-    return Grade(
-        id=GradeId(new_id()),
-        trial_id=trial.id,
-        grader=grader.name,
-        grader_version=grader.version,
-        criterion_index=index,
-        status="error",
-        value=False,
-        passed=False,
-        rationale=_describe(exc),
-    )

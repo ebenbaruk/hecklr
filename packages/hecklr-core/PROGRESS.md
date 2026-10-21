@@ -38,7 +38,7 @@ Owner: WS1. Spec: `docs/SPEC.md` → "Run lifecycle", "Core data model", "Orches
 
 - WS7 wires concrete components: `Collaborators(sandbox=hecklr_world..., drivers={chat: ...},
   simulator_factory=hecklr_sim.make_simulator, simulator_llm=llm, judge_llm=llm,
-  grader_factory=<adapter over hecklr_grade.build_graders returning CriterionGrader pairs>)`.
+  grade_trial=<callable over hecklr_grade.build_graders + grade_trial>)` (done by WS7a, ADR 0007a).
 - WS5 adaptive policy calls `extend_matrix(run.matrix, run.seed, scenario_ids, n)` and
   `RunExecutor.run_additional(run, specs)`.
 
@@ -51,6 +51,9 @@ Owner: WS1. Spec: `docs/SPEC.md` → "Run lifecycle", "Core data model", "Orches
 
 ## Decisions
 
-- See ADR 0001a: loading conventions, seed derivation, estimate heuristics, `CriterionGrader`,
+- ADR 0007a (WS7a): grading is delegated to an injected `TrialGrader` callable
+  (`Collaborators.grade_trial`); `CriterionGrader` and `GraderFactory` are gone.
+
+- See ADR 0001a: loading conventions, seed derivation, estimate heuristics,
   retry and budget semantics, per-run DuckDB with JSON-batch inserts (row-by-row parameter binding
   measured at about 2 ms per row in DuckDB 1.5's Python client).
