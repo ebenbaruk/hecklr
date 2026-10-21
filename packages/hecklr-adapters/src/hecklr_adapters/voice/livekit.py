@@ -4,7 +4,9 @@ Each trial gets its own room, ``<room_prefix>-<trial_id>``, so a LiveKit agent d
 new rooms answers exactly one call. The adapter signs its own access token with the API key and
 secret named in the configuration, publishes the caller's microphone track, and treats the first
 audio track another participant publishes as the agent's voice. The call is answered when that
-track is subscribed; it ends when the agent leaves or the room closes.
+track is subscribed; it ends when the agent leaves or the room closes. The caller's token
+carries the trial id and its world URLs as participant metadata (JSON of ``session_fields``) and
+as ``hecklr.*`` attributes, which a LiveKit agent reads from the remote participant.
 
 LiveKit resamples the agent's track to 16 kHz mono itself; frames still go through a
 :class:`~hecklr_adapters.voice.playout.Playout` so their ``sample_index`` follows arrival on the
@@ -21,6 +23,7 @@ import anyio
 import numpy as np
 from livekit import api, rtc
 
+from hecklr_adapters.context import session_fields
 from hecklr_adapters.errors import AdapterConfigError, AgentError
 from hecklr_adapters.voice.audio import SAMPLE_RATE, pcm16
 from hecklr_adapters.voice.playout import RELEASE_TIMEOUT_S, Playout, Receiver
@@ -28,6 +31,7 @@ from hecklr_adapters.voice.websocket import check_caller_rate
 from hecklr_schemas import LiveKitAdapterConfig, SessionContext, TimedFrame
 
 CALLER_TRACK: Final = "hecklr-caller"
+ATTRIBUTE_PREFIX: Final = "hecklr."
 _BACKLOG_S: Final = 0.02
 """Queued caller audio beyond which quiet frames are dropped to win the delay back."""
 _QUIET_PEAK: Final = 100
@@ -81,11 +85,16 @@ class LiveKitVoiceTarget:
             api.AccessToken(self._key, self._secret)
             .with_identity(f"{CALLER_TRACK}-{ctx.trial_id}")
             .with_name("Hecklr caller")
-            .with_metadata(json.dumps({"trial_id": ctx.trial_id}))
-            .with_attributes({"hecklr.trial_id": ctx.trial_id})
+            .with_metadata(json.dumps(session_fields(ctx)))
+            .with_attributes(participant_attributes(ctx))
             .with_grants(grants)
             .to_jwt()
         )
+
+
+def participant_attributes(ctx: SessionContext) -> dict[str, str]:
+    """The caller's participant attributes: ``hecklr.trial_id``, ``hecklr.world_url``, ..."""
+    return {ATTRIBUTE_PREFIX + name: value for name, value in session_fields(ctx).items()}
 
 
 def _signal_url(url: str) -> str:
