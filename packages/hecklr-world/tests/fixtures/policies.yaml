@@ -1,0 +1,4 @@
+- policy_id: cancellation
+  text: Cancellations are free up to 24 hours before the visit.
+- policy_id: emergencies
+  text: Gas smells and flooding are handed to the on-call engineer immediately.
