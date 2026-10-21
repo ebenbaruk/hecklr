@@ -152,7 +152,7 @@ async def test_ws2_guided_abandons_when_patience_runs_out_even_if_the_llm_keeps_
         dialogue += say("user: Can you check again?")
 
     assert all(isinstance(move, SimTurn) for move in moves[:-1])
-    assert moves[-1] == SimEnd(reason=EndReason.GOAL_ABANDONED)
+    assert moves[-1] == SimEnd(reason=EndReason.GOAL_ABANDONED, closing_text="Can you check again?")
     assert "about to give up" in llm.calls[-1].messages[-1].content
 
 

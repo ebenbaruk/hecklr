@@ -106,7 +106,8 @@ class GuidedSimulator:
         self._clock = clock
         self._start_ms = clock.now_ms()
         self._system = render_brief(brief.scenario, brief.persona, brief.channel, strategy)
-        self._guard = ConsistencyGuard(brief.scenario)
+        self._strategy = strategy
+        self._guard = ConsistencyGuard(brief.scenario, strategy)
         self._patience = Patience.for_persona(brief.persona.traits, brief.seed)
         self._contradictions = 0
         self._issues: list[GuardIssue] = []
@@ -147,7 +148,7 @@ class GuidedSimulator:
             return SimEnd(reason=end_reason, closing_text=text or None)
         if self._patience.exhausted:
             # The model was told it is out of patience but kept talking; the harness decides.
-            return SimEnd(reason=EndReason.GOAL_ABANDONED)
+            return SimEnd(reason=EndReason.GOAL_ABANDONED, closing_text=text or None)
         first_email = self._brief.channel is Channel.EMAIL and user_turn_count(dialogue) == 0
         subject = (decision.subject.strip() or self._brief.scenario.title) if first_email else None
         return SimTurn(text=text, subject=subject)
@@ -155,6 +156,7 @@ class GuidedSimulator:
     async def _decide(self, dialogue: Sequence[DialogueTurn]) -> SimDecision:
         turn = user_turn_count(dialogue)
         feedback: list[str] = []
+        problems: list[str] = []
         regenerated = False
         attempts = self._settings.max_regenerations + 1
         for attempt in range(attempts):
@@ -163,19 +165,28 @@ class GuidedSimulator:
                 decision, _ = await complete_structured(self._llm, request, SimDecision)
             except LLMOutputError as exc:
                 feedback = [f"your answer was not a valid JSON object of the required shape: {exc}"]
+                problems = feedback
                 continue
             issues = self._guard.check(decision, dialogue)
             if not issues and self._settings.llm_consistency_check:
-                issues = await self._llm_check(decision, dialogue, turn, attempt)
+                try:
+                    issues = await self._llm_check(decision, dialogue, turn, attempt)
+                except LLMOutputError as exc:
+                    # The draft is not at fault, so it gets no feedback and is not counted as a
+                    # contradiction; an unaudited draft is not accepted either, so it costs a try.
+                    feedback = []
+                    problems = [f"the consistency check's reply was invalid: {exc}"]
+                    continue
             if not issues:
                 self._contradictions += int(regenerated)
                 return decision
             regenerated = True
             self._issues.extend(issues)
             feedback = [issue.detail for issue in issues]
+            problems = feedback
         raise SimulatorError(
             f"trial {self._brief.trial_id}, customer turn {turn}: no valid draft in {attempts} "
-            f"attempt(s); last problems: {'; '.join(feedback)}"
+            f"attempt(s); last problems: {'; '.join(problems)}"
         )
 
     def _decision_request(
@@ -199,9 +210,12 @@ class GuidedSimulator:
             f"- {name}: {render_fact_value(value)}"
             for name, value in self._brief.scenario.facts.items()
         )
+        decoys = self._strategy.decoys if self._strategy is not None else {}
+        others = "".join(f"\n- {name}: {value}" for name, value in decoys.items())
         last_agent = next((t.text for t in reversed(dialogue) if t.speaker == "agent"), "(none)")
         prompt = (
-            f"## Brief\nGoal: {self._brief.scenario.goal}\nFacts:\n{facts or '(none)'}\n\n"
+            f"## Brief\nGoal: {self._brief.scenario.goal}\nFacts:\n{facts or '(none)'}\n"
+            f"Other people's details it may legitimately mention:{others or ' (none)'}\n\n"
             f"## Latest agent message\n{last_agent}\n\n"
             f"## Draft to check\n{decision.text}"
         )
