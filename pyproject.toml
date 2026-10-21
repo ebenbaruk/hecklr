@@ -23,6 +23,7 @@ hecklr-fix = { workspace = true }
 [dependency-groups]
 dev = [
     "anyio>=4.10",
+    "httpx2>=2.12",
     "hypothesis>=6.140",
     "mypy>=1.18",
     "pre-commit>=4.3",
