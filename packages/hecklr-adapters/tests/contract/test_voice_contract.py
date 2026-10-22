@@ -190,6 +190,7 @@ async def test_ws10_contract_agent_audio_arrives_as_real_time_16khz_frames(
         assert transcript.text == LONG_REPLY
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_contract_response_latency_within_20ms_of_injected_delay(
     case: VoiceCase,
 ) -> None:
@@ -215,6 +216,7 @@ async def test_sc4_contract_response_latency_within_20ms_of_injected_delay(
     case.check_offsets(offsets, spread_ms=0.0)
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_contract_barge_in_reaction_within_20ms_of_injected_reaction(
     case: VoiceCase,
 ) -> None:

@@ -1,0 +1,19 @@
+id: email-booking-1
+title: Email booking for C-1802
+channels: [email]
+tags: [scripted, email, catches-f11]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Book a boiler service visit by email
+facts: {customer_id: C-1802, postcode: '75006'}
+user_turns:
+- I'd like to book a boiler service on Wednesday 28 October in the afternoon.
+- C-1802 75006
+- 'Yes'
+success:
+- {type: email_threading}
+- type: state
+  expr: "any(a.customer_id == 'C-1802' and a.service == 'boiler_service' and a.slot == '2026-10-28T14:00' for a in values(world.appointments))"
+  description: the visit is booked at the slot asked for
+limits: {max_turns: 12, max_duration_s: 300}

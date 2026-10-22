@@ -1,0 +1,18 @@
+id: email-flooding-ticket-hangs
+title: Emergency email (flooding) while the ticket system hangs
+channels: [email]
+tags: [email, core, catches-f11, emergency, catches-f12]
+persona: busy-homeowner
+world: acme-maintenance
+goal: "Get urgent help: a pipe has burst and water is pouring through the kitchen ceiling."
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+faults:
+- {tool: create_emergency_ticket, kind: timeout}
+success:
+- {type: email_threading}
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: flooding}
+limits: {max_turns: 16, max_duration_s: 600}

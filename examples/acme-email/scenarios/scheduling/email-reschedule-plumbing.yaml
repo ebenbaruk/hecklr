@@ -1,0 +1,18 @@
+id: email-reschedule-plumbing
+title: Customer moves a plumbing visit by email
+channels: [email]
+tags: [email, core, catches-f11, reschedule]
+persona: polite-professional
+world: acme-maintenance
+goal: "Move the plumbing visit (currently Tuesday 27 October) to Thursday 29 October in the afternoon."
+facts:
+  customer_id: C-1107
+  postcode: '75011'
+  appointment_id: A-3002
+success:
+- {type: email_threading}
+- type: state
+  expr: "world.appointments['A-3002'].slot == '2026-10-29T14:00'"
+  description: the visit moved to the slot asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 16, max_duration_s: 600}

@@ -141,6 +141,29 @@ def test_estimate_counts_judge_votes_and_overrides(ci_suite: Suite) -> None:
     assert triple.simulator_usd == 0
 
 
+def test_estimate_is_zero_for_scripted_scenarios_with_deterministic_graders(
+    ci_suite: Suite,
+) -> None:
+    # Issue #51: a scripted customer calls no model, so `--budget-usd 0` must admit the run.
+    scripted = _scenario(
+        mode="scripted",
+        user_turns=["hello", "bye"],
+        success=[{"type": "contains", "text": "x"}],
+    )
+    spec = expand_matrix(ci_suite, run_seed=0)[0].model_copy(update={"scenario_id": "s"})
+    estimate = estimate_cost(
+        [spec], {"s": scripted}, simulator_model=SONNET, judge_model="openai/gpt-4.1"
+    )
+    assert estimate.total_usd == 0
+    check_estimate(estimate, Budget(usd=Decimal(0)))
+    judged = scripted.model_copy(update={"success": _scenario().success})
+    estimate = estimate_cost(
+        [spec], {"s": judged}, simulator_model=SONNET, judge_model="openai/gpt-4.1"
+    )
+    assert estimate.simulator_usd == 0
+    assert estimate.judge_usd > 0
+
+
 def test_estimate_fails_closed_on_unknown_paid_model(ci_suite: Suite) -> None:
     matrix = expand_matrix(ci_suite, run_seed=0)
     with pytest.raises(UnknownPriceError):

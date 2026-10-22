@@ -80,11 +80,13 @@ class VoiceCase:
     moves by tens of milliseconds; a sample-preserving WebSocket keeps it fixed.
     """
     timing_needs_idle_cpu: bool = False
-    """SC4 for this case is only meaningful on an otherwise idle machine.
+    """This case's real-time checks (SC4 included) are only meaningful on an otherwise idle CPU.
 
     WebRTC jitter buffers grow when the CPU is busy, and the reference bots share this process
     (and its GIL) with the harness: under a parallel test run their delay climbs by hundreds
-    of milliseconds, which measures the test machine, not the adapter.
+    of milliseconds, which measures the test machine, not the adapter. (The SC4 tests
+    themselves are ``sc4_timing``: they run serially, and for these cases only on a dedicated
+    CPU, not on CI's shared runner: ADR 0010b.)
     """
     caller_loss_ms: float = 0.0
     """Caller speech the reference agent's own receive path may lose (see PROGRESS.md)."""
@@ -96,13 +98,15 @@ class VoiceCase:
 
     @property
     def timing_is_meaningful(self) -> bool:
-        """Whether this run can judge the case's timing (not a load-sensitive case under xdist)."""
-        return not (self.timing_needs_idle_cpu and os.environ.get("PYTEST_XDIST_WORKER"))
+        """Whether this run can judge the case's timing: not a load-sensitive case under xdist or
+        on a shared CPU (``HECKLR_SHARED_CPU``, set by CI; ADR 0010b)."""
+        busy = os.environ.get("PYTEST_XDIST_WORKER") or os.environ.get("HECKLR_SHARED_CPU") == "1"
+        return not (self.timing_needs_idle_cpu and busy)
 
     def require_idle_cpu_for_timing(self) -> None:
-        """Skip an SC4 test for this case inside a parallel (xdist) run, if it needs a quiet CPU."""
+        """Skip an SC4 test for this case where its timing is not meaningful."""
         if not self.timing_is_meaningful:
-            pytest.skip(f"{self.name}: SC4 needs an idle machine; run this file without -n")
+            pytest.skip(f"{self.name}: SC4 over WebRTC needs a dedicated idle CPU (ADR 0010b)")
 
     def check_offsets(self, offsets: list[float], spread_ms: float) -> None:
         """SC4 over this transport: every timing error lies in the transport's delay window
