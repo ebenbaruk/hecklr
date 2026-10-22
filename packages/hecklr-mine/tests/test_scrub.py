@@ -162,9 +162,10 @@ def test_ws13_llm_pass_scrubs_names_after_the_regex_pass() -> None:
         return {"entities": entities}
 
     finder = LlmPiiFinder(FakeLLM(responder=responder), "fake/pii", seed=3)
-    scrubbed = anyio.run(
+    scrubbed, errors = anyio.run(
         lambda: scrub_conversations(conversations, Scrubber(), llm_finder=finder, concurrency=2)
     )
+    assert errors == {}
     assert [t.text for c in scrubbed for t in c.turns] == [
         "I'm [PERSON_1], [EMAIL_1]",
         "Hi [PERSON_2]",
@@ -176,8 +177,53 @@ def test_ws13_llm_pass_scrubs_names_after_the_regex_pass() -> None:
 
 def test_ws13_scrub_without_llm_is_synchronous_order() -> None:
     conversations = [_conversation("a", ("user", "x@y.io")), _conversation("b", ("user", "z@y.io"))]
-    scrubbed = anyio.run(lambda: scrub_conversations(conversations, Scrubber()))
+    scrubbed, errors = anyio.run(lambda: scrub_conversations(conversations, Scrubber()))
     assert [c.turns[0].text for c in scrubbed] == ["[EMAIL_1]", "[EMAIL_2]"]
+    assert errors == {}
+
+
+def test_ws13_llm_findings_apply_across_the_batch() -> None:
+    conversations = [
+        _conversation("c1", ("user", "I'm Ana Lopez, call me Ana")),
+        _conversation("c2", ("user", "Ana Lopez again; I ate a banana")),
+    ]
+
+    def responder(request: LLMRequest) -> dict[str, Any]:
+        # The model spots the name only in c1 and misses it in c2.
+        if "I'm Ana Lopez" not in request.messages[-1].content:
+            return {"entities": []}
+        return {"entities": [{"entity": "PERSON", "text": t} for t in ("Ana Lopez", "Ana")]}
+
+    finder = LlmPiiFinder(FakeLLM(responder=responder), "fake/pii")
+    scrubbed, _ = anyio.run(
+        lambda: scrub_conversations(conversations, Scrubber(), llm_finder=finder)
+    )
+    assert [c.turns[0].text for c in scrubbed] == [
+        "I'm [PERSON_1], call me [PERSON_2]",
+        "[PERSON_1] again; I ate a banana",  # whole words only: "banana" keeps its "ana"
+    ]
+
+
+def test_ws13_an_unusable_llm_scrub_reply_keeps_pattern_scrubbing() -> None:
+    conversations = [
+        _conversation("ok", ("user", "I'm Ana Lopez, ana@example.com")),
+        _conversation("bad", ("user", "Bob Stone here, bob@example.com")),
+    ]
+
+    def responder(request: LLMRequest) -> Any:
+        if "Bob" in request.messages[-1].content:
+            return "not json"
+        return {"entities": [{"entity": "PERSON", "text": "Ana Lopez"}]}
+
+    finder = LlmPiiFinder(FakeLLM(responder=responder), "fake/pii")
+    scrubbed, errors = anyio.run(
+        lambda: scrub_conversations(conversations, Scrubber(), llm_finder=finder)
+    )
+    assert [c.turns[0].text for c in scrubbed] == [
+        "I'm [PERSON_1], [EMAIL_1]",
+        "Bob Stone here, [EMAIL_2]",
+    ]
+    assert set(errors) == {"bad"}
 
 
 def test_ws13_placeholder_identity_ignores_formatting() -> None:

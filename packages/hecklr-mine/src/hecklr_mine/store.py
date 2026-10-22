@@ -59,6 +59,10 @@ class MineSummary(BaseModel):
     duplicates: list[dict[str, str | float]] = Field(default_factory=list)
     synthesis_errors: dict[str, str] = Field(default_factory=dict)
     judge_errors: int = 0
+    scrub_errors: dict[str, str] = Field(default_factory=dict)
+    """Conversation id -> why the LLM scrub pass failed on it; its pattern scrubbing stands."""
+    summary_errors: dict[str, str] = Field(default_factory=dict)
+    """Conversation id -> why its LLM summary failed; the heuristic summary was embedded."""
     placeholders: dict[str, int] = Field(default_factory=dict)
     embedder: str
     model: str | None = None
@@ -89,6 +93,8 @@ def summarize(
         duplicates=[asdict(duplicate) for duplicate in result.duplicates],
         synthesis_errors=result.synthesis_errors,
         judge_errors=sum(len(report.judge_errors) for report in result.reports),
+        scrub_errors=result.scrub_errors,
+        summary_errors=result.summary_errors,
         placeholders=result.placeholders,
         embedder=result.embedder,
         model=model,

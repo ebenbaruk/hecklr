@@ -8,7 +8,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-import anyio
 import structlog
 
 from hecklr_llm import LLMOutputError
@@ -25,6 +24,7 @@ from hecklr_mine.embed import Embedder
 from hecklr_mine.errors import MineError
 from hecklr_mine.scrub import LlmPiiFinder, Scrubber, scrub_conversations
 from hecklr_mine.synthesize import Duplicate, deduplicate, propose, synthesize_scenario
+from hecklr_mine.tasks import map_concurrently
 from hecklr_schemas import (
     Conversation,
     FailureCluster,
@@ -66,7 +66,8 @@ class MineSettings:
     dedup_threshold: float = 0.9
     """Cosine similarity at or above which a proposal duplicates an existing scenario."""
     max_usd: Decimal | None = None
-    """Stop (``BudgetExceededError``) once model and embedding spend reach this."""
+    """Stop (``BudgetExceededError``) once model and embedding spend reach this. The cap is checked
+    before each model call, so up to ``concurrency`` calls already in flight can overshoot it."""
     seed: int = 0
     concurrency: int = 8
 
@@ -91,6 +92,10 @@ class MineResult:
     duplicates: list[Duplicate] = field(default_factory=list)
     synthesis_errors: dict[str, str] = field(default_factory=dict)
     """Cluster id -> why no scenario could be synthesized for it."""
+    scrub_errors: dict[str, str] = field(default_factory=dict)
+    """Conversation id -> why the LLM scrub pass failed on it (its pattern scrubbing stands)."""
+    summary_errors: dict[str, str] = field(default_factory=dict)
+    """Conversation id -> why its LLM summary failed (the heuristic summary was embedded)."""
     placeholders: dict[str, int] = field(default_factory=dict)
     """Distinct scrubbed entities by kind."""
     embedder: str = ""
@@ -142,9 +147,14 @@ async def mine(
 
     ``existing`` holds the suite's scenarios and queued proposals, for deduplication.
 
+    A malformed model reply on one conversation (LLM scrub, summary, cluster label, synthesis)
+    falls back or is recorded in the result; it never discards the rest of the run.
+
     Raises:
         ValueError: ``settings`` need a model but ``llm`` is ``None``.
         BudgetExceededError: Spend reached ``settings.max_usd``.
+        hecklr_llm.LLMError: A model call failed outright. Errors from concurrent calls are
+            raised as the first error itself, never as an ``ExceptionGroup``.
     """
     if llm is None and (settings.model is not None or settings.judge_model is not None):
         raise ValueError("settings name a model but no LLM provider was given")
@@ -153,7 +163,7 @@ async def mine(
     model = settings.model if meter is not None else None
 
     finder = LlmPiiFinder(meter, model, seed=settings.seed) if meter and model else None
-    scrubbed = await scrub_conversations(
+    scrubbed, scrub_errors = await scrub_conversations(
         conversations,
         scrubber,
         llm_finder=finder if settings.llm_scrub else None,
@@ -170,13 +180,20 @@ async def mine(
     )
     by_id = {conversation.id: conversation for conversation in scrubbed}
     failures = [report for report in reports if report.failed]
+    summary_errors: dict[str, str] = {}
     if settings.llm_summaries and meter is not None and model is not None:
-        failures = await _summarize(failures, by_id, meter, model, settings)
+        failures, summary_errors = await _summarize(failures, by_id, meter, model, settings)
     log.info("mine.detected", failures=len(failures))
 
     clusters, failures = await _cluster(failures, embedder, meter, model, settings)
     if meter is not None:
         meter.check()
+    elif settings.max_usd is not None and embedder.spent_usd > settings.max_usd:
+        # Without a model only the embedder spends, and it has already spent: refuse to report
+        # a run that went past the cap, as a metered run would have stopped.
+        raise BudgetExceededError(
+            f"mining stopped: embedding spend ${embedder.spent_usd:.4f} exceeded the cap"
+        )
     log.info("mine.clustered", clusters=len(clusters))
     updated = {report.conversation_id: report for report in failures}
     result = MineResult(
@@ -184,6 +201,8 @@ async def mine(
         reports=[updated.get(report.conversation_id, report) for report in reports],
         clusters=clusters,
         proposals=[],
+        scrub_errors=scrub_errors,
+        summary_errors=summary_errors,
         placeholders=scrubber.placeholders.counts,
         embedder=embedder.name,
     )
@@ -200,24 +219,25 @@ async def _summarize(
     llm: LLMProvider,
     model: str,
     settings: MineSettings,
-) -> list[FailureReport]:
-    summaries: dict[int, str] = {}
-    limiter = anyio.CapacityLimiter(settings.concurrency)
+) -> tuple[list[FailureReport], dict[str, str]]:
+    """Failures with LLM-written summaries, and conversation id -> why a summary fell back.
 
-    async def summarize(index: int, report: FailureReport) -> None:
-        async with limiter:
-            conversation = by_id[report.conversation_id]
-            summaries[index] = await llm_summary(
-                conversation, report, llm, model, seed=settings.seed
-            )
+    A malformed reply keeps the heuristic ``describe`` summary: one odd conversation must not
+    throw away what the rest of the batch already cost.
+    """
+    errors: dict[str, str] = {}
 
-    async with anyio.create_task_group() as group:
-        for index, report in enumerate(failures):
-            group.start_soon(summarize, index, report)
-    return [
-        report.model_copy(update={"summary": summaries[index]})
-        for index, report in enumerate(failures)
-    ]
+    async def summarize(report: FailureReport) -> FailureReport:
+        conversation = by_id[report.conversation_id]
+        try:
+            summary = await llm_summary(conversation, report, llm, model, seed=settings.seed)
+        except LLMOutputError as exc:
+            log.warning("mine.summary_failed", conversation=report.conversation_id, error=str(exc))
+            errors[report.conversation_id] = str(exc)
+            return report
+        return report.model_copy(update={"summary": summary})
+
+    return await map_concurrently(summarize, failures, concurrency=settings.concurrency), errors
 
 
 async def _cluster(

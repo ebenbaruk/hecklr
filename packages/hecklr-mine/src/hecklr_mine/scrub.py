@@ -15,10 +15,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Protocol
 
-import anyio
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from hecklr_llm import complete_structured
+from hecklr_llm import LLMOutputError, complete_structured
+from hecklr_mine.tasks import map_concurrently
 from hecklr_schemas import Conversation, LLMProvider, LLMRequest, Message
 from hecklr_sim import derive_subseed
 
@@ -167,8 +167,9 @@ class LiteralDetector:
 
     def __init__(self, values: Mapping[str, str]) -> None:
         """``values`` maps each value to its entity kind."""
+        # Whole words only: "Ana" must not scrub the middle of "banana" in another conversation.
         self._patterns = [
-            (re.compile(re.escape(value), re.IGNORECASE), entity)
+            (re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE), entity)
             for value, entity in sorted(values.items(), key=lambda item: -len(item[0]))
             if value.strip() and not PLACEHOLDER.fullmatch(value.strip())
         ]
@@ -291,8 +292,12 @@ class LlmPiiFinder:
         self._model = model
         self._seed = seed
 
-    async def find(self, conversation: Conversation) -> LiteralDetector:
-        """A detector for the values found in ``conversation`` (already pattern-scrubbed)."""
+    async def find(self, conversation: Conversation) -> dict[str, str]:
+        """Values found in ``conversation`` (already pattern-scrubbed), mapped to their kind.
+
+        Raises:
+            hecklr_llm.LLMOutputError: The reply does not match ``FoundEntities``.
+        """
         transcript = "\n".join(f"{turn.role}: {turn.text}" for turn in conversation.turns)
         request = LLMRequest(
             model=self._model,
@@ -305,12 +310,11 @@ class LlmPiiFinder:
             seed=derive_subseed(self._seed, "scrub", conversation.id),
         )
         found, _ = await complete_structured(self._llm, request, FoundEntities)
-        kinds = {
+        return {
             item.text.strip(): re.sub(r"[^A-Z]+", "_", item.entity.upper()).strip("_") or "PII"
             for item in found.entities
             if item.text.strip() in transcript
         }
-        return LiteralDetector(kinds)
 
 
 async def scrub_conversations(
@@ -319,26 +323,34 @@ async def scrub_conversations(
     *,
     llm_finder: LlmPiiFinder | None = None,
     concurrency: int = 8,
-) -> list[Conversation]:
+) -> tuple[list[Conversation], dict[str, str]]:
     """Scrub a batch, in input order, so placeholder numbering is reproducible.
 
     The LLM pass reads the pattern-scrubbed text (the model never sees what the detectors already
-    caught); its findings are then substituted through the same registry.
+    caught). Its findings from every conversation are merged and substituted in every
+    conversation, so a name the model spotted once is scrubbed wherever it appears in the batch.
+    A conversation whose LLM reply is unusable keeps its pattern scrubbing (and the batch-wide
+    findings) and is reported, rather than discarding the whole run.
+
+    Returns:
+        The scrubbed conversations, and conversation id -> why the LLM pass failed on it.
     """
     scrubbed = [scrubber.scrub(conversation) for conversation in conversations]
     if llm_finder is None:
-        return scrubbed
-    finders: dict[int, LiteralDetector] = {}
-    limiter = anyio.CapacityLimiter(concurrency)
+        return scrubbed, {}
+    errors: dict[str, str] = {}
 
-    async def find(index: int, conversation: Conversation) -> None:
-        async with limiter:
-            finders[index] = await llm_finder.find(conversation)
+    async def find(conversation: Conversation) -> dict[str, str]:
+        try:
+            return await llm_finder.find(conversation)
+        except LLMOutputError as exc:
+            errors[conversation.id] = str(exc)
+            return {}
 
-    async with anyio.create_task_group() as group:
-        for index, conversation in enumerate(scrubbed):
-            group.start_soon(find, index, conversation)
-    return [
-        scrubber.scrub(conversation, extra=[finders[index]])
-        for index, conversation in enumerate(scrubbed)
-    ]
+    findings = await map_concurrently(find, scrubbed, concurrency=concurrency)
+    merged: dict[str, str] = {}
+    for found in findings:
+        for value, entity in found.items():
+            merged.setdefault(value, entity)
+    literal = LiteralDetector(merged)
+    return [scrubber.scrub(conversation, extra=[literal]) for conversation in scrubbed], errors

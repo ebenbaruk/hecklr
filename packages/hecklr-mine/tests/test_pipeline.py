@@ -1,7 +1,8 @@
 """The miner end to end on FakeLLM (US-08): logs in, clusters and queued proposals out."""
 
+import dataclasses
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -129,6 +130,10 @@ class _Paid:
     def __init__(self, responder: Reply) -> None:
         self._fake = FakeLLM(responder=responder)
 
+    @property
+    def calls(self) -> list[LLMRequest]:
+        return self._fake.calls
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
         response = await self._fake.complete(request)
         return response.model_copy(update={"cost_usd": Decimal("0.01")})
@@ -169,3 +174,82 @@ def test_ws13_judges_run_inside_the_pipeline(responder: Reply) -> None:
     assert all(r.failed for r in result.reports)
     assert any(s.kind.value == "judge" for r in result.reports for s in r.signals)
     json.loads(result.reports[0].model_dump_json())
+
+
+def test_ws13_one_unusable_summary_reply_does_not_abort_the_run(responder: Reply) -> None:
+    logs = generate_log_set(60, seed=11)
+    failed = next(
+        cid for cid, mode in logs.planted.items() if mode is not None and mode != "one_off"
+    )
+    opener = next(c for c in logs.conversations if c.id == failed).turns[0].text
+
+    def one_bad(request: LLMRequest) -> Any:
+        if request.schema_name == "FailureSummary" and opener in request.messages[-1].content:
+            return "not json"
+        return responder(request)
+
+    settings = MineSettings(world="w", persona="p", model="fake/m", llm_summaries=True)
+    result = anyio.run(
+        lambda: mine(
+            logs.conversations, settings, embedder=HashingEmbedder(), llm=FakeLLM(responder=one_bad)
+        )
+    )
+    assert set(result.summary_errors) == {failed}
+    by_id = {r.conversation_id: r for r in result.failures}
+    assert by_id[failed].summary.startswith("Failure signals:")
+    assert all(
+        r.summary.startswith("The agent failed:") for cid, r in by_id.items() if cid != failed
+    )
+    summary = summarize(result, mine_id="01RUN", source="l", log_format="jsonl", model="fake/m")
+    assert set(summary.summary_errors) == {failed}
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        MineSettings(world="w", persona="p", judge_model="fake/j", rubrics=("resolved",)),
+        MineSettings(world="w", persona="p", model="fake/m", llm_scrub=True),
+        MineSettings(world="w", persona="p", model="fake/m", llm_summaries=True),
+    ],
+    ids=["judges", "llm-scrub", "summaries"],
+)
+def test_ws13_budget_in_a_concurrent_stage_raises_the_bare_error(
+    settings: MineSettings, responder: Reply
+) -> None:
+    def judging(request: LLMRequest) -> Any:
+        if request.schema_name == "JudgeVerdict":
+            return {"verdict": "pass", "rationale": "ok", "evidence": []}
+        return responder(request)
+
+    capped = dataclasses.replace(settings, max_usd=Decimal("0.02"))
+    llm = _Paid(judging)
+    with pytest.raises(BudgetExceededError, match="reached the cap") as caught:
+        _run(capped, llm, n=60)
+    assert not isinstance(caught.value, BaseExceptionGroup)
+    # Stopped inside the stage: two paid calls, plus at most the ones already in flight.
+    assert len(llm.calls) <= 2 + capped.concurrency
+
+
+class _PaidEmbedder(HashingEmbedder):
+    """Free hashing vectors billed at one cent per call."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._spent = Decimal(0)
+
+    @property
+    def spent_usd(self) -> Decimal:
+        return self._spent
+
+    async def embed(self, texts: Sequence[str]) -> Any:
+        self._spent += Decimal("0.01")
+        return await super().embed(texts)
+
+
+def test_ws13_embedding_spend_is_capped_without_a_model() -> None:
+    logs = generate_log_set(60, seed=11)
+    settings = MineSettings(world="w", persona="p", max_usd=Decimal("0.005"))
+    with pytest.raises(BudgetExceededError, match="exceeded the cap"):
+        anyio.run(lambda: mine(logs.conversations, settings, embedder=_PaidEmbedder()))
+    free = MineSettings(world="w", persona="p", max_usd=Decimal(0))
+    assert anyio.run(lambda: mine(logs.conversations, free, embedder=HashingEmbedder())).clusters

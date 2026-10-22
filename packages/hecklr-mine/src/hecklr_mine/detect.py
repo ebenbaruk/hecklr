@@ -10,11 +10,11 @@ from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Final
 
-import anyio
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from hecklr_llm import complete_structured
 from hecklr_mine.judges import judge_conversation
+from hecklr_mine.tasks import map_concurrently
 from hecklr_schemas import Conversation, ConversationTurn, LLMProvider, LLMRequest, Message
 from hecklr_sim import derive_subseed
 
@@ -342,34 +342,28 @@ async def detect_failures(
 
     Raises:
         ValueError: ``rubrics`` are given without a model to run them.
+        Exception: Whatever the provider raises that a judge does not absorb (e.g. the
+            miner's ``BudgetExceededError``): the first such error, as itself.
     """
     if rubrics and (llm is None or judge_model is None):
         raise ValueError("judge rubrics need an LLM and a judge model")
-    reports: dict[int, FailureReport] = {}
-    limiter = anyio.CapacityLimiter(concurrency)
 
-    async def detect(index: int, conversation: Conversation) -> None:
+    async def detect(conversation: Conversation) -> FailureReport:
         signals = heuristic_signals(conversation)
         errors: list[str] = []
         if rubrics and llm is not None and judge_model is not None:
-            async with limiter:
-                grades = await judge_conversation(
-                    conversation, rubrics, llm, judge_model, seed=seed
-                )
+            grades = await judge_conversation(conversation, rubrics, llm, judge_model, seed=seed)
             signals += [
                 Signal(kind=SignalKind.JUDGE, detail=f"{g.grader}: {g.rationale or 'failed'}")
                 for g in grades
                 if g.status == "ok" and not g.passed
             ]
             errors = [f"{g.grader}: {g.rationale}" for g in grades if g.status == "error"]
-        reports[index] = FailureReport(
+        return FailureReport(
             conversation_id=conversation.id,
             signals=signals,
             judge_errors=errors,
             summary=describe(conversation, signals) if signals else "",
         )
 
-    async with anyio.create_task_group() as group:
-        for index, conversation in enumerate(conversations):
-            group.start_soon(detect, index, conversation)
-    return [reports[index] for index in range(len(conversations))]
+    return await map_concurrently(detect, conversations, concurrency=concurrency)
