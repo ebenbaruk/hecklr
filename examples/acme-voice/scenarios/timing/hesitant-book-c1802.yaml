@@ -1,0 +1,19 @@
+id: voice-hesitant-book-c1802
+title: Book a boiler service for C-1802 (a caller who hesitates)
+channels: [voice]
+tags: [voice, timing, catches-f9]
+persona: hesitant-caller
+world: acme-maintenance
+mode: scripted
+goal: Book a boiler service for C-1802 (a caller who hesitates)
+user_turns:
+- "I'd like to book a boiler service on Wednesday 28 October in the afternoon."
+- 'My customer number is C 1 8 0 2 and my postcode is 75006.'
+- 'Yes, please go ahead and do that.'
+- 'Thank you very much, that is everything for today.'
+success:
+- type: state
+  expr: "any(a.customer_id == 'C-1802' and a.service == 'boiler_service' and a.slot == '2026-10-28T14:00' for a in values(world.appointments))"
+  description: the visit is booked at the slot asked for
+- {type: voice_metric, metric: false_interruptions, below: 3}
+limits: {max_turns: 16, max_duration_s: 150}

@@ -1,0 +1,39 @@
+# Hecklr configuration for the acme-voice reference agent (the acme-maintenance agent over voice).
+#
+# Start the agent first. The suites below hear it with Hecklr's free `fake/tag` ASR, so the agent
+# speaks tagged synthetic audio (--tts synthetic); it hears the callers' Kokoro speech for real
+# (faster-whisper, voice.yaml):
+#   uv run python examples/acme-voice/agent/serve.py --brain rules --tts synthetic --port 8765
+# A fault variant: add --fault F7 (F8, F9, F10). See README.md and examples/acme-faults/.
+version: 1
+agent:
+  name: acme-voice
+  adapters:
+    # RFC 0010a: one WebSocket per call, raw 16 kHz PCM. The start message and the handshake
+    # headers carry the trial's world URL, which the agent's tools call (ADR 0007e).
+    voice: { type: websocket, url: "ws://127.0.0.1:8765/", protocol: pcm }
+  editable: [voice.yaml]
+world: ../acme-maintenance/worlds/acme-maintenance.yaml
+suites:
+  # Turn-taking: response latency (F7), barge-in reaction (F8), false interruptions (F9), each
+  # gated per scenario at the spec's typical gate; the latency and hesitation scenarios also
+  # check that the task got done.
+  voice-timing: { scenarios: "scenarios/timing/*.yaml", trials: 1, channels: [voice] }
+  # The degradation curve (US-07): 8 tasks x 5 SNR buckets of cafe noise (clean, 20, 10, 5, 0 dB).
+  voice-snr: { scenarios: "scenarios/snr/*.yaml", trials: 1, channels: [voice] }
+  # The curve's gated bucket (spec: "gated on the 10 dB bucket"): the F10 matrix runs this.
+  voice-snr-10db:
+    scenarios: "scenarios/snr/*.yaml"
+    personas: "personas/snr/cafe-caller-10db.yaml"
+    trials: 1
+    channels: [voice]
+# Scripted callers and deterministic graders only: neither model below is called by these
+# suites. The caller hears the agent's tagged synthetic speech exactly with fake/tag.
+models:
+  simulator: openai/gpt-6-luna
+  judge: openai/gpt-6-luna
+  asr: fake/tag
+stats: { alpha: 0.05, min_effect: 0.03 }
+budget: { usd: 1, concurrency: 4 }
+baseline: { store: local, branch: main }
+seed: 20261022

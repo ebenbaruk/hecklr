@@ -1,0 +1,11 @@
+# Talks over every agent reply still going 0.4-2.5 s in: the barge-in reaction metric (fault
+# F8). A slightly fast American male voice.
+id: interrupter
+description: Impatient caller who cuts the agent off mid-sentence, every time.
+language: en-US
+traits: { patience: 0.2, verbosity: 0.3, cooperativeness: 0.6 }
+behaviors:
+  interrupt_prob: 1.0
+  response_gap_ms: [200, 400]
+voice:
+  tts: { provider: kokoro, voice: am_michael, rate: 1.1 }

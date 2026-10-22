@@ -1,0 +1,14 @@
+id: voice-barge-in-electrician
+title: A caller who talks over the agent
+channels: [voice]
+tags: [voice, timing, catches-f8]
+persona: interrupter
+world: acme-maintenance
+mode: scripted
+goal: A caller who talks over the agent
+user_turns:
+- 'Can I book an electrician for a tripping fuse?'
+- "I'll check my diary and call back."
+success:
+- {type: voice_metric, metric: barge_in_reaction, below: 400}
+limits: {max_turns: 16, max_duration_s: 150}
