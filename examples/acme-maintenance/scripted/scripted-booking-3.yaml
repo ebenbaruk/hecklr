@@ -15,4 +15,7 @@ success:
 - type: state
   expr: "any(a.customer_id == 'C-1744' and a.service == 'heat_pump_check' and a.slot == '2026-11-03T09:00' for a in values(world.appointments))"
   description: the visit is booked at the slot asked for
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1744, slot: '2026-11-03T09:00'}
 limits: {max_turns: 12, max_duration_s: 600}

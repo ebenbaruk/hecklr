@@ -21,6 +21,7 @@ from acme_agent.config import (
     AgentConfigError,
     AgentSettings,
     load_agent_files,
+    parse_budget,
 )
 from acme_agent.server import create_app
 from hecklr_llm import ProviderRouter
@@ -38,6 +39,11 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--world-base-url", help="Hecklr world sandbox root URL (ACME_WORLD_BASE_URL)"
     )
+    parser.add_argument(
+        "--budget-usd",
+        type=parse_budget,
+        help="hard cap on the LLM brain's own model spend in USD (ACME_BUDGET_USD)",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     return parser.parse_args(argv)
@@ -51,6 +57,7 @@ def settings_from(args: argparse.Namespace) -> AgentSettings:
         "fault": args.fault,
         "overlay": args.overlay,
         "world_base_url": args.world_base_url,
+        "budget_usd": args.budget_usd,
     }
     settings = AgentSettings.from_env()
     if args.fault is not None or args.overlay is not None:

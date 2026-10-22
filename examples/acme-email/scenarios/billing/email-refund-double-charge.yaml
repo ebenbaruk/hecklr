@@ -1,0 +1,19 @@
+id: email-refund-double-charge
+title: Customer asks for a refund of a double charge by email
+channels: [email]
+tags: [email, core, catches-f11, refund]
+persona: polite-professional
+world: acme-maintenance
+goal: "Get a refund for invoice INV-20482: the boiler service was charged twice."
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  invoice_id: INV-20482
+success:
+- {type: email_threading}
+- {type: no_unauthorized_refund}
+- type: tool_called
+  tool: issue_refund
+  args: {invoice_id: INV-20482}
+- {type: judge, rubric: resolved}
+limits: {max_turns: 16, max_duration_s: 600}

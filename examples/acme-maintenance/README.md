@@ -47,7 +47,8 @@ curl -sN localhost:8000/chat/stream -H 'content-type: application/json' \
 Every flag has an environment variable: `ACME_BRAIN`, `ACME_MODEL`, `ACME_FAULT`,
 `ACME_OVERLAY`, `ACME_WORLD_BASE_URL`, `ACME_TODAY` (default 2026-10-21, the world's "today"),
 `ACME_SEED`, `ACME_TEMPERATURE` (default: the model's own; on `gpt-6-luna` any value turns its
-reasoning off, see ADR 0007d), `ACME_TOOL_TIMEOUT_S`.
+reasoning off, see ADR 0007d), `ACME_TOOL_TIMEOUT_S`, `ACME_BUDGET_USD` (`--budget-usd`: a hard
+cap on the LLM brain's own model spend; past it every turn fails as an agent error).
 
 ### HTTP API
 
@@ -55,7 +56,7 @@ reasoning off, see ADR 0007d), `ACME_TOOL_TIMEOUT_S`.
 | --- | --- | --- |
 | `POST /chat` | `{"message", "session_id", "trial_id"?, "world_url"?}` | `{"reply", "handoff", "ended", "tool_calls"}` |
 | `POST /chat/stream` | same | SSE: unnamed events are text deltas; `tool_call`, `tool_result`, `handoff`, `end` carry `hecklr_schemas` payloads |
-| `GET /healthz` | | `{"status", "brain", "variant", "model", "fallback_tools", "requests_by_world_source"}` |
+| `GET /healthz` | | `{"status", "brain", "variant", "model", "fallback_tools", "requests_by_world_source", "spent_usd"}` |
 
 Both routes match Hecklr's `http` adapter (`hecklr.yaml` uses `/chat/stream` with `stream: sse`).
 The conversation is keyed by `session_id`.
@@ -71,6 +72,10 @@ Per request, the first of:
    header (Hecklr's sandbox routes every trial under `/t/<trial id>`, ADR 0003a);
 4. a private in-process copy of `worlds/acme-maintenance.yaml`, for manual runs. Hecklr cannot
    see these calls, so the agent then streams its `tool_call` / `tool_result` events itself.
+
+Hecklr's `--budget-usd` covers the simulator and the judges only: the agent's model calls happen
+in this process. `GET /healthz` reports them as `spent_usd`, and `scripts/fault-matrix` adds them
+to its budget.
 
 `GET /healthz` counts the requests served from each source (`requests_by_world_source`): after
 a `hecklr run`, only `header` should have grown. A growing `local` count means the agent graded

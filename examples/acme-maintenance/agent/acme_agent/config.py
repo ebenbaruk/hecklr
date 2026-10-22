@@ -11,6 +11,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final, Literal, cast
 
@@ -162,14 +163,16 @@ class AgentSettings:
     max_steps: int = 8
     """Tool calls plus the reply the LLM brain may take for one customer message."""
     tool_timeout_s: float = 10.0
+    budget_usd: Decimal | None = None
+    """Hard cap on the LLM brain's own model spend (``spend.SpendMeter``); ``None``: no cap."""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "AgentSettings":
         """Read settings from the environment.
 
         Variables: ``ACME_BRAIN``, ``ACME_MODEL``, ``ACME_FAULT``, ``ACME_OVERLAY``,
-        ``ACME_WORLD_BASE_URL``, ``ACME_TODAY``, ``ACME_SEED``, ``ACME_TEMPERATURE`` and
-        ``ACME_TOOL_TIMEOUT_S``.
+        ``ACME_WORLD_BASE_URL``, ``ACME_TODAY``, ``ACME_SEED``, ``ACME_TEMPERATURE``,
+        ``ACME_TOOL_TIMEOUT_S`` and ``ACME_BUDGET_USD``.
         """
         source = os.environ if env is None else env
         brain = source.get("ACME_BRAIN", "llm")
@@ -177,6 +180,7 @@ class AgentSettings:
             raise AgentConfigError(f"ACME_BRAIN must be 'llm' or 'rules', got {brain!r}")
         overlay = source.get("ACME_OVERLAY")
         temperature = source.get("ACME_TEMPERATURE")
+        budget = source.get("ACME_BUDGET_USD")
         try:
             return cls(
                 brain=cast(Brain, brain),
@@ -188,8 +192,9 @@ class AgentSettings:
                 seed=int(source.get("ACME_SEED", "0")),
                 temperature=float(temperature) if temperature else None,
                 tool_timeout_s=float(source.get("ACME_TOOL_TIMEOUT_S", "10")),
+                budget_usd=parse_budget(budget) if budget else None,
             )
-        except ValueError as exc:
+        except (ValueError, InvalidOperation) as exc:
             raise AgentConfigError(f"invalid ACME_* setting: {exc}") from exc
 
     def overlay_dir(self) -> Path | None:
@@ -197,3 +202,15 @@ class AgentSettings:
         if self.overlay is not None:
             return self.overlay
         return fault_overlay(self.fault) if self.fault is not None else None
+
+
+def parse_budget(text: str) -> Decimal:
+    """A spend cap in USD: a finite, non-negative decimal.
+
+    Raises:
+        ValueError: anything else.
+    """
+    value = Decimal(text)
+    if not value.is_finite() or value < 0:
+        raise ValueError(f"a budget must be a non-negative amount of USD, got {text!r}")
+    return value

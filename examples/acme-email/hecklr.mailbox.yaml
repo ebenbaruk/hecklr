@@ -1,0 +1,32 @@
+# Hecklr configuration for the acme email agent on a real mailbox: SMTP out, IMAP in.
+#
+# Start a local mail server and the agent first (see README.md):
+#   docker compose -f tests/fixtures/email/compose.yaml up -d
+#   uv run python examples/acme-email/agent/serve.py --brain rules mailbox --inbox support@acme.test
+# The same suites over the webhook adapter: hecklr.yaml.
+version: 1
+agent:
+  name: acme-email
+  adapters:
+    # Customers write from <persona>.<ulid>@customers.hecklr.test; the local server's mailboxes
+    # need no password. An agent silent for `reply_timeout_s` (F12) fails the trial with a timeout.
+    email:
+      type: smtp-imap
+      inbox: support@acme.test
+      smtp_port: 1025
+      imap_port: 1143
+      reply_timeout_s: 120
+  # The brain is the chat agent's; the fixer edits its files there.
+  editable: [../acme-maintenance/prompts/system.md, ../acme-maintenance/tools/descriptions.yaml]
+world: ../acme-maintenance/worlds/acme-maintenance.yaml
+suites:
+  ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [email] }
+  full: { scenarios: "scenarios/**/*.yaml", trials: 5, channels: [email] }
+  smoke: { scenarios: "scripted/*.yaml", trials: 1, channels: [email] }
+models:
+  simulator: openai/gpt-6-luna
+  judge: openai/gpt-6-luna
+stats: { alpha: 0.05, min_effect: 0.03 }
+budget: { usd: 2, concurrency: 4 }
+baseline: { store: local, branch: main }
+seed: 20261022

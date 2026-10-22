@@ -5,7 +5,8 @@
 - ``POST /chat/stream``: the same request, answered as server-sent events: unnamed events carry
   text deltas; named events ``tool_call`` / ``tool_result`` (only when Hecklr cannot see the
   tools), ``handoff`` and ``end`` carry ``hecklr_schemas`` payloads (ADR 0006a).
-- ``GET /healthz``: brain, variant and where the tools went, for ``hecklr doctor`` and humans.
+- ``GET /healthz``: brain, variant, the agent's own model spend, the turns that failed and where
+  the tools went, for ``hecklr doctor``, the fault matrix and humans.
 
 Which world the tools act on, per request (ADR 0007d), the first of:
 
@@ -21,6 +22,7 @@ the local copy shows up there.
 from collections import Counter
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
+from decimal import Decimal
 from typing import Literal
 
 import httpx2
@@ -31,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from acme_agent.agent import AcmeAgent, BackendFactory
 from acme_agent.tools import HttpWorldTools, LocalWorldTools, Reply
 from hecklr_adapters import WORLD_URL_HEADER
+from hecklr_llm import LLMProviderError
 from hecklr_schemas import TRIAL_ID_HEADER, HandoffPayload, ToolCallPayload, World
 
 WorldSource = Literal["body", "header", "base_url", "local"]
@@ -71,6 +74,25 @@ class Health(BaseModel):
     """Where tools go when a request names no world: ``ACME_WORLD_BASE_URL`` or the local copy."""
     requests_by_world_source: dict[WorldSource, int]
     """Requests served so far per world source; a Hecklr run should only grow ``header``."""
+    spent_usd: Decimal
+    """What the agent's own model calls have cost so far; Hecklr's budget does not see it."""
+    failed_turns: dict[str, int] = Field(default_factory=dict)
+    """Turns that failed (HTTP 500) so far, by exception type. A model outage or an exhausted
+    quota (``LLMProviderError[429]``) looks like agent errors to Hecklr; this says which they
+    were. A provider error carries its HTTP status: a 400 is the provider rejecting this one
+    request (e.g. the reply hit the output limit), not an outage."""
+
+
+def failure_key(exc: Exception) -> str:
+    """How ``/healthz`` counts a failed turn.
+
+    The exception type, plus the HTTP status for a provider error, so an outage (429, 5xx) is
+    told apart from a rejected request (400).
+    """
+    name = type(exc).__name__
+    if isinstance(exc, LLMProviderError) and exc.status_code is not None:
+        return f"{name}[{exc.status_code}]"
+    return name
 
 
 def sse_frame(event: str | None, data: str) -> str:
@@ -115,6 +137,7 @@ def create_app(
     app = FastAPI(title="acme-maintenance agent", lifespan=lifespan)
     base_url = agent.settings.world_base_url
     served: Counter[WorldSource] = Counter()
+    failures: Counter[str] = Counter()
 
     def backend_for(body: ChatRequest, request: Request) -> BackendFactory:
         trial_id = request.headers.get(TRIAL_ID_HEADER) or body.trial_id
@@ -125,7 +148,12 @@ def create_app(
         return lambda: HttpWorldTools(clients[0], world_url, trial_id)
 
     async def answer(body: ChatRequest, request: Request) -> Reply:
-        return await agent.respond(body.session_id, body.message, backend_for(body, request))
+        try:
+            return await agent.respond(body.session_id, body.message, backend_for(body, request))
+        except Exception as exc:
+            # Counted for /healthz, then re-raised: the turn still fails as an HTTP 500.
+            failures[failure_key(exc)] += 1
+            raise
 
     @app.post("/chat")
     async def chat(body: ChatRequest, request: Request) -> ChatResponse:
@@ -150,6 +178,8 @@ def create_app(
             model=agent.settings.model if agent.settings.brain == "llm" else None,
             fallback_tools="sandbox_base_url" if base_url else "local",
             requests_by_world_source={source: served[source] for source in WORLD_SOURCES},
+            spent_usd=agent.spent_usd,
+            failed_turns=dict(failures),
         )
 
     return app

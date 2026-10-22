@@ -1,0 +1,18 @@
+id: email-book-boiler-service
+title: Customer books a boiler service by email
+channels: [email]
+tags: [email, core, catches-f11, booking]
+persona: busy-homeowner
+world: acme-maintenance
+goal: "Book a boiler service on Wednesday 28 October in the afternoon."
+facts:
+  customer_id: C-1802
+  postcode: '75006'
+  preferred_time: Wednesday 28 October, afternoon
+success:
+- {type: email_threading}
+- type: state
+  expr: "any(a.customer_id == 'C-1802' and a.service == 'boiler_service' and a.status == 'booked' and a.slot == '2026-10-28T14:00' for a in values(world.appointments))"
+  description: a visit is booked at the time the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 16, max_duration_s: 600}
