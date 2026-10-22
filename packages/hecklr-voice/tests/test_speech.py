@@ -348,12 +348,21 @@ async def test_ensure_model_file_refuses_bad_downloads(tmp_path: Path) -> None:
 async def test_dsp_pool_never_blocks_the_event_loop() -> None:
     """Rendering eight noisy 5 s clips at once must leave the loop free for 20 ms frames.
 
-    The loop thread's own CPU time between heartbeats is measured, not wall-clock lag: the
-    claim is that no DSP runs on the loop, and CPU time stays exact even when other test
-    processes keep the machine busy.
+    The loop thread's own CPU time is measured, not wall-clock lag: the claim is that no DSP
+    runs on the loop, and CPU time is not inflated by other processes waiting for a core.
+
+    - No stall: at most 5 ms of loop CPU between 1 ms heartbeats. A beat holds about one loop
+      step. Issue #20: with 5 ms beats a beat summed several legitimate steps (pickling eight
+      jobs, reading eight results, ~1 ms each); on a loaded machine, where the same work costs
+      more CPU on a slower core, the sum reached 6.2 ms with no DSP on the loop at all.
+    - No DSP: the loop's CPU while two clips render, without the heartbeat (whose own
+      scheduling costs loop CPU on every beat), is a fraction of what one render costs.
     """
-    speech = np.full(5 * SAMPLE_RATE, 0.1, dtype=np.float32)
+    speech = (Segment("speech", np.full(5 * SAMPLE_RATE, 0.1, dtype=np.float32)),)
     chain = ImpairmentChain(environment="cafe", snr_db=5.0, reverb="hall")
+    started = time.thread_time()
+    render_clip(speech, chain, 0)
+    one_render_ms = (time.thread_time() - started) * 1000
     await warm_dsp_pool()
     worst_busy_ms = 0.0
     beats = 0
@@ -363,7 +372,7 @@ async def test_dsp_pool_never_blocks_the_event_loop() -> None:
         nonlocal worst_busy_ms, beats
         while not done:
             started = time.thread_time()
-            await anyio.sleep(0.005)
+            await anyio.sleep(0.001)
             worst_busy_ms = max(worst_busy_ms, (time.thread_time() - started) * 1000)
             beats += 1
 
@@ -371,7 +380,14 @@ async def test_dsp_pool_never_blocks_the_event_loop() -> None:
         group.start_soon(heartbeat)
         async with anyio.create_task_group() as jobs:
             for seed in range(8):
-                jobs.start_soon(run_dsp, render_clip, (Segment("speech", speech),), chain, seed)
+                jobs.start_soon(run_dsp, render_clip, speech, chain, seed)
         done = True
-    assert beats > 20
+    assert beats > 100
     assert worst_busy_ms < 5.0
+
+    loop_started = time.thread_time()
+    async with anyio.create_task_group() as jobs:
+        for seed in range(2):
+            jobs.start_soon(run_dsp, render_clip, speech, chain, seed)
+    loop_ms = (time.thread_time() - loop_started) * 1000
+    assert loop_ms < one_render_ms / 2, (loop_ms, one_render_ms)

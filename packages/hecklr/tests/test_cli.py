@@ -1,4 +1,6 @@
 import logging
+import sys
+import types
 
 import click
 import pytest
@@ -85,3 +87,20 @@ def test_console_script_entry_point_runs_the_app(
 
     assert exit_info.value.code == 0
     assert capsys.readouterr().out.strip() == hecklr.__version__
+
+
+def test_console_entry_gives_dsp_workers_no_script_to_rerun(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # DSP workers re-run the parent's main file without a __main__ module, where importing
+    # hecklr.cli (duckdb) fails; the console script must not be offered to them.
+    entry = types.ModuleType("__main__")
+    entry.__file__ = "/venv/bin/hecklr"
+    monkeypatch.setitem(sys.modules, "__main__", entry)
+    monkeypatch.setattr(sys, "argv", ["hecklr", "version"])
+
+    with pytest.raises(SystemExit) as exited:
+        main()
+
+    assert exited.value.code == 0
+    assert getattr(entry, "__file__", None) is None

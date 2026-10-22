@@ -25,7 +25,6 @@ from hecklr.compose import (
     RunRequest,
     check_model_providers,
     execute_run,
-    judge_overrides,
     prepare_run,
 )
 from hecklr.errors import describe_error
@@ -115,8 +114,8 @@ def run_with_progress(
             partial(
                 check_model_providers,
                 prepared.project.config.models,
+                prepared.models_called,
                 llm_providers or None,
-                criterion_models=judge_overrides(prepared.plan.suite.scenarios),
             )
         )
     _print_plan(prepared)

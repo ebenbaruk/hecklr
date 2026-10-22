@@ -43,8 +43,8 @@ Build one from the `agent.adapters.email` entry of `hecklr.yaml` with `make_emai
 
 | `type` | Out | In |
 | --- | --- | --- |
-| `smtp-imap` (alias `smtp`) | SMTP to `inbox`, with `X-Hecklr-Trial-Id` | IMAP polling, `SEARCH TO` each customer address of the trial |
-| `webhook` | `POST url` `{"trial_id", "reply_url", "message"}` | the agent POSTs an `EmailMessage` to `reply_url` (`202` / `400` / `404`) |
+| `smtp-imap` (alias `smtp`) | SMTP to `inbox`, with `X-Hecklr-Trial-Id`, `X-Hecklr-World-Url`, `X-Hecklr-World-Mcp-Url` | IMAP polling, `SEARCH TO` each customer address of the trial |
+| `webhook` | `POST url` `{"trial_id", "world_url", "world_mcp_url", "reply_url", "message"}` with the same headers | the agent POSTs an `EmailMessage` to `reply_url` (`202` / `400` / `404`) |
 | in-process | `PythonEmailTarget(agent)`, `async (session, msg) -> EmailMessage \| list \| None` | queued per trial |
 
 Replies are routed by recipient address, never by threading headers, so an agent that loses the
@@ -78,16 +78,33 @@ await link.hangup()
 
 | `type` | Reaches | Extra | Barge-in |
 | --- | --- | --- | --- |
-| `websocket`, `protocol: pcm` | binary PCM16 at `sample_rate` both ways; JSON `start` / `stop` from Hecklr, `{"type": "clear"}` from the agent | none | agent goes quiet or sends `clear` |
-| `websocket`, `protocol: twilio` | Twilio Media Streams: `connected`, `start` (trial id in `customParameters`), `media` (8 kHz mu-law), `stop`; the agent's `mark`s are echoed when played or cleared | none | `clear` |
+| `websocket`, `protocol: pcm` | binary PCM16 at `sample_rate` both ways; JSON `start` (with `trial_id`, `world_url`, `world_mcp_url`) / `stop` from Hecklr, `{"type": "clear"}` from the agent | none | agent goes quiet or sends `clear` |
+| `websocket`, `protocol: twilio` | Twilio Media Streams: `connected`, `start` (`trial_id`, `world_url`, `world_mcp_url` in `customParameters`), `media` (8 kHz mu-law), `stop`; the agent's `mark`s are echoed when played or cleared | none | `clear` |
 | `websocket`, `protocol: pipecat` | Pipecat's `ProtobufFrameSerializer` frames (`FastAPIWebsocketTransport`) | none | `InterruptionFrame` |
 | `pipecat` | Pipecat SmallWebRTC: offer POSTed to `url` (the runner's `/api/offer`) | `pipecat` (aiortc) | Pipecat drops its queued audio |
 | `livekit` | joins room `<room_prefix>-<trial_id>`, token signed with `api_key_env` / `api_secret_env` | `livekit` | the agent clears its source |
 
 Every adapter plays the agent's audio out in real time, as a phone would (a burst is heard over
 its length; `clear` cuts it where playback had got to), and delivers 16 kHz frames whose
-`sample_index` is the time they were heard (ADR 0010a). The trial id travels in
-`X-Hecklr-Trial-Id` wherever the transport has a handshake.
+`sample_index` is the time they were heard (ADR 0010a).
+
+### The trial's world, on every channel
+
+An agent must call its own trial's world sandbox, or the trial's state assertions grade a world
+it never touched (ADRs 0007d and 0007e). Every adapter tells the agent the trial id and, when the
+trial has a sandbox, its world URLs (`world_url`: the OpenAPI base, tools at
+`POST <world_url>/tools/<name>`; `world_mcp_url`: the MCP endpoint):
+
+| Transport | Where the agent reads them |
+| --- | --- |
+| `http`, `openai-compatible`, `websocket` (chat) | headers `X-Hecklr-Trial-Id`, `X-Hecklr-World-Url`, `X-Hecklr-World-Mcp-Url`; templates `{{world_url}}`, `{{world_mcp_url}}` |
+| `websocket` (voice) | the same headers on the handshake; `pcm`: the `start` message; `twilio`: `start.customParameters` |
+| `pipecat` | the same headers on the offer POST, and `request_data` (Pipecat's `runner_args.body`) |
+| `livekit` | the caller's participant metadata (JSON) and attributes `hecklr.trial_id`, `hecklr.world_url`, `hecklr.world_mcp_url` |
+| email `webhook` | the same headers, and `trial_id`, `world_url`, `world_mcp_url` in the POSTed body |
+| email `smtp-imap` | the same headers on each customer email |
+
+`hecklr_adapters.session_headers(ctx)` and `session_fields(ctx)` build them.
 
 ### Voice contract suite
 
