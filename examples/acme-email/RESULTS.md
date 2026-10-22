@@ -77,6 +77,12 @@ The agent's `/healthz` after each run: every email's tools went to the trial's s
 the webhook body's `world_url` (35 of 35 emails; F12: 32, none local); F12 counted 6
 `replies_failed`, the late answers to conversations that had already timed out.
 
+Repeated after the review round (120 s reply deadline; the script now takes each run id from
+the CLI's output), on a merge with WS-wire `ad883be`: clean vs clean NO CHANGE (100.0% [78.5%,
+100.0%] both), clean vs F11 REGRESSION (0.0% [0.0%, 21.5%]), clean vs F12 REGRESSION (57.1%
+[32.6%, 78.6%]); runs `01M5GQ2MH8YSPHENT6VYARFAAA`, `01M5GQ3BP70DKH3R4NNHYF8D64`,
+`01M5GQ43NBSZXCV24MH63QFN3P`, `01M5GQ4TM6P5MVJ56EA6SBE9TM`.
+
 To repeat after WS-wire merges (from the repository root):
 
 ```bash
