@@ -180,29 +180,32 @@ def test_sc8_pass_rule(
     assert fm.is_caught(expected, gate_exit, graders) is caught
 
 
-def test_the_table_names_every_outcome() -> None:
-    rows = [
-        fm.Row(
-            variant=variant,
-            run_id=str(new_id()),
-            expected=expected,
-            gate_exit=gate_exit,
-            verdict=verdict,
-            delta=estimate(-0.2) if verdict else None,
-            p_value=0.01 if verdict else None,
-            graders=graders,
-            caught=caught,
-            hecklr_spent_usd=Decimal(0),
-            agent_spent_usd=Decimal(0),
-            report_dir="r",
-        )
-        for variant, expected, gate_exit, verdict, graders, caught in [
-            ("clean-aa", [], 1, Verdict.REGRESSION, [], False),
-            ("F2", ["state"], 1, Verdict.REGRESSION, [grader("state", Verdict.REGRESSION)], True),
-            ("F3", ["judge:no_hallucination"], 3, None, [], False),
-        ]
-    ]
-    matrix = fm.Matrix(
+def _row(
+    variant: str,
+    expected: list[str],
+    gate_exit: int,
+    verdict: Verdict | None,
+    graders: list[fm.GraderResult],
+    caught: bool,
+) -> fm.Row:
+    return fm.Row(
+        variant=variant,
+        run_id=str(new_id()),
+        expected=expected,
+        gate_exit=gate_exit,
+        verdict=verdict,
+        delta=estimate(-0.2) if verdict else None,
+        p_value=0.01 if verdict else None,
+        graders=graders,
+        caught=caught,
+        hecklr_spent_usd=Decimal(0),
+        agent_spent_usd=Decimal(0),
+        report_dir="r",
+    )
+
+
+def _matrix(rows: list[fm.Row]) -> fm.Matrix:
+    return fm.Matrix(
         created_at=datetime.now(UTC),
         baseline_hecklr_spent_usd=Decimal(0),
         baseline_agent_spent_usd=Decimal(0),
@@ -217,15 +220,31 @@ def test_the_table_names_every_outcome() -> None:
         rows=rows,
         budget_usd=Decimal("0.5"),
         spent_usd=Decimal("0.1"),
-        passed=False,
+        passed=all(row.caught for row in rows),
     )
-    text = fm.render_markdown(matrix)
+
+
+def test_the_table_names_every_outcome() -> None:
+    rows = [
+        _row("clean-aa", [], 1, Verdict.REGRESSION, [], False),
+        _row("F2", ["state"], 1, Verdict.REGRESSION, [grader("state", Verdict.REGRESSION)], True),
+        _row("F3", ["judge:no_hallucination"], 3, None, [], False),
+    ]
+    text = fm.render_markdown(_matrix(rows))
     assert "tier a: FAIL" in text
     assert "| clean-aa | (nothing: A/A) | regression |" in text
     assert "FALSE ALARM" in text
     assert "**state** -100.0 pts [-110.0, -90.0] p=0.030 regression" in text
     assert "| F3 | judge:no_hallucination | none | n/a | n/a | 3 | none | MISSED |" in text
     assert rows[1].flagged == ["state"]
+
+
+def test_sc5_an_aa_grader_regression_is_shown_but_not_gated() -> None:
+    graders = [grader("tool", Verdict.REGRESSION), grader("state", Verdict.NO_CHANGE)]
+    aa = _row("clean-aa", [], 2, Verdict.INCONCLUSIVE, graders, True)
+    text = fm.render_markdown(_matrix([aa]))
+    assert "tier a: PASS" in text
+    assert "no false alarm (graders regressed, not gated: tool) |" in text
 
 
 # --- configuration, budget, parsing ----------------------------------------------------------

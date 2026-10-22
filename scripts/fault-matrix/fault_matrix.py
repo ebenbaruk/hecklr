@@ -339,6 +339,10 @@ def render_markdown(matrix: Matrix) -> str:
         result = "caught" if row.caught else "MISSED"
         if not row.expected:
             result = "no false alarm" if row.caught else "FALSE ALARM"
+            if row.flagged:
+                # SC5 bounds the suite verdict only; per-grader tests carry no multiplicity
+                # correction, so a grader regression on A/A is shown but does not fail the row.
+                result += f" (graders regressed, not gated: {', '.join(row.flagged)})"
         lines.append(
             f"| {row.variant} | {', '.join(row.expected) or '(nothing: A/A)'} "
             f"| {row.verdict.value if row.verdict else 'none'} "
@@ -348,7 +352,8 @@ def render_markdown(matrix: Matrix) -> str:
         )
     lines += [
         "",
-        "Expected graders in bold; other graders are listed when they regressed too. Δ is the "
+        "Expected graders in bold; other graders are listed when they regressed too (on the A/A "
+        "row they are reported, not gated). Δ is the "
         "candidate's pass rate minus the baseline's, paired by scenario (paired cluster "
         "bootstrap interval, sign-flip permutation p).",
     ]
@@ -359,7 +364,12 @@ def render_markdown(matrix: Matrix) -> str:
 
 
 def free_port() -> int:
-    """An ephemeral localhost port that was free a moment ago."""
+    """An ephemeral localhost port that was free a moment ago.
+
+    Another process could take the port before the agent binds it. That race is accepted: the
+    script runs on a dev box or a CI runner, and a lost race makes the agent fail to bind, so
+    ``_wait_until_healthy`` raises a ``MatrixError``.
+    """
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port: int = probe.getsockname()[1]
@@ -770,7 +780,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = prepare_project(out, port, args.concurrency)
         seed = (
-            args.seed if args.seed is not None else int(yaml.safe_load(config.read_text())["seed"])
+            args.seed
+            if args.seed is not None
+            else int(yaml.safe_load(config.read_text(encoding="utf-8"))["seed"])
         )
         runner = Runner(
             tier_name, tier, out, config, port, seed, budget, args.trials, env, sys.stdout
