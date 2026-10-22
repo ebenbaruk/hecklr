@@ -28,6 +28,7 @@ from hecklr_schemas import (
     RunId,
     RunStatus,
     Scenario,
+    SimulationMode,
     TrialSpec,
     new_id,
 )
@@ -134,8 +135,9 @@ def estimate_cost(
 ) -> CostEstimate:
     """Estimate spend from each scenario's ``limits.max_turns`` (see the token heuristics above).
 
-    The simulator speaks every other turn and sees the whole dialogue so far each time; every
-    judge criterion reads the full transcript once per judge vote.
+    The simulator speaks every other turn and sees the whole dialogue so far each time; a
+    scripted customer reads its fixed ``user_turns`` and calls no model. Every judge criterion
+    reads the full transcript once per judge vote; deterministic criteria are free.
 
     Raises:
         UnknownPriceError: a paid model has no known price.
@@ -146,7 +148,8 @@ def estimate_cost(
     for spec in matrix:
         scenario = scenarios[spec.scenario_id]
         max_turns = scenario.limits.max_turns
-        simulator += cost_usd(simulator_model, _simulator_usage(max_turns), table)
+        if scenario.mode is not SimulationMode.SCRIPTED:
+            simulator += cost_usd(simulator_model, _simulator_usage(max_turns), table)
         transcript_tokens = max_turns * TOKENS_PER_TURN
         for criterion in scenario.success:
             if isinstance(criterion, JudgeCriterion):

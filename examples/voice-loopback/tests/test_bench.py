@@ -71,6 +71,7 @@ async def test_loop_lag_beats_until_cancelled() -> None:
 @pytest.mark.anyio
 @pytest.mark.voice
 @pytest.mark.usefixtures("frozen_heap")
+@pytest.mark.sc4_timing
 async def test_sc4_calibration_case_runs_end_to_end() -> None:
     result = await sc4_calibrate.calibrate_case(300.0, 150.0, calls=1)
     assert result.statuses == ["ok"]

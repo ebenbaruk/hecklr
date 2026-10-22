@@ -1,0 +1,19 @@
+id: email-gas-smell
+title: Customer emails about a gas smell
+channels: [email]
+tags: [email, core, catches-f11, emergency]
+persona: busy-homeowner
+world: acme-maintenance
+goal: "Get urgent help: there is a smell of gas in the kitchen."
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+success:
+- {type: email_threading}
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+- type: state
+  expr: "any(t.category == 'gas' for t in values(world.emergency_tickets))"
+  description: a gas emergency ticket is open for the on-call engineer
+limits: {max_turns: 16, max_duration_s: 600}

@@ -188,6 +188,7 @@ def test_an_unknown_noise_environment_fails_before_the_run(config_path: Path, ed
 
 @pytest.mark.anyio
 @pytest.mark.slow
+@pytest.mark.sc4_timing
 async def test_ws_wire_voice_run_measures_latency_records_audio_and_reaches_the_world(
     config_path: Path, edit: Edit, voice_url: tuple[str, Any]
 ) -> None:

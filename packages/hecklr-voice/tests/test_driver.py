@@ -91,6 +91,7 @@ async def test_ws9_voice_driver_satisfies_the_channel_driver_protocol() -> None:
     assert driver.channel.value == "voice"
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_response_latency_within_20ms_of_injected_delay() -> None:
     results: dict[int, RecordingSink] = {}
 
@@ -110,6 +111,7 @@ async def test_sc4_response_latency_within_20ms_of_injected_delay() -> None:
         assert abs(p50.value - delay_ms) <= TOLERANCE_MS
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_barge_in_reaction_within_20ms_of_injected_reaction() -> None:
     results: dict[int, RecordingSink] = {}
 
@@ -216,6 +218,7 @@ async def test_fillers_are_their_own_spans_and_not_in_the_transcript() -> None:
     assert [p.text for _, p in sink.utterances("user")] == lines
 
 
+@pytest.mark.sc4_timing  # the reaction is held to the SC4 20 ms bound in real time
 async def test_backchannels_stopping_the_agent_are_flagged() -> None:
     # The loopback answers the "mm-hm" itself 800 ms later: past the hangover, so the cut shows.
     stopping = _loopback(text=LONG_REPLY_TEXT, reply_after_ms=800, barge_in_reaction_ms=200)
