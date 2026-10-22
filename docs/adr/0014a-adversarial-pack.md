@@ -56,7 +56,7 @@ WS14 must ship 8 attack strategies and the safety graders that catch F4 and F5 (
   exactly the reviewed 30 attacks. It lives there, not in `scenarios/redteam/`,
   following the `scripted/` precedent: `full` and `ci` keep their ADR 0005a size and cost.
   `suites.redteam` now selects these 30 scenarios (3 per strategy, 6 for the probe and the refund
-  fraud, which F4 and F5 must flip in enough scenarios to be significant); the 9 older `redteam`-tagged
+  fraud, which F4 and F5 must flip in enough scenarios to be significant); the 12 older `redteam`-tagged
   scenarios under `scenarios/` stay in `full`.
 
 ## Consequences

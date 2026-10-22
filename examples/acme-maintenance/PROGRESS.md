@@ -70,6 +70,53 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   (`create_app(world_transport=...)`) instead of dialling port 9.
 - Numbers: 279 tests + 4 live; 96% coverage of `agent/`.
 
+## WS-m1: gate M1 fault matrix (ADR 0020a, docs/milestones/M1.md): free, A and B pass
+
+- `scripts/fault-matrix/fault_matrix.py`: clean, A/A and F1-F6 over HTTP, `hecklr run` + `hecklr
+  gate`, per-grader paired comparisons, `matrix.json`/`matrix.md`. Tiers `free` (nightly CI,
+  `.github/workflows/fault-matrix.yml`), `a` (rules brain + luna judges on `matrix`), `b` (LLM
+  agent + luna simulator and judges on `matrix-live`). Tests: `tests/test_fault_matrix.py`
+  (27, incl. `test_sc8_free_tier_end_to_end`; 94% coverage of the script).
+- Defects the matrix found and fixed here: F1's `tool_called` checked no slot (now checks it);
+  no judges in the deterministic matrix (18 judge-only twins in `scripted/judged/`); judges could
+  not see today's date (world `calendar` collection); the `handoff_appropriate` rubric read tool
+  latency as a late handoff (rubric clarified); F1 deleting a rule luna follows anyway (overlay now
+  states the opposite rule; 6 options-first scenarios); F5 lost 7 of 8 guided scenarios to #29
+  (3 more refund-fraud scenarios).
+- The LLM brain counts its own spend (`/healthz spent_usd`) and caps it (`ACME_BUDGET_USD`).
+- Review round 1: F1 on luna books the first slot and rebooks after the customer objects, so
+  `tool_called` passed; the options-first scenarios now carry `args_match` and the matrix counts
+  the spec's Tool family as one grader (`test_sc8_f1_booking_the_wrong_slot_first_regresses_the_tool_grader`).
+  `/healthz failed_turns` + `check_health` refuse a run that measured a provider outage (the
+  OpenAI credit ran out mid-F1). CI's `FORCE_COLOR=1` hid the run id (now stripped).
+- Evidence on the final head: free tier PASS ($0), Tier A PASS ($0.1473), Tier B baseline and
+  A/A valid (A/A inconclusive, no grader regressed), F1-F6 unmeasured: #45 (no OpenAI credit).
+- Review round 2: the A/A row now names any grader that regressed (reported, not gated;
+  `test_sc5_an_aa_grader_regression_is_shown_but_not_gated`); `SpendMeter` documents its
+  overshoot bound (one completion per concurrent trial). Credit rechecked 2026-10-22: still
+  `429 credit_balance_exhausted`.
+- Round 3 (credit restored, #29 fixed by PR #49): Tier B on `matrix-live` caught F1, F2, F3, F5
+  and F6, and the A/A is clean. F4 was missed: the luna simulator would not probe (#60). The five
+  probe goals now state the cover story as the customer's own request, and F4 is caught on the new
+  `data-protection` suite (p = 0.008, A/A no_change). The script now tells a provider 400 (a reply
+  over the output limit, the agent's own failure) from an outage (agent `failure_key`,
+  `is_outage`). It gained `--resume` (`runs.jsonl`) and `--suite`. Tests:
+  `test_a_provider_failure_is_counted_with_its_http_status`,
+  `test_resume_reuses_only_a_run_of_the_same_variant_seed_setup_and_agent_model`,
+  `test_a_tier_can_run_on_another_suite`, and the resume leg of `test_sc8_free_tier_end_to_end`.
+
+## Next (WS-m1)
+
+- Architect: accept or reject ADR 0020a's spec change (F1 overlay, Tool family).
+- Rerun the full `matrix-live` Tier B on a head with the new probe goals (about $3.4) when budget
+  allows, so F4 is shown on the full suite too.
+
+## Open (owned elsewhere)
+
+- #60 hecklr-sim's data-probe strategy does not probe on gpt-6-luna (F4 workaround in scenarios).
+- #33 all-agent-error runs pass a no-baseline gate; #34 reply size; #35 Ctrl-C traceback;
+  #36 cost estimate for scripted suites; #37 judge evidence-id retry; #19 key pre-flight.
+
 ## Next (integration, WS7a / integrator)
 
 - `hecklr run` pre-flights the simulator and judge providers (`check_model_providers`) even for
