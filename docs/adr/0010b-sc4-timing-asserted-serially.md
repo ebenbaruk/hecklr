@@ -1,6 +1,6 @@
 # 0010b. SC4 timing is asserted in a serial CI step, skipped under xdist
 
-Date: 2026-10-22 · Status: proposed · Workstream: WS10 (issue #50)
+Date: 2026-10-22 · Status: accepted · Workstream: WS10 (issue #50)
 
 ## Context
 
@@ -33,7 +33,8 @@ Options considered:
 - A `sc4_timing` marker labels every test whose verdict is SC4 wall-clock accuracy: the voice
   contract's SC4 latency and barge-in tests (every case), `hecklr-voice` driver SC4 tests,
   `examples/voice-loopback` network and calibration tests, `hecklr calibrate --voice-loopback`,
-  the in-process calibration and the wired voice run in `hecklr`.
+  the in-process calibration, the wired voice run in `hecklr`, and the driver's backchannel
+  reaction check, which holds a real-time reaction to the same 20 ms.
 - The root `conftest.py` skips `sc4_timing` tests inside an xdist worker with a reason that names
   the command to run them: `uv run pytest -m sc4_timing -p no:xdist`.
 - CI runs that command as its own step before the parallel suite, on the otherwise idle runner,

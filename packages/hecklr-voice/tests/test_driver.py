@@ -218,6 +218,7 @@ async def test_fillers_are_their_own_spans_and_not_in_the_transcript() -> None:
     assert [p.text for _, p in sink.utterances("user")] == lines
 
 
+@pytest.mark.sc4_timing  # the reaction is held to the SC4 20 ms bound in real time
 async def test_backchannels_stopping_the_agent_are_flagged() -> None:
     # The loopback answers the "mm-hm" itself 800 ms later: past the hangover, so the cut shows.
     stopping = _loopback(text=LONG_REPLY_TEXT, reply_after_ms=800, barge_in_reaction_ms=200)
