@@ -299,3 +299,18 @@ def test_a_hand_broken_labels_file_is_reported_with_its_line(tmp_path: Path) -> 
 
     with pytest.raises(LabelFileError, match=r"labels.jsonl:2"):
         LabelBook(path).all()
+
+
+async def test_a_run_still_being_written_is_left_out_of_the_queue_and_agreement(
+    client: httpx2.AsyncClient, lab: Lab
+) -> None:
+    run_dir = lab.output_dir / "runs" / lab.baseline
+    for name in ("trials.parquet", "results.duckdb"):
+        (run_dir / name).unlink()
+
+    queue = await _queue(client)
+    report = await client.get("/api/labels/agreement")
+
+    assert queue["items"]
+    assert {item["run_id"] for item in queue["items"]} == {lab.candidate}
+    assert report.status_code == 200

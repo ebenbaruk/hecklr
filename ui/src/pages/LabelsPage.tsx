@@ -148,7 +148,7 @@ function AgreementCard({ report }: { report: Loaded<AgreementReport> }) {
       )}
       {report.data && report.data.unmatched > 0 && (
         <p className="mt-2 text-xs text-zinc-500">
-          {report.data.unmatched} label(s) match no stored judge grade (their run was deleted).
+          {report.data.unmatched} label(s) match no readable judge grade: their run is still being written or was deleted.
         </p>
       )}
     </Card>

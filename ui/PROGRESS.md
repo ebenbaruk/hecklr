@@ -17,11 +17,18 @@ Decisions: ADR 0016a. Backend: `packages/hecklr/src/hecklr/ui_api/`, command
 - Labels (`labels.py`): `.hecklr/labels.jsonl`, stratified seeded queue, κ agreement
   (`test_labels.py`: `test_us11_*`, `test_sc7_*`,
   `test_the_labels_file_is_what_hecklr_calibrate_judges_reads`).
-- Review (`review.py`): clusters, proposals, approval validated by `hecklr_core.load_model` and
-  `resolve_suite` (`test_review.py`: `test_us08_approving_writes_a_scenario_the_suite_loader_accepts`).
+- Review (`review.py`): clusters, proposals; approval validated by `hecklr_core.load_model` plus
+  world, persona-library and id-uniqueness checks over `scenarios/**` and every suite's
+  `scenarios` glob, warning when no suite runs the written file (`test_review.py`:
+  `test_us08_approving_writes_a_scenario_the_suite_loader_accepts` checks the result with
+  `resolve_suite`, `test_us08_an_id_used_under_any_suite_glob_is_refused`,
+  `test_us08_approval_warns_when_no_suite_runs_the_written_scenario`).
+- Local-only guard: `Host` must be local (or `--host`) else 400
+  (`test_other_host_names_are_refused_against_dns_rebinding`, `test_allowed_hosts_follow_the_bind`).
 - `hecklr ui` (`test_command.py`), wheel packaging (`artifacts`), `--dev`.
-- React app: 7 views, dark mode, responsive, accessible labels; Vitest 46 tests, 93% lines.
-- Python: 57 UI tests, 98% coverage of `ui_api` + `commands/ui.py`.
+- React app: 7 views, dark mode, responsive, accessible labels; Vitest 47 tests, 93% lines.
+- Python: 58 test functions (75 cases with parametrization) in `tests/ui_api`, 99% coverage of
+  `ui_api` + `commands/ui.py`.
 - Real store: acme-maintenance smoke (clean 100.0% [89.6%, 100.0%] vs F1 72.7% [55.8%, 84.9%],
   regression Δ −27.3 pts [−42.4, −12.1]), a `ci` run on fake models (judge grades), acme-voice
   `voice-timing` (recordings). Playwright `e2e/ui.spec.ts`: 7/7 against `hecklr ui` installed

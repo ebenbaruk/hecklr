@@ -16,6 +16,12 @@ import { dateTime } from "../format";
 import type { DecisionResult, Meta, ProposalItem, ProposalStatus } from "../types";
 import { useUser } from "../user";
 
+// Not `button`: its own background and hover would win over the selected tab's dark fill.
+const TAB =
+  "rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600";
+const TAB_SELECTED = "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900";
+const TAB_IDLE = "border-zinc-300 bg-white hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700";
+
 const TABS: { status: ProposalStatus; label: string }[] = [
   { status: "proposed", label: "To review" },
   { status: "approved", label: "Approved" },
@@ -49,7 +55,7 @@ export function ProposalsPage() {
             type="button"
             role="tab"
             aria-selected={status === tab.status}
-            className={`${button} ${status === tab.status ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : ""}`}
+            className={`${TAB} ${status === tab.status ? TAB_SELECTED : TAB_IDLE}`}
             onClick={() => {
               setParams({ status: tab.status });
             }}

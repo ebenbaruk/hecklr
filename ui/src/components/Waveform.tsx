@@ -9,6 +9,8 @@ const SPAN_COLORS: Record<string, string> = {
   user: "rgba(14, 165, 233, 0.22)",
   agent: "rgba(225, 29, 72, 0.18)",
 };
+// Any other actor (e.g. `system`) is neutral, so it is never mistaken for the caller.
+const OTHER_SPAN_COLOR = "rgba(113, 113, 122, 0.2)";
 const INSTANT_COLOR = "rgba(217, 119, 6, 0.9)";
 
 // Instants (barge-ins) are thin lines: a text label would wrap over the neighbouring turns, so
@@ -46,7 +48,7 @@ export function Waveform({ recording }: { recording: Recording }) {
         regions.addRegion({
           start: marker.start_ms / 1000,
           ...(instant ? {} : { end: marker.end_ms / 1000 }),
-          color: instant ? INSTANT_COLOR : (SPAN_COLORS[marker.actor] ?? SPAN_COLORS.user),
+          color: instant ? INSTANT_COLOR : (SPAN_COLORS[marker.actor] ?? OTHER_SPAN_COLOR),
           content: markerLabel(marker),
           drag: false,
           resize: false,

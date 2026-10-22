@@ -99,7 +99,7 @@ describe("LabelsPage", () => {
     expect(within(row).getByText("80.0%", { exact: false })).toHaveTextContent("80.0% [49.0%, 94.0%]");
     expect(within(row).getByText("n/a")).toBeInTheDocument();
     expect(within(row).getByText("untrusted")).toBeInTheDocument();
-    expect(within(card).getByText(/1 label\(s\) match no stored judge grade/)).toBeInTheDocument();
+    expect(within(card).getByText(/1 label\(s\) match no readable judge grade: their run is still being written or was deleted/)).toBeInTheDocument();
   });
 
   it("us11: hides the judge's verdict until the human labels, then records the label", async () => {
