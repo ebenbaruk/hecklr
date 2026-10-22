@@ -28,8 +28,9 @@ private copy of the world (ADR 0007e). Everything runs locally and free. Decisio
 | `tts_provider`, `tts_voice` | `kokoro`, `af_heart` | how the agent speaks | |
 
 Transcription starts speculatively after 100 ms of caller silence, so the ASR is usually done
-when the turn ends; the agent answers about 850 ms after the caller stops (800 ms of it is
-endpointing, Pipecat's default stop time).
+when the turn ends; the agent answers about 710 ms (p50, 780 ms p95) after the caller's last
+sound, almost all of it the 800 ms endpointing (Pipecat's default stop time) measured from its
+own VAD.
 
 ## Run it
 
