@@ -1,0 +1,72 @@
+name: UI
+
+# The local web UI (`hecklr ui`, ADR 0016a): lint, type-check, test and build the React app, then
+# check the build is packaged into the hecklr wheel so `pip install hecklr` needs no Node.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ui/**
+      - packages/hecklr/**
+      - .github/workflows/ui.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  app:
+    name: lint · types · tests · build · wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Vitest (coverage >= 85% lines)
+        run: npm test
+
+      - name: Build into the Python package
+        run: npm run build
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: The wheel ships the built app
+        working-directory: .
+        run: |
+          uv build --package hecklr --wheel --out-dir dist
+          uv run --no-project python - <<'EOF'
+          import glob, zipfile
+          wheel = zipfile.ZipFile(glob.glob("dist/hecklr-*.whl")[0])
+          names = wheel.namelist()
+          assert "hecklr/ui_api/static/index.html" in names, names
+          assert any(n.startswith("hecklr/ui_api/static/assets/") for n in names), names
+          print("packaged:", sorted(n for n in names if "/static/" in n))
+          EOF

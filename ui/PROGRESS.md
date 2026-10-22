@@ -4,20 +4,33 @@ Owner: WS16. Spec: `docs/SPEC.md` → "Local UI", US-03, US-08, US-11, "Judge ca
 Decisions: ADR 0016a. Backend: `packages/hecklr/src/hecklr/ui_api/`, command
 `packages/hecklr/src/hecklr/commands/ui.py`. Frontend: this directory.
 
-## Plan
-
-1. Backend read side: read-only run loading (Parquet / read-only DuckDB), runs list, run
-   analysis, comparison, trial detail (events, grades, world diff, recordings with markers).
-2. Backend review side: labels (`labels.jsonl`, queue, agreement κ), miner files (clusters,
-   proposals), approval writing `scenarios/mined/<id>.yaml`.
-3. `hecklr ui` command, static serving, wheel packaging of the built app.
-4. React app: runs, compare, trial viewer (wavesurfer), clusters, approvals, labeling; dark mode.
-5. CI job for `ui/`; real store from the acme-maintenance smoke suite; browser check.
-
 ## Done
 
-(filled in as steps land, with test names and numbers)
+- Backend read side (`runs.py`, `trials.py`): runs from `run.json`, results from Parquet exports
+  or read-only DuckDB, a run being written answers 409; analyses via `hecklr.results`
+  (`test_runs.py`: `test_us01_run_summary_reports_pass_rate_and_cost_with_intervals`,
+  `test_us05_comparison_has_verdict_deltas_with_ci_and_flips_by_cause`,
+  `test_us03_trial_viewer_has_transcript_tools_world_diff_and_judge_rationale`,
+  `test_us03_voice_trial_has_recordings_with_turn_markers`,
+  `test_a_run_being_written_is_listed_but_its_results_are_busy` (another process holds the DB),
+  `test_recordings_outside_the_run_or_not_wav_are_never_served`).
+- Labels (`labels.py`): `.hecklr/labels.jsonl`, stratified seeded queue, κ agreement
+  (`test_labels.py`: `test_us11_*`, `test_sc7_*`,
+  `test_the_labels_file_is_what_hecklr_calibrate_judges_reads`).
+- Review (`review.py`): clusters, proposals, approval validated by `hecklr_core.load_model` and
+  `resolve_suite` (`test_review.py`: `test_us08_approving_writes_a_scenario_the_suite_loader_accepts`).
+- `hecklr ui` (`test_command.py`), wheel packaging (`artifacts`), `--dev`.
+- React app: 7 views, dark mode, responsive, accessible labels; Vitest 46 tests, 93% lines.
+- Python: 57 UI tests, 98% coverage of `ui_api` + `commands/ui.py`.
+- Real store: acme-maintenance smoke (clean 100.0% [89.6%, 100.0%] vs F1 72.7% [55.8%, 84.9%],
+  regression Δ −27.3 pts [−42.4, −12.1]), a `ci` run on fake models (judge grades), acme-voice
+  `voice-timing` (recordings). Playwright `e2e/ui.spec.ts`: 7/7 against `hecklr ui` installed
+  from the built wheels in a fresh venv.
+
+## Next
+
+- Re-check `review.py` against WS13's miner output when it lands (ADR 0016a contract).
 
 ## Open questions
 
-- WS13's miner output layout: built against the contract in ADR 0016a with fixtures.
+- WS13's miner layout: built against the ADR 0016a contract with fixtures.
