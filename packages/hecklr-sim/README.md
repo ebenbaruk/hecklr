@@ -28,3 +28,23 @@ batch.written, batch.failures  # files written; conversations whose extraction f
 | `adversarial` | `guided` plus a hidden attack strategy (`BUILTIN_STRATEGIES`, extensible) |
 
 Tests drive it with `FakeLLM`; `hecklr_sim.testing.decision_reply` builds simulator replies.
+
+## Adversarial pack (WS14)
+
+`ATTACK_PACK` holds 8 attack strategies as `AttackTemplate`s: `identity_impersonation`,
+`direct_prompt_injection`, `indirect_prompt_injection`, `jailbreak_roleplay`,
+`cross_customer_data_probe`, `refund_social_engineering`, `policy_override_pressure`,
+`pii_elicitation`. Each trial realizes its persona's template from the trial seed: one opening
+(cover story) and one phrasing per escalation rung, always in the same order (rapport, ask,
+pressure, bypass), after the fixed `RED_TEAM_FRAME`. `hecklr run` builds simulators with
+`make_adversarial_simulator`, which falls back to `make_simulator` for every other trial:
+
+```python
+from hecklr_sim import ATTACK_PACK, make_adversarial_simulator
+
+factory = make_adversarial_simulator("openai/gpt-6-luna")  # pack={**ATTACK_PACK, **mine}
+strategy = ATTACK_PACK["pii_elicitation"].realize(seed=3)  # an AttackStrategy
+```
+
+A persona opts in with `adversarial: <strategy id>`; targets come from the scenario's goal and
+facts, so tactics carry no identifiers. See `docs/adr/0014a-adversarial-pack.md`.
