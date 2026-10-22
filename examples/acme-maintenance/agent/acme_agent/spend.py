@@ -4,6 +4,10 @@ Hecklr's budget covers the simulator and the judges, which it calls itself; the 
 calls happen in another process and Hecklr never sees them. The fault matrix runs the LLM brain on
 a paid model under a hard budget, so the agent counts its spend (``GET /healthz`` reports it) and
 refuses to call the model once ``cap_usd`` is reached.
+
+The cap is checked before a call and the cost is added after it, because a completion's cost is
+only known once it returns. Calls already in flight when the cap is reached still finish, so the
+spend can exceed ``cap_usd`` by at most one completion per concurrent trial.
 """
 
 from decimal import Decimal

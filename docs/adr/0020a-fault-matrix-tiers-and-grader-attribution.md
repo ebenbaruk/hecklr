@@ -50,7 +50,8 @@ reproducibly, every night for free and on real models within a $6 budget. Three 
 - **Budget.** One hard cap split in two pools: Hecklr's (`hecklr run --budget-usd`, cumulative)
   and the agent's (`serve.py --budget-usd`, read back from `/healthz spent_usd`). The baseline run
   is the cost pilot: if every run costs what it did and the tier would exceed the cap, the script
-  stops before spending more.
+  stops before spending more. The agent checks its cap before each model call and counts the
+  cost after it, so concurrent trials can overshoot its pool by at most one completion each.
 - The script copies the suite files into its output directory with a derived `hecklr.yaml`
   (port, private store, concurrency), so a run never writes into the repository and the copy
   records exactly what was tested.
