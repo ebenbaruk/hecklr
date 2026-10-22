@@ -30,7 +30,20 @@ Done:
 - #24: `hecklr calibrate --voice-loopback` (`test_sc4_calibrate_voice_loopback_measures_within_20ms`
   runs the installed console script). Found and fixed: DSP workers failed to start under the
   console script (duckdb import without `__main__`), `cli._keep_dsp_workers_off_the_entry_script`.
-- #20 / #28: see the commit and the hecklr-voice / hecklr-adapters tests.
+- #20 / #28: see the commit and the hecklr-voice / hecklr-adapters tests. Repeated full-suite
+  `-n auto` runs: both tests passed in all 8 runs (the only other failure seen was the
+  pre-existing hecklr-grade hypothesis bug, issue #38).
+- #13 SC1 measured on this laptop with luna: `hecklr init --yes` (luna simulator and judge,
+  concurrency 8) then `hecklr run` (15 trials): **44 s** wall, $0.0102. No change needed; the
+  8.3 min in the issue was a shared local Ollama.
+- Real CLI exercises (scratch projects): `hecklr run -s multi --channels voice,email` against
+  `tests/fixtures/voice_agent.py` (WebSocket pcm) and `email_agent.py` (webhook): 4/4 ok,
+  response latency p50 502-516 ms for a 500 ms agent; `hecklr compare` -> NO CHANGE (exit 0);
+  `hecklr report latest -f html -f md -f json`; the HTML has a Voice section, 4 players, 6 WAVs.
+  Email over smtp-imap through GreenMail in Docker: 2/2 ok. A guided luna caller over voice and
+  email: 4/4 ok, $0.0011. `hecklr calibrate --voice-loopback`: all errors within 4 ms (idle).
+  Found on the way: another process holding the webhook's default port 8787 makes every email
+  trial a harness error (`Address already in use`); set `listen_port`.
 
 ## Plan (WS7c, Wave 2a)
 
