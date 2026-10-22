@@ -283,6 +283,9 @@ def test_the_run_id_comes_from_hecklr_runs_output() -> None:
         "\x1b[1mRun\x1b[0m \x1b[36m01M5GDZ04C453482PASREZA5P9\x1b[0m (\x1b[32mcompleted\x1b[0m)\n"
     )
     assert fm.recorded_run(styled) == "01M5GDZ04C453482PASREZA5P9"
+    # CI sets FORCE_COLOR, so Rich styles the id: the run line then carries ANSI escapes.
+    styled = "Run \x1b[1m01M5GDZ04C453482PASREZA5P9\x1b[0m (completed)\n"
+    assert fm.recorded_run(styled) == "01M5GDZ04C453482PASREZA5P9"
     with pytest.raises(fm.MatrixError, match="no run id"):
         fm.recorded_run("error: the run failed")
 

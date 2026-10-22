@@ -439,11 +439,12 @@ def hecklr(args: Sequence[str], *, log: TextIO, env: Mapping[str, str]) -> tuple
 
 
 _RUN_LINE: Final = re.compile(r"^Run (\S+) \((\w+)\)", re.M)
+_ANSI_ESCAPE: Final = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 def recorded_run(stdout: str) -> str:
-    """The run id ``hecklr run`` printed."""
-    match = _RUN_LINE.search(stdout)
+    """The run id ``hecklr run`` printed (styled when ``FORCE_COLOR`` is set, as in CI)."""
+    match = _RUN_LINE.search(_ANSI_ESCAPE.sub("", stdout))
     if match is None:
         raise MatrixError("hecklr run printed no run id; see the run log")
     return match.group(1)
