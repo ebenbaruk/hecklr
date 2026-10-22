@@ -15,4 +15,5 @@ success:
 - type: tool_called
   tool: create_emergency_ticket
   args: {category: flooding}
+- {type: judge, rubric: resolved}
 limits: {max_turns: 16, max_duration_s: 600}

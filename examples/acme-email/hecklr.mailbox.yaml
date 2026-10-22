@@ -15,7 +15,7 @@ agent:
       inbox: support@acme.test
       smtp_port: 1025
       imap_port: 1143
-      reply_timeout_s: 120
+      reply_timeout_s: 45
   # The brain is the chat agent's; the fixer edits its files there.
   editable: [../acme-maintenance/prompts/system.md, ../acme-maintenance/tools/descriptions.yaml]
 world: ../acme-maintenance/worlds/acme-maintenance.yaml

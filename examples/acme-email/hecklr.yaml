@@ -10,8 +10,8 @@ agent:
     # Hecklr POSTs each customer email to `url` and listens on `listen_port` for the agent's
     # replies. `timeout_s` is also the reply deadline: an agent that stays silent this long (F12)
     # fails the trial with a timeout. It must exceed the agent's tool deadline (mailer.yaml, 5 s)
-    # times the LLM brain's retries of a timed-out tool (measured on luna: over 45 s).
-    email: { type: webhook, url: "http://127.0.0.1:8100/email", listen_port: 8787, timeout_s: 120 }
+    # plus a turn of the LLM brain.
+    email: { type: webhook, url: "http://127.0.0.1:8100/email", listen_port: 8787, timeout_s: 45 }
   # The brain is the chat agent's; the fixer edits its files there.
   editable: [../acme-maintenance/prompts/system.md, ../acme-maintenance/tools/descriptions.yaml]
 world: ../acme-maintenance/worlds/acme-maintenance.yaml
