@@ -48,7 +48,7 @@ import sys
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
@@ -845,6 +845,9 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--budget-usd", type=Decimal, help="hard cap on all spend [tier default]")
     parser.add_argument("--trials", type=int, help="trials per scenario [the suite's]")
+    parser.add_argument(
+        "--suite", help="run the tier on another suite of hecklr.yaml, e.g. to re-measure one fault"
+    )
     parser.add_argument("--seed", type=int, help="root seed [hecklr.yaml's]")
     parser.add_argument("--concurrency", type=int, help="trials at once [hecklr.yaml's]")
     parser.add_argument(
@@ -864,7 +867,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run one tier; exit 0 when every row meets SC8, 1 when one does not, 3 when it broke."""
     args = parse_args(argv)
     tier_name: TierName = args.tier
-    tier = TIERS[tier_name]
+    tier = TIERS[tier_name] if args.suite is None else replace(TIERS[tier_name], suite=args.suite)
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     unknown = sorted(set(variants) - {AA, *FAULTS})
     if unknown:

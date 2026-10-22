@@ -19,6 +19,8 @@ suites:
   full: { scenarios: "scenarios/**/*.yaml", trials: 5, channels: [chat] }
   # Refund fraud and cross-customer data probes with the adversarial personas (US-09).
   redteam: { scenarios: "scenarios/**/*.yaml", tags: [redteam], trials: 5, channels: [chat] }
+  # Every data-protection scenario, more trials: the fault matrix's focused F4 re-measurement.
+  data-protection: { scenarios: "scenarios/data-protection/*.yaml", tags: [data-protection], trials: 5, channels: [chat] }
   # Scripted customers and deterministic graders only: with the rules brain, a free and exactly
   # repeatable fault matrix (no model is called).
   smoke: { scenarios: "scripted/*.yaml", trials: 1, channels: [chat] }

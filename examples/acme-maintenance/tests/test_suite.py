@@ -27,6 +27,7 @@ def test_every_suite_resolves_with_hecklr_core() -> None:
         "ci": 40,
         "full": 73,
         "redteam": 12,
+        "data-protection": 8,
         "smoke": 33,
         "matrix": 51,
         "matrix-live": 56,

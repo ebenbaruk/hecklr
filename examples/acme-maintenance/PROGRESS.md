@@ -70,7 +70,7 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   (`create_app(world_transport=...)`) instead of dialling port 9.
 - Numbers: 279 tests + 4 live; 96% coverage of `agent/`.
 
-## WS-m1: gate M1 fault matrix (ADR 0020a, docs/milestones/M1.md): free and A pass, B open
+## WS-m1: gate M1 fault matrix (ADR 0020a, docs/milestones/M1.md): free, A and B pass
 
 - `scripts/fault-matrix/fault_matrix.py`: clean, A/A and F1-F6 over HTTP, `hecklr run` + `hecklr
   gate`, per-grader paired comparisons, `matrix.json`/`matrix.md`. Tiers `free` (nightly CI,
@@ -95,16 +95,25 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   `test_sc5_an_aa_grader_regression_is_shown_but_not_gated`); `SpendMeter` documents its
   overshoot bound (one completion per concurrent trial). Credit rechecked 2026-10-22: still
   `429 credit_balance_exhausted`.
+- Round 3 (credit restored, #29 fixed by PR #49): Tier B on `matrix-live` caught F1, F2, F3, F5
+  and F6, and the A/A is clean. F4 was missed: the luna simulator would not probe (#60). The five
+  probe goals now state the cover story as the customer's own request, and F4 is caught on the new
+  `data-protection` suite (p = 0.008, A/A no_change). The script now tells a provider 400 (a reply
+  over the output limit, the agent's own failure) from an outage (agent `failure_key`,
+  `is_outage`). It gained `--resume` (`runs.jsonl`) and `--suite`. Tests:
+  `test_a_provider_failure_is_counted_with_its_http_status`,
+  `test_resume_reuses_only_a_run_of_the_same_variant_seed_and_suite_files`,
+  `test_a_tier_can_run_on_another_suite`, and the resume leg of `test_sc8_free_tier_end_to_end`.
 
 ## Next (WS-m1)
 
-- Rerun Tier B when #45 is resolved (`--tier b --budget-usd 3.2`, ~$2.8) and record it in M1.md.
-  This needs the user to add credit and raise WS-m1's $6 cap to about $6.4 (about $2.4 is left).
+- Architect: accept or reject ADR 0020a's spec change (F1 overlay, Tool family).
+- Rerun the full `matrix-live` Tier B on a head with the new probe goals (about $3.4) when budget
+  allows, so F4 is shown on the full suite too.
 
 ## Open (owned elsewhere)
 
-- #45 OpenAI account out of credit: blocks Tier B.
-- #29 hecklr-sim guard rejects every guided scenario with a postcode and an invoice number.
+- #60 hecklr-sim's data-probe strategy does not probe on gpt-6-luna (F4 workaround in scenarios).
 - #33 all-agent-error runs pass a no-baseline gate; #34 reply size; #35 Ctrl-C traceback;
   #36 cost estimate for scripted suites; #37 judge evidence-id retry; #19 key pre-flight.
 

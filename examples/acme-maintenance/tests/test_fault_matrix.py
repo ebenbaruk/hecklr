@@ -343,6 +343,12 @@ def test_the_run_id_comes_from_hecklr_runs_output() -> None:
         fm.recorded_run("error: the run failed")
 
 
+def test_a_tier_can_run_on_another_suite() -> None:
+    """M1: F4 was re-measured on the data-protection suite after its scenarios were fixed."""
+    assert fm.parse_args(["--tier", "b", "--suite", "data-protection"]).suite == "data-protection"
+    assert fm.parse_args(["--tier", "b"]).suite is None
+
+
 def test_unknown_variants_are_refused(capsys: pytest.CaptureFixture[str]) -> None:
     assert fm.main(["--tier", "free", "--variants", "F1,F13"]) == 2
     assert "F13" in capsys.readouterr().err
