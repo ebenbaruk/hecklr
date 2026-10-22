@@ -69,7 +69,7 @@ from hecklr_schemas import (
     is_ulid,
 )
 from hecklr_schemas.common import ModelName
-from hecklr_sim import make_simulator
+from hecklr_sim import make_adversarial_simulator
 from hecklr_stats import ScenarioCounts, TrialOutcome, allocate_trials
 from hecklr_world import Sandbox
 
@@ -337,7 +337,7 @@ async def _execute(
         collaborators = Collaborators(
             sandbox=sandbox,
             drivers=prepared.drivers,
-            simulator_factory=make_simulator(config.models.simulator),
+            simulator_factory=make_adversarial_simulator(config.models.simulator),
             simulator_llm=llm,
             judge_llm=llm,
             grade_trial=prepared.grade_trial,
