@@ -238,7 +238,12 @@ def test_sc4_calibrate_voice_loopback_measures_within_20ms(tmp_path: Path) -> No
         timeout=300,
         check=False,
         cwd=tmp_path,
-        env={**os.environ, "COLUMNS": "200", "NO_COLOR": "1"},
+        # CI's FORCE_COLOR would beat NO_COLOR and put ANSI codes into the verdict line.
+        env={
+            **{k: v for k, v in os.environ.items() if k != "FORCE_COLOR"},
+            "COLUMNS": "200",
+            "NO_COLOR": "1",
+        },
     )
     code = done.returncode
     output = " ".join((done.stdout + done.stderr).replace("│", " ").split())

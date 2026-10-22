@@ -40,8 +40,18 @@ Options considered:
 - CI runs that command as its own step before the parallel suite, on the otherwise idle runner,
   with coverage appended into the main step's report. The bound is unchanged and per sample; the
   ad-hoc xdist branches and the 10x bound are removed, so every SC4 test asserts the full ±20 ms
-  in CI on every PR. The step fails if it selects no tests (pytest exit 5).
-- `timing_needs_idle_cpu` stays only for one WebRTC case's non-SC4 real-time checks (WS10).
+  in CI on every PR (but see the WebRTC exception below). The step fails if it selects no tests
+  (pytest exit 5).
+- **Exception: the two in-process WebRTC cases** (`livekit`, `pipecat-smallwebrtc`,
+  `timing_needs_idle_cpu`). Their reference bots share the test process and its GIL with the
+  harness, so their own record of when they spoke is the timing truth, and on GitHub's shared
+  4-vCPU runner that truth is unreliable. The first serial CI run measured livekit offsets from
+  −242 to +405 ms, and a pipecat-smallwebrtc outlier of 423 ms against a 420 ms window. On a
+  dedicated machine they pass serially (21/21 locally). CI sets `HECKLR_SHARED_CPU=1` for the
+  step, which skips SC4 for these two cases only, as before this ADR (they were always skipped
+  in CI). They are asserted with the same command on an idle developer machine. The SC4 claim
+  itself (spec: the loopback agent) stays enforced in CI over WebSocket, Twilio and Pipecat
+  WebSocket, the networked loopback agent and `hecklr calibrate`.
 
 ## Consequences
 

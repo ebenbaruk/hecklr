@@ -43,6 +43,10 @@ jobs:
       # SC4 (±20 ms voice timing) is asserted serially on the idle runner; the parallel step
       # below skips these tests, whose timing would measure its other workers (ADR 0010b).
       - name: SC4 voice timing (serial)
+        # A shared runner is idle enough for every SC4 case but the in-process WebRTC bots,
+        # whose own timing truth wanders by hundreds of ms here (ADR 0010b).
+        env:
+          HECKLR_SHARED_CPU: "1"
         run: uv run pytest -m sc4_timing -p no:xdist --cov --cov-report=
 
       - name: Unit tests with coverage
