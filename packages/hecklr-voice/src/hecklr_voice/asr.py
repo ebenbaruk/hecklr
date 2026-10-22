@@ -4,7 +4,8 @@ The simulated caller only "hears" the agent through ASR, so ASR mistakes would l
 mistakes. :func:`measure_asr` scores an ASR on a reference set (word error rate with a bootstrap
 interval) so reports can show the harness's own error next to the agent's (spec, "Inbound path").
 Providers: ``fake`` (reads ``SyntheticTTS`` tags), ``faster-whisper`` (local, extra ``local``),
-``deepgram`` (HTTP, key-gated).
+``deepgram`` (HTTP, key-gated), ``assemblyai`` (WebSocket streaming, key-gated, in
+:mod:`hecklr_voice.asr_assemblyai`).
 """
 
 import importlib
