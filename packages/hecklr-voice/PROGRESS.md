@@ -41,6 +41,33 @@ Decisions: `docs/adr/0009a-voice-engine-timing-and-dsp.md`.
   is under half of one render's CPU. Issue #31: DSP workers cannot start when the parent's main
   module imports duckdb (fixed for the `hecklr` console script; the general fix is here).
 
+## WS-asr (Wave 3): AssemblyAI ASR, OpenAI TTS
+
+Done (decisions: ADR 0009b):
+
+- `asr_assemblyai.AssemblyAIASR` (`assemblyai/<speech_model>`): one Universal-Streaming v3
+  session per agent turn, drained with `Terminate`; the free tier's session limit fails the turn
+  with a pointer to the batch provider. `AssemblyAIBatchASR` (`assemblyai-batch/<model>`):
+  pre-recorded upload, submit, poll. Both from `ASSEMBLYAI_API_KEY` via `make_asr`.
+  Tests: `test_asr_assemblyai.py` (local WebSocket server speaking the v3 sequence: turn merging,
+  frame sizes 50-1000 ms, errors, close codes, HTTP refusal, timeout) and
+  `test_asr_assemblyai_batch.py` (mocked REST); the module is 100% covered.
+- OpenAI TTS (`openai`, `gpt-4o-mini-tts`, built in WS9) checked against the current API and run
+  live. `hecklr doctor` checks the ASR's extra or key by name
+  (`test_asr_key_is_checked_by_name_for_voice_projects`).
+- Live (`test_live_cloud_speech.py`, 3 passed, about one cent): WER on 8 Kokoro sentences, clean
+  and cafe 10 dB: streaming 2.3% / 2.3%, batch 2.3% / 2.3%, faster-whisper `tiny.en` 3.4% / 4.5%;
+  OpenAI TTS speech: 4.8% / 0.0% / 0.0%. Time to hear a turn: streaming 1.00-1.14x its length,
+  batch 0.76-0.94x.
+- `hecklr run` on two acme-voice latency scenarios (rules brain, Kokoro agent voice), callers on
+  OpenAI TTS: with streaming ASR (1 scenario, free-tier limit) and with batch ASR (2 scenarios),
+  0 harness errors, every agent turn heard correctly, visit booked. The failing gates are the
+  agent's (latency p95 4.2 s with Kokoro on CPU; its own whisper missed a postcode).
+- Issue #57: concurrent first download of one model in a process crashes (models.py, WS9).
+
+Open: a frame-fed ASR protocol would let streaming ASR hear the agent while it talks and remove
+the caller-side delay; ASR/TTS spend is documented, not metered against `budget.usd`.
+
 ## Next
 
 - WS10: voice adapters (Pipecat, LiveKit) deliver 16 kHz `TimedFrame`s with media-clock

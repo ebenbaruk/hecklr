@@ -168,3 +168,26 @@ def test_doctor_reports_which_models_this_machine_can_use(
     assert check.status == status
     assert check.detail.startswith(detail)
     assert "sk-x" not in check.detail
+
+
+def test_asr_key_is_checked_by_name_for_voice_projects(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch, edit: Edit
+) -> None:
+    pytest.importorskip("hecklr_voice")
+    assert "asr model" not in _checks(config_path)
+    edit(
+        config_path,
+        "judge: fake/judge",
+        "judge: fake/judge\n  asr: assemblyai/universal-streaming-english",
+    )
+    monkeypatch.delenv("ASSEMBLYAI_API_KEY", raising=False)
+
+    missing = _checks(config_path)["asr model"]
+    monkeypatch.setenv("ASSEMBLYAI_API_KEY", "aai-secret-value")
+    present = _checks(config_path)["asr model"]
+    result = runner.invoke(app, ["doctor", "--config", str(config_path)])
+
+    assert missing.status == "fail"
+    assert "ASSEMBLYAI_API_KEY" in missing.detail
+    assert present.status == "ok"
+    assert "aai-secret-value" not in click.unstyle(result.output)

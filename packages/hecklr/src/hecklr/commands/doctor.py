@@ -1,7 +1,8 @@
 """``hecklr doctor``: check that a run can start, before spending a minute finding out it cannot.
 
 Checks the Python version, optional extras, the project files, model provider keys (by name;
-values are never printed), Ollama, the local ports the harness binds and the agent itself.
+values are never printed), the voice channel's ASR, Ollama, the local ports the harness binds and
+the agent itself.
 """
 
 import importlib.util
@@ -20,6 +21,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from hecklr import exit_codes
+from hecklr.channels import DEFAULT_ASR, MODELS_DIR
 from hecklr.commands._common import CONFIG_ERRORS, stdout
 from hecklr.compose import load_run_project
 from hecklr.probe import DEFAULT_OLLAMA_URL, ollama_models, probe_agent
@@ -86,6 +88,7 @@ def run_checks(config_path: Path) -> Iterator[Check]:
         return
     yield Check("config", "ok", f"{config_path} with {len(project.config.suites)} suite(s)")
     yield from _model_keys(project)
+    yield from _asr(project)
     yield _available_models()
     yield from _ollama(project)
     yield from _agent(project)
@@ -132,6 +135,26 @@ def _model_keys(project: Project) -> Iterator[Check]:
                     yield Check(f"{role} model", "ok", f"{model}: provider configured")
     finally:
         anyio.run(router.aclose)
+
+
+def _asr(project: Project) -> Iterator[Check]:
+    """The caller's ASR, when the project uses voice: its extra or API key, by name only."""
+    config = project.config
+    if config.agent.adapters.voice is None and config.models.asr is None:
+        return
+    model = config.models.asr or DEFAULT_ASR
+    try:
+        # Imported here: hecklr-voice is an optional extra that only voice projects need.
+        import hecklr_voice as voice
+    except ImportError:
+        yield Check("asr model", "warn", f"{model}: the voice extra is not installed")
+        return
+    try:
+        voice.make_asr(model, models_dir=project.output_dir / MODELS_DIR)
+    except voice.VoiceConfigError as exc:
+        yield Check("asr model", "fail", f"{model}: {exc}")
+    else:
+        yield Check("asr model", "ok", f"{model}: provider configured")
 
 
 def _available_models() -> Check:

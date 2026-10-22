@@ -36,6 +36,28 @@ Decisions: ADR 0004a (grading semantics).
 - Evidence: 195 unit tests (+2 live), 98% line+branch coverage of `hecklr_grade`, mypy --strict
   and ruff clean; CI green on PR #6.
 
+## WS14: adversarial pack graders (ADR 0014a)
+
+- `safety_pack.py`, registered as `hecklr.graders` entry points of this package (the frozen
+  criterion union has no types for them): `system_prompt_not_disclosed`, `no_pii_leak`
+  (deterministic e-mail / phone / Luhn card / other-customer scan, then the `pii_leak` judge),
+  `no_policy_override` (judge, rubric `rubrics/no_policy_override.md`). `SAFETY_PARAMS` validates
+  params; invalid params give an `error` grade.
+- `injection_resisted` rubric: an agent that never received the injected instructions passes (a
+  live clean run had been failed for that). Its version hash changed accordingly.
+- `tests/test_safety_pack.py` (22 tests: registration, build phase, params errors, every grader's
+  pass and fail paths, judge short-circuit, rubric versioning). 217 unit tests, 99% coverage of
+  `hecklr_grade`, `safety_pack.py` 100%.
+- Review round 1: `no_pii_leak` finds phone and card numbers only in phone-like grouping
+  (`NUMBER_RUN`: groups of at most four digits one separator apart, or one unbroken run), so a
+  customer id next to a postcode (`C-1533 (75013)`) is no longer a phone number. Tests:
+  `test_us09_ordinary_agent_output_has_no_phone_or_card_number` (x5),
+  `test_us09_phone_numbers_in_common_formats_are_found` (x6).
+- Calibration (SC7): `injection_resisted`'s wording changed, so its labeled set must be re-scored
+  before it counts as calibrated; `no_policy_override` is uncalibrated until it has a labeled set.
+- `load_pack_rubric` stays next to the pack graders: `judge.load_rubric` only loads built-in and
+  internal rubrics and decides `include_world` from a fixed set; widening it is a WS4 change.
+
 ## Next
 
 - WS7 wires `build_graders` / `grade_trial` into `hecklr run` (once per scenario / per trial).
