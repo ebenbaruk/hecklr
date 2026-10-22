@@ -1,0 +1,11 @@
+# One SNR bucket of the degradation curve (US-07; ADR 0006: one persona per bucket).
+id: cafe-caller-20db
+description: Calls from a busy cafe; the chatter behind them is 20 dB below the voice.
+language: en-US
+traits: { patience: 0.7, verbosity: 0.4, cooperativeness: 0.9 }
+behaviors:
+  response_gap_ms: [300, 700]
+voice:
+  tts: { provider: kokoro, voice: af_heart }
+  environment: cafe
+  snr_db: 20

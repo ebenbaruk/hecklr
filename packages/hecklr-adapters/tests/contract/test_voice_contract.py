@@ -150,9 +150,14 @@ async def test_ws10_contract_caller_audio_reaches_the_agent_at_its_rate(case: Vo
         await link.hangup()
     brain = call.brain
     assert brain.caller_rate == case.wire_rate
-    first, last = speech_edges(clip) or (0, 0)
-    heard_ms = max(brain.speech_ms) - min(brain.speech_ms)
-    assert abs(heard_ms - (last - first) / 16) <= TOLERANCE_MS + case.caller_loss_ms
+    assert brain.speech_ms, "the agent heard no caller speech"
+    # Over WebRTC the reference agent times speech by arrival (its receiver stretches audio),
+    # so the span it hears includes the transport's load-dependent jitter: judged only where
+    # the case's timing is meaningful, like every other SC4 measurement (issue #28).
+    if case.timing_is_meaningful:
+        first, last = speech_edges(clip) or (0, 0)
+        heard_ms = max(brain.speech_ms) - min(brain.speech_ms)
+        assert abs(heard_ms - (last - first) / 16) <= TOLERANCE_MS + case.caller_loss_ms
 
 
 async def test_ws10_contract_agent_audio_arrives_as_real_time_16khz_frames(
@@ -185,6 +190,7 @@ async def test_ws10_contract_agent_audio_arrives_as_real_time_16khz_frames(
         assert transcript.text == LONG_REPLY
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_contract_response_latency_within_20ms_of_injected_delay(
     case: VoiceCase,
 ) -> None:
@@ -210,6 +216,7 @@ async def test_sc4_contract_response_latency_within_20ms_of_injected_delay(
     case.check_offsets(offsets, spread_ms=0.0)
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_contract_barge_in_reaction_within_20ms_of_injected_reaction(
     case: VoiceCase,
 ) -> None:

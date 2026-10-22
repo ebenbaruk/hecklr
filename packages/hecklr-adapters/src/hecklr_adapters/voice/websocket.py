@@ -15,6 +15,7 @@ import anyio.lowlevel
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK, WebSocketException
 
+from hecklr_adapters.context import session_headers
 from hecklr_adapters.errors import AgentError, AgentTimeoutError
 from hecklr_adapters.voice.audio import SAMPLE_RATE, StreamResampler, ToHarness, pcm16
 from hecklr_adapters.voice.config import WebSocketVoiceAdapterConfig
@@ -52,12 +53,12 @@ class WebSocketVoiceTarget:
         self._config = config
 
     async def connect(self, ctx: SessionContext) -> "WebSocketAudioLink":
-        """Open the socket (carrying the trial header) and start the call."""
+        """Open the socket (carrying the trial and world headers) and start the call."""
         config = self._config
         try:
             socket = await connect(
                 config.url,
-                additional_headers={**config.headers, **ctx.headers()},
+                additional_headers={**config.headers, **session_headers(ctx)},
                 open_timeout=config.connect_timeout_s,
                 close_timeout=CLOSE_TIMEOUT_S,
                 max_size=None,

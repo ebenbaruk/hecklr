@@ -14,6 +14,7 @@ from typing import Final, Protocol
 
 import numpy as np
 
+from hecklr_adapters.context import session_fields
 from hecklr_adapters.errors import AgentError
 from hecklr_adapters.voice.audio import FRAME_MS, MULAW_RATE, Pcm16, mulaw_decode, mulaw_encode
 from hecklr_schemas import SessionContext
@@ -94,10 +95,10 @@ class PcmWire:
     """Raw PCM16 binary frames, JSON text control messages."""
 
     def __init__(self, ctx: SessionContext, session_id: str, sample_rate: int) -> None:
-        self._start = {
+        self._start: dict[str, object] = {
             "type": "start",
             "session_id": session_id,
-            "trial_id": ctx.trial_id,
+            **session_fields(ctx),
             "sample_rate": sample_rate,
             "encoding": "pcm_s16le",
             "channels": 1,
@@ -105,7 +106,7 @@ class PcmWire:
         self._rate = sample_rate
 
     def opening(self) -> list[Message]:
-        """A ``start`` message announcing the format."""
+        """A ``start`` message announcing the format, the trial and its world (ADR 0007e)."""
         return [json.dumps(self._start)]
 
     def audio(self, samples: Pcm16) -> Message:
@@ -136,12 +137,12 @@ class TwilioWire:
     def __init__(self, ctx: SessionContext, session_id: str) -> None:
         self._stream_sid = f"MZ{session_id}"
         self._call_sid = f"CA{session_id}"
-        self._trial_id = ctx.trial_id
+        self._parameters = session_fields(ctx)
         self._sequence = 0
         self._chunk = 0
 
     def opening(self) -> list[Message]:
-        """``connected`` then ``start``, with the trial id as a custom parameter."""
+        """``connected`` then ``start``, the trial id and world URLs as custom parameters."""
         connected = {"event": "connected", "protocol": "Call", "version": "1.0.0"}
         start = {
             "event": "start",
@@ -156,7 +157,7 @@ class TwilioWire:
                     "sampleRate": MULAW_RATE,
                     "channels": 1,
                 },
-                "customParameters": {"trial_id": self._trial_id},
+                "customParameters": self._parameters,
             },
             "streamSid": self._stream_sid,
         }

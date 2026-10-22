@@ -6,10 +6,12 @@
   same shape to measure the false-alarm rate (and the power to see a 10-point drop).
 - ``--judges`` (SC7): agreement of every judge rubric with human labels (Cohen's κ, precision
   and recall, with intervals); rubrics below κ 0.70 are untrusted.
-- ``--voice-loopback`` (SC4) is not wired into the CLI yet (issue #24).
+- ``--voice-loopback`` (SC4): calls an in-process loopback agent with known timing through the
+  real voice driver; response latency and barge-in reaction must be within 20 ms of the truth.
 
 Exit codes: 0 every check passed, 1 a check failed (A/A flagged a regression or a false-alarm
-rate above alpha; an untrusted judge), 3 a run could not be analyzed, 69 not available, 78 config.
+rate above alpha; an untrusted judge; a voice timing error above 20 ms), 3 a run could not be
+analyzed, 78 config.
 """
 
 from collections import defaultdict
@@ -18,12 +20,13 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Final
 
+import anyio
 import typer
 from pydantic import ValidationError
 from rich.table import Table
 from rich.text import Text
 
-from hecklr import exit_codes
+from hecklr import exit_codes, voice_calibration
 from hecklr.commands._common import (
     DEFAULT_CONFIG,
     ConfigPath,
@@ -38,7 +41,7 @@ from hecklr.compose import RunRequest
 from hecklr.results import LATEST, analyze_results, load_results, open_store, resolve_run
 from hecklr_core import Project, RunResults
 from hecklr_report import fmt, render_terminal
-from hecklr_schemas import Grade, HumanLabel, Verdict
+from hecklr_schemas import Estimate, Grade, HumanLabel, Verdict
 from hecklr_stats import JudgeCalibration, calibrate_judge, verdict_rate
 
 SIMULATED_COMPARISONS: Final = 200
@@ -85,16 +88,16 @@ def calibrate(
     ] = None,
 ) -> None:
     """Self-tests: A/A false-positive rate, judge agreement, voice loopback."""
-    if voice_loopback:
+    if not (aa or judges or voice_loopback):
         raise fail(
-            "--voice-loopback is not available in the CLI yet; the loopback calibration runs in "
-            "hecklr-voice's test suite (SC4); tracked in issue #24",
-            exit_codes.NOT_IMPLEMENTED,
+            "choose a self-test: --aa, --judges or --voice-loopback", exit_codes.CONFIG_ERROR
         )
-    if not (aa or judges):
-        raise fail("choose a self-test: --aa or --judges", exit_codes.CONFIG_ERROR)
-    project = load_project_or_exit(config)
     passed = True
+    if voice_loopback:
+        passed &= _report_voice_loopback(seed or 0)
+    if not (aa or judges):
+        raise typer.Exit(code=exit_codes.OK if passed else exit_codes.CHECK_FAILED)
+    project = load_project_or_exit(config)
     if aa:
         pair = _aa_runs(ctx, project, config, suite, trials, seed, runs)
         passed &= _report_aa(project, *pair, replicates=replicates)
@@ -195,6 +198,48 @@ def _report_aa(project: Project, first: RunResults, second: RunResults, *, repli
         soft_wrap=True,
     )
     return not (flagged or too_many)
+
+
+# --- voice loopback -------------------------------------------------------------------------------
+
+
+def _report_voice_loopback(seed: int) -> bool:
+    stdout.print(
+        "Voice loopback (SC4): calling a loopback agent with known timing through the voice "
+        "driver, in real time (about 30 s)."
+    )
+    with config_errors():
+        checks = anyio.run(voice_calibration.run_voice_loopback, seed)
+    table = Table(
+        title="Voice timing error vs the injected truth, ms (95% CI)", title_justify="left"
+    )
+    table.add_column("metric", no_wrap=True)
+    for name in ("injected", "n", "mean error", "worst", "<= 20"):
+        table.add_column(name, justify="right", no_wrap=True)
+    for index, check in enumerate(checks):
+        table.add_row(
+            Text(check.metric),
+            str(check.injected_ms),
+            str(len(check.errors_ms)),
+            _ms(check.mean_error(seed + index)) if check.errors_ms else "no measurement",
+            f"{check.worst_ms:.1f}" if check.errors_ms else "-",
+            Text("yes", "green") if check.passed else Text("NO", "bold red"),
+        )
+    stdout.print(table)
+    passed = voice_calibration.all_passed(checks)
+    stdout.print(
+        Text.assemble(
+            "Voice loopback: ",
+            ("passed", "bold green")
+            if passed
+            else ("FAILED, timing off by more than 20 ms", "bold red"),
+        )
+    )
+    return passed
+
+
+def _ms(estimate: Estimate) -> str:
+    return f"{estimate.value:+.1f} [{estimate.ci_low:+.1f}, {estimate.ci_high:+.1f}]"
 
 
 # --- judges -------------------------------------------------------------------------------------

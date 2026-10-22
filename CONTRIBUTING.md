@@ -20,6 +20,7 @@ uv run hecklr version
 uv run ruff check . && uv run ruff format --check .
 scripts/mypy-all.sh                      # mypy --strict on every package
 uv run pytest -n auto                    # unit tests; sockets are blocked (pytest-socket)
+uv run pytest -m sc4_timing -p no:xdist  # SC4 voice timing, serially on an idle CPU (ADR 0010b)
 uv run pytest tests/e2e -m fake          # end-to-end on FakeLLM
 ```
 

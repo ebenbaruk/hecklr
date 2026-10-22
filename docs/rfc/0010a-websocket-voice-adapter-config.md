@@ -1,6 +1,6 @@
 # RFC 0010a. A `websocket` member for `VoiceAdapterConfig`
 
-Date: 2026-10-21 · Status: proposed · Workstream: WS10 · Needs: architect approval
+Date: 2026-10-21 · Status: accepted (2026-10-22) · Workstream: WS10 · Decided by: WS-wire, architect on call
 
 ## Problem
 
@@ -43,3 +43,17 @@ The JSON Schema export gains one definition. No existing file changes meaning.
 None. Until approved, `hecklr_adapters.make_voice_target` accepts the WS10 model directly, and
 the integrator can wire it into `hecklr run` once the schema carries it; afterwards the adapter
 imports the schema's model and the local copy is deleted.
+
+## Decision (2026-10-22)
+
+Accepted as proposed. `hecklr run --channels voice` needs it: without it `hecklr.yaml` cannot
+select the transport most voice stacks speak, and WS11's reference voice agent is built on it.
+The change is additive (one union member, one JSON Schema definition), so no stored artifact
+changes meaning.
+
+The schema edit itself lands with the architect's next schema change, since builders do not edit
+`packages/hecklr-schemas`. Meanwhile `hecklr.config` (WS-wire) widens `agent.adapters.voice` by
+exactly this member through subclasses of `AgentAdapters`, `AgentConfig` and `HecklrConfig`, and
+`hecklr run` / `compare` / `gate` / `report` / `calibrate` load `hecklr.yaml` through it. When the
+schema carries the member: delete `hecklr/config.py`, load with `hecklr_core.load_project`, and
+make `hecklr_adapters.voice.config` re-export the schema's model (ADR 0007e).

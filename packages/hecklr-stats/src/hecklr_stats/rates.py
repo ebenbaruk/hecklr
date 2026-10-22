@@ -1,7 +1,8 @@
 """Pass rate, pass^k and pass@k, per scenario and for the suite (spec, "Metrics", "Intervals").
 
 Suite metrics are the unweighted mean over scenarios, with a two-stage cluster bootstrap:
-resample scenarios with replacement, then resample the trials of each drawn scenario. For
+resample scenarios with replacement, then resample the trials of each drawn scenario (or, when
+every scenario passed all or none of its trials, Wilson's interval on the scenario count). For
 pass/fail trials the second stage is exactly a binomial draw at the scenario's observed rate,
 which is what makes the whole bootstrap a handful of vectorized numpy calls.
 """
@@ -108,10 +109,20 @@ def suite_estimate(
     resamples: int,
     confidence: float = DEFAULT_CONFIDENCE,
 ) -> Estimate:
-    """Mean of a per-scenario statistic over scenarios, with a cluster bootstrap interval."""
+    """Mean of a per-scenario statistic over scenarios, with a cluster bootstrap interval.
+
+    When every scenario passed all or none of its trials, the interval is Wilson's on the
+    scenario count instead (ADR 0005c): the bootstrap's trial stage is then deterministic and
+    its scenario stage is a percentile interval of a proportion, which collapses to the point at
+    0% and 100% (issue #14) and undercovers near them at small suites.
+    """
     if counts.n_scenarios == 0:
         raise ValueError("cannot estimate a suite metric over no scenarios")
-    point = float(np.mean(statistic(counts.trials, counts.passes)))
+    values = statistic(counts.trials, counts.passes)
+    point = float(np.mean(values))
+    boundary = all_or_nothing_estimate(counts, values, confidence)
+    if boundary is not None:
+        return boundary
     replicates = cluster_bootstrap(counts, statistic, np.random.default_rng(seed), resamples)
     # The second stage draws c* ~ Binomial(n, c/n), and a nonlinear statistic of c* is biased
     # (pass^k of the draws centers on (c/n)^k, above the unbiased estimate). Recentring the
@@ -125,6 +136,28 @@ def suite_estimate(
         confidence=confidence,
         n=counts.n_scenarios,
         method=IntervalMethod.CLUSTER_BOOTSTRAP,
+    )
+
+
+def all_or_nothing_estimate(
+    counts: ScenarioCounts, values: FloatArray, confidence: float = DEFAULT_CONFIDENCE
+) -> Estimate | None:
+    """Wilson on the scenario count when every scenario passed all or none of its trials.
+
+    ``values`` is the per-scenario statistic, then exactly 0 or 1 for pass rate, pass^k and
+    pass@k alike: the suite metric is the share of S scenario-level Bernoulli outcomes, where
+    the cluster bootstrap collapses (ADR 0005c). ``None`` when some scenario is in between.
+    """
+    if not np.all((counts.passes == 0) | (counts.passes == counts.trials)):
+        return None
+    low, high = wilson_interval(int(np.rint(values.sum())), counts.n_scenarios, confidence)
+    return Estimate(
+        value=float(np.mean(values)),
+        ci_low=low,
+        ci_high=high,
+        confidence=confidence,
+        n=counts.n_scenarios,
+        method=IntervalMethod.WILSON,
     )
 
 

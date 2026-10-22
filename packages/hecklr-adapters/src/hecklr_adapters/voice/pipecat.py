@@ -3,8 +3,9 @@
 The caller is a WebRTC peer built with aiortc, as Pipecat's own SmallWebRTC clients are: it
 offers one ``sendrecv`` audio transceiver, POSTs the offer to the endpoint (Pipecat's runner
 serves it at ``/api/offer``) as ``{"sdp", "type", "request_data"}`` and applies the answer. The
-trial id travels in the ``X-Hecklr-Trial-Id`` header and in ``request_data``. The call is
-answered when the agent's audio track arrives; it ends when that track ends.
+trial id and its world URLs travel as headers (``session_headers``) and in ``request_data``
+(``session_fields``). The call is answered when the agent's audio track arrives; it ends when
+that track ends.
 
 Pipecat agents reached over WebSocket instead use the ``websocket`` adapter with
 ``protocol: pipecat``.
@@ -26,6 +27,7 @@ from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import MediaStreamError
 
 from hecklr_adapters._http import agent_http_errors, check_status, parse_json
+from hecklr_adapters.context import session_fields, session_headers
 from hecklr_adapters.errors import AgentError
 from hecklr_adapters.voice.audio import SAMPLE_RATE, ToHarness
 from hecklr_adapters.voice.playout import RELEASE_TIMEOUT_S, Playout, Receiver
@@ -97,12 +99,12 @@ class PipecatVoiceTarget:
     async def _negotiate(
         self, ctx: SessionContext, offer: RTCSessionDescription
     ) -> RTCSessionDescription:
-        body = {"sdp": offer.sdp, "type": offer.type, "request_data": {"trial_id": ctx.trial_id}}
+        body = {"sdp": offer.sdp, "type": offer.type, "request_data": session_fields(ctx)}
         # The schema's config has no timeout of its own; the trial's per-reply deadline is the
         # longest a caller would wait for the line to pick up.
         with agent_http_errors(self._url, ctx.timeout_s):
             async with httpx2.AsyncClient(timeout=httpx2.Timeout(ctx.timeout_s)) as client:
-                response = await client.post(self._url, json=body, headers=ctx.headers())
+                response = await client.post(self._url, json=body, headers=session_headers(ctx))
                 await check_status(response)
         data = parse_json(response.text)
         if not isinstance(data, dict) or not isinstance(sdp := data.get("sdp"), str):

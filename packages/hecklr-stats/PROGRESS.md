@@ -38,6 +38,12 @@ US-11. Contracts: `hecklr_schemas.runtime` (`Estimate`, `MetricSummary`, `Compar
   slice (`test_full_comparison_on_200_by_10_with_10k_resamples_is_fast`).
 - 120 tests, 100% line and branch coverage, `mypy --strict` and ruff clean.
 
+- **Issue #14** (WS-wire, ADR 0005c): when every scenario passed all or none of its trials, the
+  suite interval is Wilson on the scenario count instead of a collapsed bootstrap
+  (`test_us01_all_passing_suite_interval_does_not_collapse_at_small_n`: 5/5 all-pass gives
+  [56.6%, 100%]; `test_all_or_nothing_suite_interval_covers_at_nominal_rate` >= 90% at S = 5,
+  10, 20). 124 tests, 100% line and branch coverage.
+
 ## Next
 
 - WS7: call `summarize_run` and `compare_runs` (pass `config.stats` and the run seed), read
