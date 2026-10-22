@@ -27,12 +27,15 @@ from typing import Final, Protocol
 import anyio
 import anyio.abc
 import numpy as np
+import structlog
 from acme_agent import Reply
 
 from acme_voice.config import PipelineConfig
 from acme_voice.normalize import normalize_transcript
 from hecklr_voice import ASR, TTS, SpeechRequest, Vad, VadFactory
 from hecklr_voice.audio import FRAME_MS, FRAME_SAMPLES, SAMPLE_RATE, Pcm16, to_pcm16
+
+_log = structlog.get_logger(__name__)
 
 GREETING: Final = "Thanks for calling Acme Maintenance. How can I help you today?"
 PREROLL_MS: Final = 200
@@ -230,10 +233,13 @@ class VoiceCall:
             raw = (await self._stack.asr.transcribe(turn.pcm, language=self._stack.language)).text
         text = normalize_transcript(raw)
         if not text:
+            _log.info("call.heard_nothing", audio_ms=len(turn.pcm) * 1000 // SAMPLE_RATE)
             return False
         self.heard.append(text)
         reply = await self._respond(text)
-        if self._superseded(turn.floor):
+        superseded = self._superseded(turn.floor)
+        _log.info("call.turn", heard=raw, understood=text, reply=reply.text, dropped=superseded)
+        if superseded:
             return False
         await self._say(reply.text, turn.floor)
         if not reply.ended:
