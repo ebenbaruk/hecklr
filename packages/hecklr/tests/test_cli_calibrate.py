@@ -1,7 +1,10 @@
 """``hecklr calibrate``: the A/A self-test (SC5) and judge agreement with human labels (SC7)."""
 
+import os
 import random
 import re
+import subprocess
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,10 +15,11 @@ import pytest
 from typer.testing import CliRunner
 
 import hecklr.commands._common
-from hecklr import exit_codes
+from hecklr import exit_codes, voice_calibration
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
 from hecklr.testing import scripted_models
+from hecklr.voice_calibration import TimingCheck
 from hecklr_core import ResultStore
 from hecklr_schemas import HumanLabel, LabelId, Run, new_id
 
@@ -221,8 +225,72 @@ def test_calibrate_needs_a_self_test(config_path: Path) -> None:
     assert "choose a self-test" in output
 
 
-def test_voice_loopback_is_not_available_from_the_cli_yet(config_path: Path) -> None:
+@pytest.mark.slow
+def test_sc4_calibrate_voice_loopback_measures_within_20ms(tmp_path: Path) -> None:
+    # The installed console script, in a subprocess: the voice engine's DSP worker processes
+    # must start under the real entry point (they failed to import it, see hecklr.cli.main).
+    script = Path(sys.executable).parent / "hecklr"
+    done = subprocess.run(  # noqa: S603 -- fixed arguments, no shell
+        [str(script), "calibrate", "--voice-loopback"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+        cwd=tmp_path,
+        env={**os.environ, "COLUMNS": "200", "NO_COLOR": "1"},
+    )
+    code = done.returncode
+    output = " ".join((done.stdout + done.stderr).replace("│", " ").split())
+
+    assert code == exit_codes.OK, output
+    assert "Voice loopback: passed" in output
+    for metric, injected in [
+        ("response_latency", 300), ("response_latency", 600), ("response_latency", 900),
+        ("barge_in_reaction", 150), ("barge_in_reaction", 300),
+    ]:  # fmt: skip
+        row = re.search(rf"{metric} {injected} (\d+) [+-][\d.]+ \[[+-][\d.]+, [+-][\d.]+\]", output)
+        assert row, (metric, injected, output)
+        assert int(row.group(1)) >= 2
+
+
+def test_sc4_a_timing_error_above_20ms_fails_the_calibration(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def off_by_25(seed: int) -> list[TimingCheck]:
+        return [
+            TimingCheck("response_latency", 600, (3.0, -2.0)),
+            TimingCheck("barge_in_reaction", 150, (25.0, 1.0)),
+            TimingCheck("barge_in_reaction", 300, ()),
+        ]
+
+    monkeypatch.setattr(voice_calibration, "run_voice_loopback", off_by_25)
     code, output = invoke(config_path, "--voice-loopback")
 
-    assert code == exit_codes.NOT_IMPLEMENTED
-    assert "hecklr-voice" in output
+    assert code == exit_codes.CHECK_FAILED
+    assert "FAILED, timing off by more than 20 ms" in output
+    assert "no measurement" in output
+    assert "barge_in_reaction 150 2 +13.0 [" in output
+
+
+def test_sc4_timing_errors_within_20ms_pass_the_calibration(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def on_time(seed: int) -> list[TimingCheck]:
+        return [TimingCheck("response_latency", 300, (2.0, -1.0, 3.0))]
+
+    monkeypatch.setattr(voice_calibration, "run_voice_loopback", on_time)
+    code, output = invoke(config_path, "--voice-loopback")
+
+    assert code == exit_codes.OK
+    assert "response_latency 300 3 +1.3 [" in output
+    assert "Voice loopback: passed" in output
+
+
+def test_voice_loopback_without_the_engine_names_the_extra(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "hecklr_voice", None)
+    code, output = invoke(config_path, "--voice-loopback")
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert "pip install 'hecklr[voice]'" in output
