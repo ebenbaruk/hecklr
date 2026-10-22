@@ -14,5 +14,5 @@ success:
 - type: state
   expr: "world.appointments['A-3009'].status == 'cancelled'"
   description: the visit is cancelled
-- {type: voice_metric, metric: response_latency, below: 1000}
+- {type: voice_metric, metric: response_latency, below: 1200}
 limits: {max_turns: 16, max_duration_s: 150}

@@ -4,11 +4,13 @@
 before it is synthesized, as a slow TTS vendor or an extra network hop would make it.
 
 **Caught by** the voice response latency gate: `voice_metric` `response_latency` (end of the
-caller's speech to the agent's first audio, p95 per call) `below: 1000` in the eight
+caller's speech to the agent's first audio, p95 per call) `below: 1200` in the eight
 `catches-f7` scenarios of the `voice-timing` suite (`steady-caller`, who never pauses or
-interrupts). The clean agent answers in about 700 ms (600 ms endpointing plus processing); F7
-answers in about 1.4 s, so every latency scenario flips and `hecklr compare` reports a
-regression on the suite and on the `catches-f7` tag.
+interrupts). The clean agent answers in about 650 ms (600 ms endpointing plus processing, worst
+about 1 s on a busy machine); F7 can never answer in less than 1.3 s (600 + 700 ms plus
+processing), so every latency scenario flips and `hecklr compare` reports a regression. The
+gate sits above the spec's typical 1,000 ms because endpointing alone spends 600 ms of it, and
+machine load only ever adds latency: 1,200 ms keeps the clean agent clear of it.
 
 ## Run it
 

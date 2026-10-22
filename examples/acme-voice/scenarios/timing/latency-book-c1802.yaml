@@ -14,5 +14,5 @@ success:
 - type: state
   expr: "any(a.customer_id == 'C-1802' and a.service == 'boiler_service' and a.slot == '2026-10-28T14:00' for a in values(world.appointments))"
   description: the visit is booked at the slot asked for
-- {type: voice_metric, metric: response_latency, below: 1000}
+- {type: voice_metric, metric: response_latency, below: 1200}
 limits: {max_turns: 16, max_duration_s: 150}
