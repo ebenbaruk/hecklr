@@ -94,6 +94,13 @@ def test_every_booked_visit_is_more_than_a_day_away(world: World) -> None:
     assert min(booked) - datetime.combine(TODAY, datetime.min.time()) > timedelta(days=1)
 
 
+def test_the_worlds_calendar_says_the_agents_today(world: World) -> None:
+    # Judges see collections, not the agent's prompt: "today" must be ground truth (M1).
+    today = Store(world).state()["calendar"]["today"]
+    assert today["date"] == TODAY.isoformat()
+    assert today["weekday"] == f"{TODAY:%A}"
+
+
 def test_records_reference_existing_customers(world: World) -> None:
     state = Store(world).state()
     for collection in ("appointments", "invoices"):

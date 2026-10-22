@@ -13,7 +13,7 @@ facts:
 success:
 - type: tool_called
   tool: book_appointment
-  args: {customer_id: C-1042, service: plumbing}
+  args: {customer_id: C-1042, service: plumbing, slot: '2026-11-05T14:00'}
 - type: state
   expr: "any(a.customer_id == 'C-1042' and a.service == 'plumbing' and a.status == 'booked' and a.slot == '2026-11-05T14:00' for a in values(world.appointments))"
   description: a visit is booked at a time the customer asked for

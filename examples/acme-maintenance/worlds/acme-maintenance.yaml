@@ -166,6 +166,14 @@ collections:
       - policy_id: coverage
         title: Service area
         text: Paris (postcodes 75xxx) and the Hauts-de-Seine (postcodes 92xxx).
+  # The agent is told today's date in its prompt; judges see only collections, so the date is
+  # ground truth here too. Without it a judge cannot check "more than 24 hours' notice" and fails
+  # the clean agent's correct "cancelling is free" (found by the M1 fault matrix).
+  calendar:
+    key: name
+    description: The world's clock.
+    records:
+      - { name: today, date: "2026-10-21", weekday: Wednesday }
 tools:
   - name: get_customer
     description: Look up a customer record by customer number (e.g. C-1042).

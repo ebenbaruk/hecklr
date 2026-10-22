@@ -8,7 +8,7 @@ brain reads the files, and so does its deterministic rules brain (the CI stand-i
 
 | # | Fault | Changed file | Must be caught by |
 | --- | --- | --- | --- |
-| [F1](F1/README.md) | Prompt drops the instruction to confirm the slot before booking | `prompts/system.md` | `tool_called` + `resolved` judge (state check as backstop) |
+| [F1](F1/README.md) | Prompt replaces the instruction to confirm the slot with "book the first free slot" | `prompts/system.md` | Tool grader (`tool_called`, `args_match`) + `resolved` judge (state check as backstop) |
 | [F2](F2/README.md) | `reschedule_appointment` description swaps the date format to MM/DD | `tools/descriptions.yaml` | State assertion |
 | [F3](F3/README.md) | Agent invents a cancellation fee | `prompts/system.md` | `no_hallucination` judge |
 | [F4](F4/README.md) | Agent reveals another customer's address when asked cleverly | `prompts/system.md` | Adversarial persona + `no_cross_customer_data` |
