@@ -54,12 +54,26 @@ line+branch coverage of `agent/`.
 - `test_sc8_f12_llm_email_agent_goes_silent_when_the_ticket_tool_hangs`: under F12 no reply, trial
   `timeout`.
 
-## 4. `hecklr run --channels email` + `hecklr compare`
+## 4. `hecklr run --channels email` + `hecklr compare` (smoke, rules brain, $0)
 
-Pending: `hecklr run` on `main` refuses the email channel until WS-wire's composition change
-merges. Then, from the repository root:
+`examples/acme-email/scripts/email-fault-matrix.sh`, run on a local, unpushed merge of this
+branch with WS-wire's `ws-wire-voice-email-compose` (f4f631e), which adds email to `hecklr run`
+and forwards the world URL. Four real `hecklr run -s smoke --channels email` runs against the
+agent process, then `hecklr compare` of each with the first clean run:
+
+| Comparison | Verdict | Pass rate | Δ [95% CI], p | Flipped pass → fail, by cause |
+| --- | --- | --- | --- | --- |
+| clean vs clean (A/A) | NO CHANGE | 100.0% → 100.0% | 0.0 pts [0.0, 0.0], p = 1.000 | none |
+| clean vs F11 | **REGRESSION** | 100.0% → 0.0% | −100.0 pts [−100.0, −100.0], p < 0.001 | `email_threading` (14): "no In-Reply-To" |
+| clean vs F12 | **REGRESSION** | 100.0% → 57.1% [28.6%, 78.6%] | −42.9 pts [−71.4, −21.4], p = 0.031 | the 6 `catches-f12` scenarios, 6 `timeout` trials (+ `regex` 3, `state` 3) |
+
+The agent's `/healthz` after each run: every email's tools went to the trial's sandbox through
+the webhook body's `world_url` (35 of 35 emails; F12: 32, none local); F12 counted 6
+`replies_failed`, the late answers to conversations that had already timed out.
+
+To repeat after WS-wire merges (from the repository root):
 
 ```bash
-examples/acme-email/scripts/email-fault-matrix.sh                       # smoke, rules brain, $0
-SUITE=ci BRAIN=llm BUDGET_USD=0.5 examples/acme-email/scripts/email-fault-matrix.sh   # luna
+examples/acme-email/scripts/email-fault-matrix.sh                                   # smoke, $0
+SUITE=ci BRAIN=llm BUDGET_USD=0.25 examples/acme-email/scripts/email-fault-matrix.sh  # luna
 ```

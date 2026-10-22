@@ -3,7 +3,7 @@
 # F12, start the email agent behind its webhook, `hecklr run` a suite over the email channel,
 # then `hecklr compare` each run with the first clean run.
 #
-#   examples/acme-email/scripts/email-fault-matrix.sh            # smoke suite, rules brain: free
+#   examples/acme-email/scripts/email-fault-matrix.sh            # smoke suite, rules brain: $0
 #   SUITE=ci BRAIN=llm BUDGET_USD=0.5 examples/acme-email/scripts/email-fault-matrix.sh
 #
 # Needs a `hecklr run` that drives the email channel (ADR 0012a, WS-wire). With luna in
@@ -17,7 +17,7 @@ RUNS=examples/acme-email/.hecklr/runs
 REPORTS=examples/acme-email/.hecklr/matrix
 SUITE=${SUITE:-smoke}
 BRAIN=${BRAIN:-rules}
-BUDGET_USD=${BUDGET_USD:-0}
+BUDGET_USD=${BUDGET_USD:-0.05}  # the planner prices scripted trials too; none calls a model
 PORT=8100
 LABELS=(clean clean-aa F11 F12)
 RUN_IDS=()
