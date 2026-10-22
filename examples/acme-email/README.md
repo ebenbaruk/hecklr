@@ -46,7 +46,7 @@ and compares each run with the clean one. Measured results: [RESULTS.md](RESULTS
 | Suite | Scenarios | Customers and graders | Use |
 | --- | --- | --- | --- |
 | `smoke` | `scripted/` (14) | scripted; deterministic graders only | free, exact F11/F12 matrix with the rules brain |
-| `ci` | `scenarios/` core (13) x 3 | guided (luna); judges | the real reference agent (LLM brain); clean measured, F11/F12 not yet |
+| `ci` | `scenarios/` core (13) x 3 | guided (luna); judges | the real reference agent (LLM brain); F11/F12 matrix measured on luna |
 | `full` | `scenarios/` (13) x 5 | guided (luna); judges | more trials; not measured yet |
 
 Every scenario lists `email_threading` (tag `catches-f11`). Scenarios tagged `catches-f12` inject
@@ -56,10 +56,13 @@ sends the customer to the 24/7 emergency line).
 
 The judges (`resolved`) grade the bookings, moves, plain cancellations, the refund and the
 policy-hang cancellations, whose goal accepts that the fee cannot be checked while the policy tool
-hangs. Emergencies have no judge: by email the agent cannot hand the customer to the on-call
-engineer, so `resolved` failed the clean agent on all of them; `tool_called` and the reply
-deadline grade them. The reply deadline (120 s) leaves room for a clean LLM agent to retry a hung
-tool before it answers.
+hangs. Emergencies are graded as handoffs, not as resolved requests (by email the customer is
+handed to the on-call engineer, so nothing is "resolved" in the thread): `email-gas-smell` by
+`tool_called` and a state check on the open gas emergency ticket; the ticket-hang emergencies,
+where no ticket can be opened, by `tool_called` and the reply deadline. The
+`handoff_appropriate` judge cannot grade email yet: the email channel has no `handoff` event,
+and on luna the judge failed a correct ticket handoff for that reason (RESULTS.md, section 6). The reply deadline (120 s) is a strict email SLA; a tool that timed out is down for
+30 s and fails fast, so a clean LLM agent answers well within it.
 
 ## Limits of a reference agent
 

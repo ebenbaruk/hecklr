@@ -108,6 +108,24 @@ async def test_a_hung_tool_times_out_under_the_deadline() -> None:
     assert tools.reports_calls is False
 
 
+async def test_a_tool_that_timed_out_fails_fast_until_it_may_be_retried() -> None:
+    # PR #30: waiting out the deadline on every retry made the clean LLM agent miss the reply
+    # deadline, so a hung tool looked like F12.
+    hanging = HangingTools()
+    tools = DeadlineTools(hanging, timeout_s=0.05, retry_after_s=0.3)
+    await tools.call("get_policy", {"policy_id": "fees"})
+    with anyio.fail_after(0.04):
+        outcome = await tools.call("get_policy", {"policy_id": "fees"})
+    assert outcome.error_text() == "timeout: get_policy is down: it did not answer within 0.05 s"
+    assert hanging.calls == ["get_policy"]  # not called again while down
+    await tools.call("get_customer", {"customer_id": "C-1042"})  # other tools are still tried
+    assert hanging.calls == ["get_policy", "get_customer"]
+    await anyio.sleep(0.3)
+    outcome = await tools.call("get_policy", {"policy_id": "fees"})
+    assert outcome.error_text() == "timeout: get_policy did not answer within 0.05 s"
+    assert hanging.calls == ["get_policy", "get_customer", "get_policy"]
+
+
 async def test_sc8_f12_without_a_deadline_a_hung_tool_never_returns() -> None:
     tools = DeadlineTools(HangingTools(), timeout_s=None)
     with anyio.move_on_after(0.3) as scope:
