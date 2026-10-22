@@ -85,6 +85,75 @@ def test_ws2_guard_matches_identifiers_as_whole_tokens(
     assert _kinds(guard, "Ticket T-9012.", dialogue) == ["invented_identifier"]
 
 
+@pytest.fixture
+def refund_guard(make_brief: BriefFactory) -> ConsistencyGuard:
+    # Issue #29: a duplicate charge, where the goal names both invoices and the facts hold a
+    # postcode whose shape (five digits) also fits the digits inside an invoice number.
+    brief = make_brief(
+        scenario={
+            "goal": "Get INV-20481 refunded: you were charged twice, INV-20481 and INV-20482.",
+            "facts": {"customer_id": "C-1042", "postcode": "92000", "invoice_id": "INV-20482"},
+        }
+    )
+    return ConsistencyGuard(brief.scenario)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hi, I was charged twice: invoice INV-20482. My postcode is 92000.",
+        "I was billed twice, INV-20481 and INV-20482.",
+        "Postcode 92000; the two invoices are inv-20481 and INV-20482.",
+    ],
+)
+def test_ws2_guard_accepts_valid_refund_turns_issue_29(
+    refund_guard: ConsistencyGuard, text: str
+) -> None:
+    assert _kinds(refund_guard, text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "wrong"),
+    [
+        ("My postcode is 92001.", "'92001'"),
+        ("It's invoice INV-20483.", "'INV-20483'"),
+        ("Invoice INV-20482, postcode 20482.", "'20482'"),
+        ("Customer C-1043, invoice INV-20482.", "'C-1043'"),
+    ],
+)
+def test_ws2_guard_still_flags_real_contradictions_in_refund_turns_issue_29(
+    refund_guard: ConsistencyGuard, text: str, wrong: str
+) -> None:
+    issues = refund_guard.check(decision_reply(text), [])
+
+    assert [issue.kind for issue in issues] == ["wrong_fact_value"]
+    assert wrong in issues[0].detail
+
+
+def test_ws2_guard_does_not_read_digits_inside_a_longer_identifier_as_a_fact(
+    guard: ConsistencyGuard,
+) -> None:
+    # The postcode shape (five digits) fits inside this ID. The postcode check skips it because
+    # the invented-identifier check judges the whole ID: one issue, naming the ID.
+    issues = guard.check(decision_reply("Order ORD-92100."), [])
+
+    assert [issue.kind for issue in issues] == ["invented_identifier"]
+    assert "'ORD-92100'" in issues[0].detail
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["My postcode is 92001-1234.", "postcode 92001-ish", "Call me on 020-555-0143."],
+)
+def test_ws2_guard_still_flags_wrong_values_joined_by_a_dash_to_something_else(
+    make_brief: BriefFactory, text: str
+) -> None:
+    # Only a match inside an ID-like token is skipped; a dash alone does not hide a wrong value.
+    brief = make_brief(scenario={"facts": {"postcode": "92000", "phone": "555-0142"}})
+
+    assert _kinds(ConsistencyGuard(brief.scenario), text) == ["wrong_fact_value"]
+
+
 def test_ws2_guard_accepts_a_new_date_in_the_same_format_as_a_date_fact(
     guard: ConsistencyGuard,
 ) -> None:
