@@ -213,5 +213,6 @@ def test_an_overlay_may_not_carry_other_files(tmp_path: Path) -> None:
 
 def test_faults_live_next_to_the_reference_agent() -> None:
     assert PROJECT_ROOT.parent / "acme-faults" == FAULTS_ROOT
-    # The voice and email variants (F7-F12) live there too, with their own agents' files.
-    assert set(FAULTS) <= {path.name for path in FAULTS_ROOT.iterdir() if path.is_dir()}
+    # F7-F12 belong to the voice and email agents (examples/acme-email for F11 and F12).
+    variants = {path.name for path in FAULTS_ROOT.iterdir() if path.is_dir()}
+    assert set(FAULTS) <= variants <= {f"F{n}" for n in range(1, 13)}
