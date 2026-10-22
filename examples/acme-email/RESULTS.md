@@ -1,4 +1,10 @@
-# acme-email results: F11 and F12 caught, clean A/A quiet
+# acme-email results
+
+Summary: on the free scripted `smoke` suite, F11 and F12 are caught and clean vs clean is quiet
+(sections 1, 2 and 4). On the guided luna `ci` suite, the first matrix failed the clean agent
+(38.9%) and left both faults inconclusive. After the fix, the clean agent passes 36/36, but the
+OpenAI account ran out of credit during the next run, so F11 and F12 have not been measured on
+`ci` yet (section 5).
 
 Measured 2026-10-22 on macOS arm64 (10 cores), commit of the WS12b PR. Every number below comes
 from a command in this file; pass rates are Wilson 95% intervals, deltas paired cluster-bootstrap
@@ -75,5 +81,68 @@ To repeat after WS-wire merges (from the repository root):
 
 ```bash
 examples/acme-email/scripts/email-fault-matrix.sh                                   # smoke, $0
-SUITE=ci BRAIN=llm BUDGET_USD=0.25 examples/acme-email/scripts/email-fault-matrix.sh  # luna
+```
+
+## 5. The guided `ci` suite on luna (`hecklr run` + `hecklr compare`, LLM brain)
+
+`SUITE=ci BRAIN=llm BUDGET_USD=0.15 examples/acme-email/scripts/email-fault-matrix.sh` (with
+`OPENAI_API_KEY` exported), on a local merge of this branch with WS-wire. The suite runs 13
+scenarios x 3 trials. The refund scenario's 3 trials are always harness errors: the simulator's
+consistency guard rejects the customer's first email (issue #29), so they are excluded from the
+statistics.
+
+### 5a. First matrix, before the fix: the clean agent failed `ci`
+
+The suite then had a 45 s reply deadline and the `resolved` judge on every scenario.
+
+| Run | Pass rate (scenario-level, n 12) | Timeouts | vs clean: verdict, Δ [95% CI], p |
+| --- | --- | --- | --- |
+| clean | 38.9% [13.7%, 66.5%] | 9 | (baseline); `judge:resolved` failed all 7 emergency and policy-hang scenarios (0/3 each) |
+| clean again | 41.7% [19.3%, 68.0%] | 9 | INCONCLUSIVE, +2.8 pts [0.0, +11.1], p = 1.000 |
+| F11 | 0.0% [0.0%, 24.2%] | 11 | INCONCLUSIVE, −38.9 pts [−66.7, −13.9], p = 0.062 |
+| F12 | 41.7% [19.3%, 68.0%] | 18 | INCONCLUSIVE, +2.8 pts [0.0, +11.1], p = 1.000 |
+
+F11 could flip only the 5 scenarios that the clean agent passed, which is too few for
+significance. F12 could not flip anything, because the clean agent already failed every scenario
+with a hung tool. The suite could not serve as a gate. Three causes:
+
+1. The 45 s reply deadline was shorter than a clean LLM agent retrying a hung tool under its 5 s
+   tool deadline, so clean trials timed out too.
+2. The `resolved` judge failed the clean agent on every email emergency, `email-gas-smell`
+   included (no hung tool): by email the agent cannot hand the customer to the on-call engineer.
+3. It also failed the agent on the fee question of the policy-hang cancellations: the fee cannot
+   be quoted while `get_policy` hangs.
+
+### 5b. After the fix
+
+The fix: a 120 s reply deadline; no `resolved` on the emergencies, which `tool_called` and the
+reply deadline grade; on the policy-hang cancellations, `resolved` stays, and the goal accepts
+"the fee cannot be checked right now".
+
+| Run | Pass rate | Notes |
+| --- | --- | --- |
+| clean (`01M5GKP2T5X81J6ND8QEB2CHHJ`) | **36/36 trials; scenario-level 100.0% [75.8%, 100.0%]**, 0 timeouts, $0.058 | every scenario 3/3 |
+| clean again (`01M5GMEGS5R3TSW1ED280XF723`) | 86.1% [66.5%, 99.9%], 5 timeouts | **not valid**: the account ran out of credit during this run (below) |
+| F11 (`01M5GNANTD9DR48JMGC8PZ44X6`) | 0/36, 36 timeouts | **void**: every brain call got `429 credit_balance_exhausted`, and the agent sent no reply |
+| F12 | not run | stopped once the account had no credit |
+
+The second clean run is not usable as A/A evidence. From 03:55 the agent's log has
+`429 insufficient_quota / credit_balance_exhausted` errors on its replies. At least 3 of the 5
+timed-out trials match those failed replies by customer address. The F11 run was void for the
+same reason. So **F11 and F12 have not been measured on the guided `ci` suite.**
+
+What the valid clean run does show for F12: the hung tool was hit in all 18 trials of the 6
+`catches-f12` scenarios (`get_policy` or `create_emergency_ticket` returned the injected timeout
+9 to 99 times per scenario), and the clean agent answered anyway. Under F12
+(`tool_timeout_s: null`) the first such call blocks the reply for good. That is the behaviour
+measured on luna by `test_sc8_f12_llm_email_agent_goes_silent_when_the_ticket_tool_hangs`
+(section 3) and on `smoke` (sections 1, 2 and 4). F11 removes the threading headers whatever the
+brain says. Both faults are expected to show on `ci`, but neither has been shown there yet.
+
+To finish the measurement once the OpenAI account has credit again (about $0.25 for the four
+runs; the agent's own luna calls come on top):
+
+```bash
+set -a; source .env; set +a
+SUITE=ci BRAIN=llm BUDGET_USD=0.15 examples/acme-email/scripts/email-fault-matrix.sh
 ```

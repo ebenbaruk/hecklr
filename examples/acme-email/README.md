@@ -46,13 +46,29 @@ and compares each run with the clean one. Measured results: [RESULTS.md](RESULTS
 | Suite | Scenarios | Customers and graders | Use |
 | --- | --- | --- | --- |
 | `smoke` | `scripted/` (14) | scripted; deterministic graders only | free, exact F11/F12 matrix with the rules brain |
-| `ci` | `scenarios/` core (13) x 3 | guided (luna); judges | the real reference agent (LLM brain) |
-| `full` | `scenarios/` (13) x 5 | guided (luna); judges | more trials |
+| `ci` | `scenarios/` core (13) x 3 | guided (luna); judges | the real reference agent (LLM brain); clean measured, F11/F12 not yet |
+| `full` | `scenarios/` (13) x 5 | guided (luna); judges | more trials; not measured yet |
 
 Every scenario lists `email_threading` (tag `catches-f11`). Scenarios tagged `catches-f12` inject
 a hung tool (`faults: [{kind: timeout}]`): `get_policy` during a cancellation (the clean agent
 cancels without the policy text) or `create_emergency_ticket` during an emergency (the clean agent
 sends the customer to the 24/7 emergency line).
+
+The judges (`resolved`) grade the bookings, moves, plain cancellations, the refund and the
+policy-hang cancellations, whose goal accepts that the fee cannot be checked while the policy tool
+hangs. Emergencies have no judge: by email the agent cannot hand the customer to the on-call
+engineer, so `resolved` failed the clean agent on all of them; `tool_called` and the reply
+deadline grade them. The reply deadline (120 s) leaves room for a clean LLM agent to retry a hung
+tool before it answers.
+
+## Limits of a reference agent
+
+- `POST /email` trusts its caller: the reply goes to the body's `reply_url`, whatever it is. Do
+  not expose the webhook beyond localhost; a real agent replies through its mail provider.
+- One conversation per customer address, kept for the life of the process (as in the chat agent):
+  a server that runs for days grows without bound. Restart it between runs.
+- `/healthz` counts a reply to a trial that already ended (the customer's last "thanks", or F12's
+  late answer after the hung tool is released) as `replies_failed`: Hecklr answers `404`.
 
 ## Faults
 

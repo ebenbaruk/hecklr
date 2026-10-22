@@ -17,6 +17,8 @@ agent:
 world: ../acme-maintenance/worlds/acme-maintenance.yaml
 suites:
   # Guided customers (luna) and judges; every fault area has at least 6 core scenarios.
+  # Measured on luna: the clean agent passes ci (36/36); F11 and F12 are measured on smoke only
+  # so far (RESULTS.md, section 5).
   ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [email] }
   full: { scenarios: "scenarios/**/*.yaml", trials: 5, channels: [email] }
   # Scripted customers and deterministic graders only: with the rules brain, a free and exactly

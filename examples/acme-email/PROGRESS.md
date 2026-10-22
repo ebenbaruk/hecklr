@@ -41,7 +41,7 @@ threading, `resolved`), "Testing strategy" (fault matrix F11, F12), WS12 row. AD
   `test_sc8_email_fault_changes_exactly_one_line_of_mailer_yaml`,
   `test_sc8_email_fault_flips_exactly_its_setting`.
 - **Suites** `hecklr.yaml` (webhook) and `hecklr.mailbox.yaml` (smtp-imap): `smoke` (14 scripted),
-  `ci` (13 guided core x 3), `full`; 3 email personas. Every scenario grades `email_threading`
+  `ci` (13 guided core x 3), `full`; 3 email personas; reply deadline 120 s. Every scenario grades `email_threading`
   (`catches-f11`); 6 scripted and 6 guided scenarios inject a hung tool (`catches-f12`).
 - **Matrix** (`tests/test_suite.py`, in process): clean 14/14; F11 fails only `email_threading`
   on 14/14; F12 fails exactly the 6 `catches-f12` scenarios as `timeout`.
@@ -55,14 +55,36 @@ threading, `resolved`), "Testing strategy" (fault matrix F11, F12), WS12 row. AD
 - One additive change outside this example: `acme-maintenance/tests/test_faults.py` accepted only
   F1-F6 under `acme-faults/`; it now accepts F1-F12 and still requires F1-F6.
 
+## Done in the review round
+
+- Luna `ci` matrix, first try (45 s deadline, `resolved` everywhere): clean 38.9% [13.7%, 66.5%];
+  clean vs clean, F11 (p 0.062) and F12 all INCONCLUSIVE. Causes: the deadline was shorter than a
+  clean agent retrying a hung tool, `resolved` cannot pass an email emergency (no handoff), and
+  `resolved` failed the fee question while `get_policy` hangs (RESULTS.md 5a).
+- Fix: 120 s reply deadline, no judge on emergencies, a policy-hang goal that accepts "the fee
+  cannot be checked right now". Luna `ci` clean after the fix: 36/36, 100.0% [75.8%, 100.0%];
+  the hung tool was hit in all 18 `catches-f12` trials (RESULTS.md 5b).
+- `email-fault-matrix.sh` reads the run id the CLI printed and checks its directory (no stale
+  run ids); IMAP logout cannot hide a login error; reproducible test message ids; README section
+  "Limits of a reference agent" (webhook trusts `reply_url`, sessions are never evicted).
+- Issues #41 (`mypy-all.sh` skips `examples/`) and #42 (`acme-faults/README.md` still says
+  F7-F12 come later).
+
 ## Next
 
-- After WS-wire merges email into `hecklr run`: `scripts/email-fault-matrix.sh` (smoke, rules brain,
-  $0), then `SUITE=ci BRAIN=llm BUDGET_USD=0.5` on luna; record both in RESULTS.md.
+- **F11 and F12 on the guided `ci` suite are not measured yet.** The OpenAI account ran out of
+  credit (`429 credit_balance_exhausted`) during the second clean run after the fix, which made
+  that run invalid and the F11 run void (RESULTS.md 5b). Once there is credit again, run
+  `SUITE=ci BRAIN=llm BUDGET_USD=0.15 examples/acme-email/scripts/email-fault-matrix.sh` (about
+  $0.25 plus the agent's own calls) on a merge with WS-wire, and record clean vs clean, F11 and
+  F12 in RESULTS.md 5b. Expected: clean vs clean no_change, F11 regression (`email_threading`),
+  F12 regression (`timeout`, and `resolved` on the policy-hang cancellations).
+- Local Ollama is not a stand-in: on `qwen3:4b-instruct` the judges errored and the agent did
+  not cancel (a 3-trial probe), so it would not measure this suite.
 
 ## Open questions
 
-- Issue #29 (simulator consistency guard rejects guided refund/invoice turns) may turn
-  `email-refund-double-charge` into harness errors on real models; it is excluded from statistics,
-  not counted against the agent.
-- `scripts/mypy-all.sh` does not type-check `examples/` (also noted by WS8); the command above does.
+- Issue #29 (simulator consistency guard rejects guided refund/invoice turns) turns all 3
+  `email-refund-double-charge` trials into harness errors on luna; they are excluded from
+  statistics, not counted against the agent.
+- `scripts/mypy-all.sh` does not type-check `examples/` (issue #41); the command above does.

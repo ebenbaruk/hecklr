@@ -44,8 +44,13 @@ silence events.
   the trial ends `timeout`, which the report counts as a failed trial (cause `timeout`), and the
   `resolved` judge fails a conversation that went silent. Scenarios that inject a hung tool
   (`faults: [{kind: timeout}]` on `get_policy` during a cancellation, or `create_emergency_ticket`
-  during an emergency) are tagged `catches-f12`; the clean agent passes them (it cancels without
-  the policy text, or sends the customer to the 24/7 emergency line). The fault is channel-agnostic
+  during an emergency) are tagged `catches-f12`. The clean agent can pass them: it cancels without
+  the policy text, or sends the customer to the 24/7 emergency line. In the guided set, the
+  `resolved` judge stays on the policy-hang cancellations, whose goal accepts "the fee cannot be
+  checked right now" (the clean agent resolves them, F12 never answers). It is not on the
+  emergencies: by email the agent cannot hand the customer to the on-call engineer, and luna's
+  judge failed every clean emergency trial for it. Those are graded by `tool_called` and the
+  reply deadline. The fault is channel-agnostic
   in nature, but it is not added to the chat agent: its deadline is its HTTP client's
   (`ACME_TOOL_TIMEOUT_S`), outside the overlay mechanism, and making it overlayable would change
   acme-maintenance's loader. The voice agent (WS11) can reuse `DeadlineTools` and this overlay if
@@ -62,8 +67,13 @@ silence events.
   `email_threading` on all 14, F12 fails exactly the 6 `catches-f12` scenarios, each as a
   `timeout` (`tests/test_suite.py`). Webhook + real sandbox and GreenMail SMTP/IMAP tests repeat
   the key cases over the real transports.
-- An F12 trial costs a full reply deadline of wall time (`timeout_s` 45 s in `hecklr.yaml`), the
-  price of observing silence in real time (ADR 0012a).
+- An F12 trial costs a full reply deadline of wall time (`timeout_s` 120 s in `hecklr.yaml`), the
+  price of observing silence in real time (ADR 0012a). The deadline must exceed what a clean LLM
+  agent spends on a hung tool: luna's brain retries a timed-out tool several times under the 5 s
+  tool deadline, which took over 45 s, so the first deadline (45 s) timed out clean trials too.
+- The first luna `ci` matrix (45 s deadline, `resolved` on every guided scenario) passed the clean
+  agent on 38.9% of trials and left F11 and F12 inconclusive; RESULTS.md keeps it with the
+  matrix that followed the fix.
 - After an F12 trial ends, the sandbox releases the hung call, the brain answers late, and the
   reply POST gets `404` (no live conversation): the agent logs it and `/healthz` counts it in
   `replies_failed`.
