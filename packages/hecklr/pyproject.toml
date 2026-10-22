@@ -38,8 +38,8 @@ dependencies = [
 voice = ["hecklr-voice"]
 local-voice = ["hecklr-voice[local]"]
 mine = ["hecklr-mine"]
-# The UI server dependencies arrive with WS16; the extra exists now so install docs stay stable.
-ui = []
+# The UI server; the built React app ships inside the wheel (ADR 0016a).
+ui = ["fastapi>=0.156,<1", "uvicorn>=0.54,<1"]
 all = ["hecklr[voice,local-voice,mine,ui]"]
 
 [project.scripts]
@@ -55,3 +55,5 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hecklr"]
+# Built by `npm run build` in ui/ and git-ignored, so it must be named to be packaged.
+artifacts = ["src/hecklr/ui_api/static/**"]

@@ -12,7 +12,6 @@ PENDING_COMMANDS: Final[dict[str, str]] = {
     "mine": "Mine production logs into failure clusters and proposed scenarios.",
     "fix": "Generate and validate prompt patches for a failure cluster.",
     "bench": "Run or reproduce the public voice benchmark.",
-    "ui": "Start the local web UI.",
 }
 """Command name -> one-line help, in the order the spec lists them."""
 
