@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* The theme follows the OS until the reader picks one (the toggle sets `.dark` on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  }
+  a {
+    @apply text-sky-700 underline-offset-2 hover:underline dark:text-sky-400;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-sky-600;
+  }
+}

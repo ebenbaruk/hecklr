@@ -1317,14 +1317,20 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "fastapi" },
     { name = "hecklr-mine" },
     { name = "hecklr-voice", extra = ["local"] },
+    { name = "uvicorn" },
 ]
 local-voice = [
     { name = "hecklr-voice", extra = ["local"] },
 ]
 mine = [
     { name = "hecklr-mine" },
+]
+ui = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
 ]
 voice = [
     { name = "hecklr-voice" },
@@ -1333,6 +1339,7 @@ voice = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.10" },
+    { name = "fastapi", marker = "extra == 'ui'", specifier = ">=0.156,<1" },
     { name = "hecklr", extras = ["voice", "local-voice", "mine", "ui"], marker = "extra == 'all'", editable = "packages/hecklr" },
     { name = "hecklr-adapters", editable = "packages/hecklr-adapters" },
     { name = "hecklr-channels", editable = "packages/hecklr-channels" },
@@ -1352,6 +1359,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11" },
     { name = "rich", specifier = ">=14.0" },
     { name = "typer", specifier = ">=0.20" },
+    { name = "uvicorn", marker = "extra == 'ui'", specifier = ">=0.54,<1" },
 ]
 provides-extras = ["voice", "local-voice", "mine", "ui", "all"]
 

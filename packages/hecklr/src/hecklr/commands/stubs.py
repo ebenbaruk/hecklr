@@ -11,7 +11,6 @@ from hecklr.commands._common import stderr
 PENDING_COMMANDS: Final[dict[str, str]] = {
     "fix": "Generate and validate prompt patches for a failure cluster.",
     "bench": "Run or reproduce the public voice benchmark.",
-    "ui": "Start the local web UI.",
 }
 """Command name -> one-line help, in the order the spec lists them."""
 

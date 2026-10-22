@@ -23,6 +23,7 @@ from hecklr.commands.mine import mine
 from hecklr.commands.replay import replay
 from hecklr.commands.report import report
 from hecklr.commands.run import run
+from hecklr.commands.ui import ui
 
 app = typer.Typer(
     name="hecklr",
@@ -80,6 +81,7 @@ app.command(help="Self-tests: A/A false-positive rate, judge agreement, voice lo
 app.command(help="Convert real transcripts into replay scenarios.")(replay)
 app.command(help="Mine production logs into failure clusters and proposed scenarios.")(mine)
 app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
+app.command(help="Start the local web UI.")(ui)
 stubs.register(app)
 app.add_typer(github.app)
 
