@@ -109,11 +109,12 @@ class Tier:
     """Whether Hecklr calls a model (judges, guided customers); the free tier must not."""
 
 
-# Tier b's Hecklr share: in the M1 pilot (luna everywhere) the agent's own calls were 23% of spend.
+# Tier b's Hecklr share: in the M1 pilots (luna everywhere) the agent's own calls were 23-27% of
+# spend; 30% leaves the agent's pool a margin so it never runs dry mid-run.
 TIERS: Final[Mapping[TierName, Tier]] = {
     "free": Tier("rules", "smoke", Decimal("0.10"), Decimal(1), DETERMINISTIC_GRADERS, False),
     "a": Tier("rules", "matrix", Decimal("0.50"), Decimal(1), SPEC_GRADERS, True),
-    "b": Tier("llm", "matrix-live", Decimal(6), Decimal("0.8"), SPEC_GRADERS, True),
+    "b": Tier("llm", "matrix-live", Decimal(6), Decimal("0.7"), SPEC_GRADERS, True),
 }
 
 
