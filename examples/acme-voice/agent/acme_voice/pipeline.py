@@ -108,6 +108,8 @@ class CallerTurn:
 
     pcm: Pcm16
     floor: int
+    ended_ms: float
+    """When the agent decided the turn was over, on its clock."""
     transcription: Transcription | None = None
 
 
@@ -204,7 +206,9 @@ class VoiceCall:
         if self._speculation is None and self._silence_ms >= min(SPECULATE_AFTER_MS, end_ms):
             self._speculate(np.concatenate(self._utterance))
         if self._silence_ms >= end_ms:
-            turn = CallerTurn(np.concatenate(self._utterance), self.floor, self._speculation)
+            turn = CallerTurn(
+                np.concatenate(self._utterance), self.floor, self._clock(), self._speculation
+            )
             self._utterance, self._silence_ms, self._took_floor = None, 0, False
             self._speculation = None
             self._turns_in.send_nowait(turn)
@@ -231,6 +235,7 @@ class VoiceCall:
             raw = await turn.transcription.result()
         else:
             raw = (await self._stack.asr.transcribe(turn.pcm, language=self._stack.language)).text
+        heard_ms = self._clock()
         text = normalize_transcript(raw)
         if not text:
             _log.info("call.heard_nothing", audio_ms=len(turn.pcm) * 1000 // SAMPLE_RATE)
@@ -242,6 +247,11 @@ class VoiceCall:
         if superseded:
             return False
         await self._say(reply.text, turn.floor)
+        _log.info(
+            "call.answered",
+            asr_wait_ms=round(heard_ms - turn.ended_ms),
+            answer_ms=round(self._clock() - turn.ended_ms),
+        )
         if not reply.ended:
             return False
         # The handoff message must be heard in full before the line closes.

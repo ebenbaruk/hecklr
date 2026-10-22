@@ -8,7 +8,7 @@ mode: scripted
 goal: Book a boiler service for C-1802 (response latency)
 user_turns:
 - "I'd like to book a boiler service on Wednesday 28 October in the afternoon."
-- 'My customer number is C-1802 and my postcode is 75006.'
+- 'My customer number is C 1 8 0 2 and my postcode is 75006.'
 - 'Yes please.'
 success:
 - type: state
