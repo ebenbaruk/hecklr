@@ -241,31 +241,16 @@ async def test_the_error_is_reported_when_the_server_closes_while_audio_is_sent(
             await AssemblyAIASR(KEY, url=url).transcribe(_speech(10.0), language="en-US")
 
 
-def _rate_limited_then(script: Script, refusals: int) -> Script:
-    async def refuse_first(ws: ServerConnection, session: Session) -> None:
-        nonlocal refusals
-        if refusals:
-            refusals -= 1
-            await ws.send(json.dumps({"type": "Error", "error_code": 1008, "error": RATE_LIMITED}))
-            await ws.close(1008, "See Error message for details")
-            return
-        await script(ws, session)
-
-    return refuse_first
+async def _rate_limited(ws: ServerConnection, session: Session) -> None:
+    await ws.send(json.dumps({"type": "Error", "error_code": 1008, "error": RATE_LIMITED}))
+    await ws.close(1008, "See Error message for details")
 
 
-async def test_a_rate_limited_session_is_retried_after_a_backoff() -> None:
-    async with mock_server(_rate_limited_then(_two_turns, refusals=1)) as (url, sessions):
-        heard = await AssemblyAIASR(KEY, url=url).transcribe(_speech(0.3), language="en-US")
-    assert heard.text == "Your visit is booked. For Thursday."
-    assert len(sessions) == 2
-
-
-async def test_rate_limiting_until_the_deadline_says_so() -> None:
-    async with mock_server(_rate_limited_then(_two_turns, refusals=100)) as (url, _):
-        asr = AssemblyAIASR(KEY, url=url, timeout_s=0.3)
-        with pytest.raises(VoiceProviderError, match=RATE_LIMITED):
-            await asr.transcribe(_speech(0.1), language="en-US")
+async def test_the_session_limit_is_reported_with_the_batch_provider_as_the_way_out() -> None:
+    async with mock_server(_rate_limited) as (url, sessions):
+        with pytest.raises(VoiceProviderError, match="use assemblyai-batch/universal-2"):
+            await AssemblyAIASR(KEY, url=url).transcribe(_speech(0.3), language="en-US")
+    assert len(sessions) == 1
 
 
 async def test_a_refused_handshake_reports_the_http_status() -> None:

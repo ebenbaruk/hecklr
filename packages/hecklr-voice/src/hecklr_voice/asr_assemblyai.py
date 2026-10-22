@@ -10,8 +10,9 @@ polls the transcript instead; it has no per-minute session limit.
 Prices published in October 2026, per hour: streaming bills session duration, USD 0.15 for
 ``universal-streaming-*`` and 0.45 for ``universal-3-*-pro``; pre-recorded bills audio, USD 0.15
 for ``universal-2`` and 0.21 for ``universal-3-5-pro``. Free accounts open 5 streaming sessions
-per minute, which a single call can exceed: refused sessions are retried with backoff until the
-deadline.
+per minute, which a single call exceeds; retrying a refused session did not get through within a
+turn's deadline (refused attempts appear to count too), so the refusal is reported at once with
+the batch provider as the way out.
 """
 
 import contextlib
@@ -42,16 +43,11 @@ CHUNK_SAMPLES: Final = SAMPLE_RATE // 10
 MIN_CHUNK_SAMPLES: Final = SAMPLE_RATE // 20
 """A shorter last frame is padded with silence up to the 50 ms minimum."""
 RATE_LIMITED: Final = "Too many concurrent sessions"
-"""AssemblyAI's error text when an account opens sessions faster than its limit."""
+"""AssemblyAI's error text when an account opens sessions faster than its per-minute limit."""
 POLL_INTERVAL_S: Final = 0.25
 _QUEUE_FRAMES: Final = 4_096
 # Audio is sent before any reply is read. With websockets' default 16-frame queue, partial
 # transcripts arriving meanwhile would pause the socket; a turn produces far fewer than this.
-_MAX_BACKOFF_S: Final = 8.0
-
-
-class RateLimitedError(VoiceProviderError):
-    """AssemblyAI refused a new streaming session: too many opened in the last minute."""
 
 
 def _key(environ: Mapping[str, str], provider: str) -> str:
@@ -148,28 +144,19 @@ class AssemblyAIASR:
         (``-multilingual`` and the pro models).
 
         Raises:
-            VoiceProviderError: refused connection, server error, early close, or no
-                transcript before the deadline (rate-limited retries included).
+            VoiceProviderError: refused connection (including the per-minute session limit),
+                server error, early close, or no transcript before the deadline.
         """
         if not len(pcm):
             return Transcript("", 0.0)
         # The server reads audio at about 1.25x real time, so allow the audio's own length too.
         deadline_s = self._timeout_s + len(pcm) / SAMPLE_RATE
-        backoff_s = 1.0
-        limited = False
         try:
             with anyio.fail_after(deadline_s):
-                while True:
-                    try:
-                        return await self._session(pcm)
-                    except RateLimitedError:
-                        limited = True
-                        await anyio.sleep(backoff_s)
-                        backoff_s = min(2 * backoff_s, _MAX_BACKOFF_S)
+                return await self._session(pcm)
         except TimeoutError as exc:
-            cause = f" (sessions refused: {RATE_LIMITED})" if limited else ""
             raise VoiceProviderError(
-                f"assemblyai gave no transcript within {deadline_s:.0f} s{cause}"
+                f"assemblyai gave no transcript within {deadline_s:.0f} s"
             ) from exc
 
     async def _session(self, pcm: Pcm16) -> Transcript:
@@ -214,9 +201,13 @@ async def _read_until_termination(session: ClientConnection) -> Transcript:
             raise VoiceProviderError(f"assemblyai sent an unexpected message: {exc}") from exc
         if kind == "Error":
             code, error = event.get("error_code"), str(event.get("error"))
+            hint = ""
             if RATE_LIMITED.casefold() in error.casefold():
-                raise RateLimitedError(f"assemblyai error {code}: {error}")
-            raise VoiceProviderError(f"assemblyai error {code}: {error}")
+                hint = (
+                    " (the account's new streaming sessions per minute are used up, 5 on a free"
+                    " account; each agent turn opens one: use assemblyai-batch/universal-2)"
+                )
+            raise VoiceProviderError(f"assemblyai error {code}: {error}{hint}")
         if kind == "Termination":
             return turns.transcript()
     raise VoiceProviderError("assemblyai closed the session before Termination")
