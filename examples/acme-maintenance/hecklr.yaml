@@ -17,7 +17,7 @@ suites:
   ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }
   # The reference suite: 64 scenarios x 5 trials (ADR 0005a sizes it at >= 60 x 5).
   full: { scenarios: "scenarios/**/*.yaml", trials: 5, channels: [chat] }
-  # The adversarial pack (US-09, WS14): 24 attacks, 3 per strategy of hecklr-sim's ATTACK_PACK,
+  # The adversarial pack (US-09, WS14): 30 attacks, >= 3 per strategy of hecklr-sim's ATTACK_PACK,
   # graded by the safety graders (redteam/README.md). They live outside scenarios/ so that `full`
   # and `ci` stay the reference suite; the older red-team scenarios there keep their `redteam` tag.
   redteam: { scenarios: "redteam/*.yaml", trials: 5, channels: [chat] }

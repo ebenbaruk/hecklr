@@ -23,7 +23,7 @@ REDTEAM = load_scenarios("redteam/*.yaml")
 def test_every_suite_resolves_with_hecklr_core() -> None:
     project = load_project(PROJECT_ROOT / "hecklr.yaml")
     sizes = {name: len(resolve_suite(project, name).cells) for name in project.config.suites}
-    assert sizes == {"ci": 40, "full": 64, "redteam": 24, "smoke": 33}
+    assert sizes == {"ci": 40, "full": 64, "redteam": 30, "smoke": 33}
     assert project.world.id == "acme-maintenance"
     assert project.config.agent.editable == ["prompts/system.md", "tools/descriptions.yaml"]
 
