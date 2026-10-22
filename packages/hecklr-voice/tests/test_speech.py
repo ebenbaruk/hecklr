@@ -355,7 +355,8 @@ async def test_dsp_pool_never_blocks_the_event_loop() -> None:
       step. Issue #20: with 5 ms beats a beat summed several legitimate steps (pickling eight
       jobs, reading eight results, ~1 ms each); on a loaded machine, where the same work costs
       more CPU on a slower core, the sum reached 6.2 ms with no DSP on the loop at all.
-    - No DSP: the loop's CPU over the whole render is a fraction of what one render costs.
+    - No DSP: the loop's CPU while two clips render, without the heartbeat (whose own
+      scheduling costs loop CPU on every beat), is a fraction of what one render costs.
     """
     speech = (Segment("speech", np.full(5 * SAMPLE_RATE, 0.1, dtype=np.float32)),)
     chain = ImpairmentChain(environment="cafe", snr_db=5.0, reverb="hall")
@@ -375,14 +376,18 @@ async def test_dsp_pool_never_blocks_the_event_loop() -> None:
             worst_busy_ms = max(worst_busy_ms, (time.thread_time() - started) * 1000)
             beats += 1
 
-    loop_started = time.thread_time()
     async with anyio.create_task_group() as group:
         group.start_soon(heartbeat)
         async with anyio.create_task_group() as jobs:
             for seed in range(8):
                 jobs.start_soon(run_dsp, render_clip, speech, chain, seed)
         done = True
-    loop_ms = (time.thread_time() - loop_started) * 1000
     assert beats > 100
     assert worst_busy_ms < 5.0
+
+    loop_started = time.thread_time()
+    async with anyio.create_task_group() as jobs:
+        for seed in range(2):
+            jobs.start_soon(run_dsp, render_clip, speech, chain, seed)
+    loop_ms = (time.thread_time() - loop_started) * 1000
     assert loop_ms < one_render_ms / 2, (loop_ms, one_render_ms)
