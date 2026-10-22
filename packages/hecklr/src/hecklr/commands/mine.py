@@ -25,6 +25,7 @@ from hecklr.commands._common import (
     fail,
     load_project_or_exit,
     overrides,
+    stderr,
     stdout,
 )
 from hecklr_core import PERSONA_LIBRARY_GLOB, Project, load_model, open_llm
@@ -108,7 +109,12 @@ def mine(
         float, typer.Option(min=0.0, max=1.0, help="Similarity that makes a duplicate.")
     ] = 0.9,
     budget_usd: Annotated[
-        float | None, typer.Option(min=0.0, help="Spending cap [default: budget.usd].")
+        float | None,
+        typer.Option(
+            min=0.0,
+            help="Spending cap [default: budget.usd]. Checked before each model call, so the "
+            "calls already in flight (up to 8) can overshoot it slightly.",
+        ),
     ] = None,
 ) -> None:
     """Mine production logs into failure clusters and proposed scenarios."""
@@ -119,6 +125,12 @@ def mine(
             "hecklr mine needs the miner: pip install 'hecklr[mine]'", exit_codes.CONFIG_ERROR
         ) from exc
     project = load_project_or_exit(config)
+    if not (presidio or llm_scrub):
+        stderr.print(
+            "[yellow]warning[/]: person names are kept: the default scrubber only finds patterns "
+            "(e-mails, phones, addresses, cards, IBANs). Add --presidio or --llm-scrub to remove "
+            "names."
+        )
     chosen_model = None if no_model else (model or project.config.models.simulator)
     cap = Decimal(str(budget_usd)) if budget_usd is not None else project.config.budget.usd
     mine_root = project.output_dir / hecklr_mine.MINE_DIR
@@ -278,6 +290,12 @@ def _print(result: "MineResult", summary: "MineSummary", target: Path) -> None:
         stdout.print(
             f"[yellow]duplicate[/] {escape(duplicate.scenario_id)} ~ "
             f"{escape(duplicate.duplicate_of)} ({duplicate.similarity:.2f})"
+        )
+    if result.scrub_errors or result.summary_errors:
+        stdout.print(
+            f"[yellow]model replies unusable[/]: LLM scrub on {len(result.scrub_errors)} and "
+            f"summary on {len(result.summary_errors)} conversation(s); pattern scrubbing and "
+            "heuristic summaries were kept (see summary.json)."
         )
     for cluster_id, error in result.synthesis_errors.items():
         stdout.print(f"[yellow]no scenario for cluster {cluster_id}[/]: {escape(error)}")

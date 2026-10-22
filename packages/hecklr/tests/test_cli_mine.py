@@ -32,6 +32,10 @@ def _reply(request: LLMRequest) -> dict[str, Any]:
                 "resolving_tool": None, "tags": ["support"]}  # fmt: skip
     if request.schema_name == "JudgeVerdict":
         return {"verdict": "pass", "rationale": "fine", "evidence": []}
+    if request.schema_name == "FailureSummary":
+        return {"summary": "The agent failed the customer."}
+    if request.schema_name == "FoundEntities":
+        return {"entities": []}
     raise AssertionError(request.schema_name)
 
 
@@ -150,11 +154,59 @@ def test_mine_stops_at_the_budget(config_path: Path, logs: Path) -> None:
     assert "reached the cap" in output
 
 
-def test_mine_reports_model_failures_as_harness_errors(config_path: Path, logs: Path) -> None:
-    code, output = _mine(config_path, logs, "--judge", "resolved", llm=FakeLLM(script=[]))
+@pytest.mark.parametrize("args", [("--judge", "resolved"), ("--llm-scrub",), ("--llm-summaries",)])
+def test_mine_stops_at_the_budget_inside_concurrent_stages(
+    config_path: Path, logs: Path, args: tuple[str, ...]
+) -> None:
+    code, output = _mine(config_path, logs, *args, "--budget-usd", "0")
 
-    assert code == exit_codes.HARNESS_ERROR
+    assert code == exit_codes.BUDGET, output
+    assert "reached the cap" in output
+    assert "ExceptionGroup" not in output
+
+
+@pytest.mark.parametrize("args", [("--judge", "resolved"), ("--llm-scrub",), ("--llm-summaries",)])
+def test_mine_reports_model_failures_as_harness_errors(
+    config_path: Path, logs: Path, args: tuple[str, ...]
+) -> None:
+    code, output = _mine(config_path, logs, *args, llm=FakeLLM(script=[]))
+
+    assert code == exit_codes.HARNESS_ERROR, output
     assert "model call failed" in output
+
+
+def test_mine_keeps_going_when_summary_and_scrub_replies_are_unusable(
+    config_path: Path, logs: Path, tmp_path: Path
+) -> None:
+    def unusable(request: LLMRequest) -> Any:
+        if request.schema_name in {"FailureSummary", "FoundEntities"}:
+            return "not json"
+        return _reply(request)
+
+    out = tmp_path / "mined"
+    code, output = _mine(
+        config_path,
+        logs,
+        "--llm-scrub",
+        "--llm-summaries",
+        "--out",
+        str(out),
+        llm=FakeLLM(responder=unusable),
+    )
+
+    assert code == exit_codes.OK, output
+    summary = read_summary(out)
+    assert len(summary.scrub_errors) == 300
+    assert len(summary.summary_errors) == summary.failures > 0
+    assert "model replies unusable" in output
+    assert "person names are kept" not in output
+
+
+def test_mine_warns_that_default_scrubbing_keeps_names(config_path: Path, logs: Path) -> None:
+    code, output = _mine(config_path, logs, "--no-model")
+
+    assert code == exit_codes.OK, output
+    assert "person names are kept" in output
 
 
 def test_mine_without_a_persona_library_needs_persona(config_path: Path, logs: Path) -> None:
