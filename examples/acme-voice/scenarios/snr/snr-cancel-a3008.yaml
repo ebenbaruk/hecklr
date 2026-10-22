@@ -1,0 +1,17 @@
+id: voice-snr-cancel-a3008
+title: Cancel visit A-3008 (background noise)
+channels: [voice]
+tags: [voice, snr, catches-f10]
+persona: [cafe-caller-clean, cafe-caller-20db, cafe-caller-10db, cafe-caller-5db, cafe-caller-0db]
+world: acme-maintenance
+mode: scripted
+goal: Cancel visit A-3008 (background noise)
+user_turns:
+- 'I need to cancel my visit please.'
+- 'My customer number is C-1533 and my postcode is 75013.'
+- 'Yes, cancel it.'
+success:
+- type: state
+  expr: "world.appointments['A-3008'].status == 'cancelled'"
+  description: the visit is cancelled
+limits: {max_turns: 16, max_duration_s: 150}

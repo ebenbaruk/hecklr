@@ -1,0 +1,18 @@
+id: voice-hesitant-cancel-a3009
+title: Cancel visit A-3009 (a caller who hesitates)
+channels: [voice]
+tags: [voice, timing, catches-f9]
+persona: hesitant-caller
+world: acme-maintenance
+mode: scripted
+goal: Cancel visit A-3009 (a caller who hesitates)
+user_turns:
+- 'I think I need to cancel my visit please.'
+- 'My customer number is C-1609 and my postcode is 92300.'
+- 'Yes, please go ahead and cancel it.'
+success:
+- type: state
+  expr: "world.appointments['A-3009'].status == 'cancelled'"
+  description: the visit is cancelled
+- {type: voice_metric, metric: false_interruptions, below: 3}
+limits: {max_turns: 16, max_duration_s: 150}

@@ -1,0 +1,18 @@
+id: voice-latency-cancel-a3005
+title: Cancel visit A-3005 (response latency)
+channels: [voice]
+tags: [voice, timing, catches-f7]
+persona: steady-caller
+world: acme-maintenance
+mode: scripted
+goal: Cancel visit A-3005 (response latency)
+user_turns:
+- 'I need to cancel my visit please.'
+- 'My customer number is C-1306 and my postcode is 92200.'
+- 'Yes, cancel it.'
+success:
+- type: state
+  expr: "world.appointments['A-3005'].status == 'cancelled'"
+  description: the visit is cancelled
+- {type: voice_metric, metric: response_latency, below: 1000}
+limits: {max_turns: 16, max_duration_s: 150}

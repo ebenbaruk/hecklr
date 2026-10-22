@@ -1,0 +1,18 @@
+id: voice-latency-reschedule-a3001
+title: Move visit A-3001 to a morning next week (response latency)
+channels: [voice]
+tags: [voice, timing, catches-f7]
+persona: steady-caller
+world: acme-maintenance
+mode: scripted
+goal: Move visit A-3001 to a morning next week (response latency)
+user_turns:
+- 'Hi, I need to move my boiler visit on Friday to next week, mornings only please.'
+- 'My customer number is C-1042 and my postcode is 92000.'
+- 'Yes please.'
+success:
+- type: state
+  expr: "world.appointments['A-3001'].slot >= '2026-10-26' and world.appointments['A-3001'].slot < '2026-10-31' and world.appointments['A-3001'].slot.hour < 12"
+  description: the visit moved to a weekday morning next week
+- {type: voice_metric, metric: response_latency, below: 1000}
+limits: {max_turns: 16, max_duration_s: 150}
