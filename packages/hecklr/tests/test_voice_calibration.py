@@ -5,7 +5,6 @@ import pytest
 from hecklr.voice_calibration import (
     INJECTED_DELAYS_MS,
     INJECTED_REACTIONS_MS,
-    SC4_BOUND_MS,
     TimingCheck,
     all_passed,
     run_voice_loopback,
@@ -15,6 +14,7 @@ from hecklr_schemas import IntervalMethod
 
 @pytest.mark.anyio
 @pytest.mark.slow
+@pytest.mark.sc4_timing
 async def test_sc4_loopback_measures_every_setting() -> None:
     checks = await run_voice_loopback(seed=7)
 
@@ -23,9 +23,7 @@ async def test_sc4_loopback_measures_every_setting() -> None:
         *(("barge_in_reaction", reaction) for reaction in INJECTED_REACTIONS_MS),
     ]
     assert all(len(check.errors_ms) >= 2 for check in checks)
-    # The 20 ms verdict itself is asserted on an idle machine (test_cli_calibrate); a parallel
-    # run measures its neighbours too. Gross errors would mean a broken measurement, not load.
-    assert all(check.worst_ms < 10 * SC4_BOUND_MS for check in checks)
+    assert all_passed(checks), [(c.metric, c.injected_ms, c.worst_ms) for c in checks]
 
 
 def test_timing_check_verdict_and_interval() -> None:

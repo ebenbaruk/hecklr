@@ -226,6 +226,7 @@ def test_calibrate_needs_a_self_test(config_path: Path) -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.sc4_timing
 def test_sc4_calibrate_voice_loopback_measures_within_20ms(tmp_path: Path) -> None:
     # The installed console script, in a subprocess: the voice engine's DSP worker processes
     # must start under the real entry point (they failed to import it, see hecklr.cli.main).
@@ -242,15 +243,8 @@ def test_sc4_calibrate_voice_loopback_measures_within_20ms(tmp_path: Path) -> No
     code = done.returncode
     output = " ".join((done.stdout + done.stderr).replace("│", " ").split())
 
-    # Ten real-time calls measure this machine as much as the harness: next to a parallel test
-    # run's other workers, a loaded CPU can push one reply past 20 ms, and the command rightly
-    # says so (exit 1). The verdict is asserted on an otherwise idle machine, as the voice
-    # contract's SC4 cases are; the command must run to a full table everywhere.
-    if os.environ.get("PYTEST_XDIST_WORKER"):
-        assert code in (exit_codes.OK, exit_codes.CHECK_FAILED), output
-    else:
-        assert code == exit_codes.OK, output
-        assert "Voice loopback: passed" in output
+    assert code == exit_codes.OK, output
+    assert "Voice loopback: passed" in output
     for metric, injected in [
         ("response_latency", 300), ("response_latency", 600), ("response_latency", 900),
         ("barge_in_reaction", 150), ("barge_in_reaction", 300),

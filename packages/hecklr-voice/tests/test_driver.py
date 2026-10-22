@@ -91,6 +91,7 @@ async def test_ws9_voice_driver_satisfies_the_channel_driver_protocol() -> None:
     assert driver.channel.value == "voice"
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_response_latency_within_20ms_of_injected_delay() -> None:
     results: dict[int, RecordingSink] = {}
 
@@ -110,6 +111,7 @@ async def test_sc4_response_latency_within_20ms_of_injected_delay() -> None:
         assert abs(p50.value - delay_ms) <= TOLERANCE_MS
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_barge_in_reaction_within_20ms_of_injected_reaction() -> None:
     results: dict[int, RecordingSink] = {}
 

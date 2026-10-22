@@ -190,11 +190,11 @@ async def test_ws10_contract_agent_audio_arrives_as_real_time_16khz_frames(
         assert transcript.text == LONG_REPLY
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_contract_response_latency_within_20ms_of_injected_delay(
     case: VoiceCase,
 ) -> None:
     """Measured latency = the agent's delay (as it actually spoke) + a constant transport delay."""
-    case.require_idle_cpu_for_timing()
     offsets: list[float] = []
 
     async def measure(delay_ms: int) -> None:
@@ -215,11 +215,11 @@ async def test_sc4_contract_response_latency_within_20ms_of_injected_delay(
     case.check_offsets(offsets, spread_ms=0.0)
 
 
+@pytest.mark.sc4_timing
 async def test_sc4_contract_barge_in_reaction_within_20ms_of_injected_reaction(
     case: VoiceCase,
 ) -> None:
     """Measured reaction = the agent's reaction (as it actually stopped) + transport delay."""
-    case.require_idle_cpu_for_timing()
     offsets: list[float] = []
 
     async def measure(reaction_ms: int) -> None:
