@@ -4,9 +4,12 @@ For one tier, the script starts the ``acme-maintenance`` agent over HTTP once pe
 ``hecklr run`` against it, then gates every candidate against the clean baseline with
 ``hecklr gate`` and writes a verdict table (``matrix.json`` and ``matrix.md``)::
 
-    uv run python scripts/fault-matrix/fault_matrix.py --tier free --out .fault-matrix
+    uv run python scripts/fault-matrix/fault_matrix.py --tier free
     uv run --env-file .env python scripts/fault-matrix/fault_matrix.py --tier a
     uv run --env-file .env python scripts/fault-matrix/fault_matrix.py --tier b --budget-usd 6
+
+Everything (a copy of the suite files, the result store, reports, logs) goes to ``--out``,
+``.hecklr/fault-matrix/<tier>`` (git-ignored) by default.
 
 Tiers:
 
@@ -689,7 +692,9 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     """The command line flags."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tier", choices=list(TIERS), required=True)
-    parser.add_argument("--out", type=Path, help="output directory [default: .fault-matrix/<tier>]")
+    parser.add_argument(
+        "--out", type=Path, help="output directory [default: .hecklr/fault-matrix/<tier>]"
+    )
     parser.add_argument("--budget-usd", type=Decimal, help="hard cap on all spend [tier default]")
     parser.add_argument("--trials", type=int, help="trials per scenario [the suite's]")
     parser.add_argument("--seed", type=int, help="root seed [hecklr.yaml's]")
@@ -712,7 +717,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if unknown:
         sys.stderr.write(f"unknown variants: {unknown}\n")
         return 2
-    out: Path = (args.out or REPO_ROOT / ".fault-matrix" / tier_name).resolve()
+    out: Path = (args.out or REPO_ROOT / ".hecklr" / "fault-matrix" / tier_name).resolve()
     out.mkdir(parents=True, exist_ok=True)
     port = free_port()
     config = prepare_project(out, port, args.concurrency)
