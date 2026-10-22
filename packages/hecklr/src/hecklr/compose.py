@@ -15,12 +15,18 @@ import math
 import os
 import subprocess
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
+from hecklr.channels import (
+    BuiltDriver,
+    make_email_driver,
+    make_voice_driver,
+)
+from hecklr.config import load_project_config
 from hecklr.testing import scripted_models
 from hecklr_adapters import make_chat_target
 from hecklr_channels import ChatDriver
@@ -34,7 +40,6 @@ from hecklr_core import (
     RunResults,
     TrialGrader,
     extend_matrix,
-    load_project,
     open_llm,
     plan_run,
     resolve_suite,
@@ -66,25 +71,13 @@ from hecklr_schemas import (
 from hecklr_schemas.common import ModelName
 from hecklr_sim import make_simulator
 from hecklr_stats import ScenarioCounts, TrialOutcome, allocate_trials
-from hecklr_world import Sandbox, load_world
+from hecklr_world import Sandbox
 
 ADAPTIVE_EXTRA_SHARE: Final = 0.5
 """``--adaptive`` spends up to this share of the first pass's trials on a second pass."""
 
-_UNAVAILABLE_CHANNELS: Final[Mapping[Channel, str]] = {
-    Channel.VOICE: (
-        "the voice channel driver is not available in this version yet (it ships with the "
-        "hecklr[voice] extra)"
-    ),
-    Channel.EMAIL: "the email channel driver is not available in this version yet",
-}
-
 TrialCallback = Callable[[Trial, Sequence[Grade]], None]
 """Called after each trial is stored, e.g. to advance a progress bar."""
-
-
-class ChannelUnavailableError(Exception):
-    """The suite needs a channel whose driver is not installed or not built yet."""
 
 
 class UnknownBaselineError(LookupError):
@@ -120,6 +113,8 @@ class PreparedRun:
     drivers: Mapping[Channel, ChannelDriver]
     grade_trial: TrialGrader
     adaptive: bool
+    releases: tuple[Callable[[], None], ...] = ()
+    """Called once the run ends, e.g. to stop the email webhook's reply endpoint."""
 
     @property
     def project(self) -> Project:
@@ -149,8 +144,9 @@ def prepare_run(request: RunRequest) -> PreparedRun:
         hecklr_world.WorldConfigError: the world's seed data cannot be loaded.
         hecklr_core.BudgetEstimateError: the cost estimate exceeds the budget.
         hecklr_llm.UnknownPriceError: a paid model has no known price.
-        ChannelUnavailableError: the suite needs a voice or email driver.
-        hecklr_adapters.AdapterConfigError: the chat adapter cannot work.
+        ChannelUnavailableError: a voice suite without ``hecklr-voice``, or a voice provider
+            (TTS, ASR, line codec) this machine cannot run.
+        hecklr_adapters.AdapterConfigError: an adapter cannot work.
         hecklr_grade.InvalidCriterionError: a success criterion can never be graded.
         UnknownBaselineError: ``baseline_id`` is not a stored run.
     """
@@ -160,8 +156,6 @@ def prepare_run(request: RunRequest) -> PreparedRun:
     suite = resolve_suite(project, request.suite, trials=request.trials, channels=request.channels)
     baseline = _check_baseline(project, request.baseline_id)
     grader = make_trial_grader(suite.scenarios)
-    channels = {channel for cell in suite.cells for channel in cell.channels}
-    drivers = build_drivers(project, channels)
     plan = plan_run(
         suite,
         budget_usd=request.budget_usd,
@@ -169,15 +163,27 @@ def prepare_run(request: RunRequest) -> PreparedRun:
         git_sha=detect_git_sha(project.root),
         baseline_id=baseline,
     )
+    channels = {channel for cell in suite.cells for channel in cell.channels}
+    run_dir = project.output_dir / RUNS_DIR / plan.run.id
+    built = build_drivers(project, channels, personas=suite.personas.values(), run_dir=run_dir)
     adaptive = suite.settings.adaptive if request.adaptive is None else request.adaptive
-    return PreparedRun(plan=plan, drivers=drivers, grade_trial=grader, adaptive=adaptive)
+    return PreparedRun(
+        plan=plan,
+        drivers={channel: entry.driver for channel, entry in built.items()},
+        grade_trial=grader,
+        adaptive=adaptive,
+        releases=tuple(entry.close for entry in built.values() if entry.close is not None),
+    )
 
 
 def load_run_project(
     config_path: Path, *, seed: int | None = None, output_dir: Path | None = None
 ) -> Project:
-    """``load_project`` with the world's seed files inlined and CLI overrides applied."""
-    project = load_project(config_path)
+    """The project with the world's seed files inlined and CLI overrides applied.
+
+    ``hecklr.yaml`` may name the ``websocket`` voice adapter (RFC 0010a, ``hecklr.config``).
+    """
+    project = load_project_config(config_path)
     updates: dict[str, object] = {}
     if seed is not None:
         updates["seed"] = seed
@@ -185,8 +191,7 @@ def load_run_project(
         # An absolute path survives ``root / output_dir`` unchanged; a relative one is taken from
         # the current directory, as a command-line path should be.
         updates["output_dir"] = str(output_dir.resolve())
-    world = load_world(project.root / project.config.world)
-    return replace(project, config=project.config.model_copy(update=updates), world=world)
+    return replace(project, config=project.config.model_copy(update=updates))
 
 
 def make_trial_grader(scenarios: Mapping[str, Scenario]) -> TrialGrader:
@@ -203,21 +208,30 @@ def make_trial_grader(scenarios: Mapping[str, Scenario]) -> TrialGrader:
     return grade
 
 
-def build_drivers(project: Project, channels: set[Channel]) -> dict[Channel, ChannelDriver]:
-    """One driver per channel the run uses, each bound to the agent's adapter for it."""
-    missing = sorted(channel.value for channel in channels if channel in _UNAVAILABLE_CHANNELS)
-    if missing:
-        reasons = "; ".join(_UNAVAILABLE_CHANNELS[Channel(name)] for name in missing)
-        raise ChannelUnavailableError(
-            f"this suite runs on {missing}, but {reasons}. "
-            "Run the chat channel only with `--channels chat`."
-        )
-    drivers: dict[Channel, ChannelDriver] = {}
-    chat = project.config.agent.adapters.chat
-    if Channel.CHAT in channels and chat is not None:
-        if isinstance(chat, PythonAdapterConfig):
+def build_drivers(
+    project: Project, channels: set[Channel], *, personas: Iterable[Persona], run_dir: Path
+) -> dict[Channel, BuiltDriver]:
+    """One driver per channel the run uses, each bound to the agent's adapter for it.
+
+    ``personas`` are checked for what the voice channel needs; voice recordings go under
+    ``run_dir``. ``resolve_suite`` already refused a channel without an adapter.
+    """
+    adapters = project.config.agent.adapters
+    drivers: dict[Channel, BuiltDriver] = {}
+    if Channel.CHAT in channels and adapters.chat is not None:
+        if isinstance(adapters.chat, PythonAdapterConfig):
             _make_importable(project.root)
-        drivers[Channel.CHAT] = ChatDriver(make_chat_target(chat))
+        drivers[Channel.CHAT] = BuiltDriver(ChatDriver(make_chat_target(adapters.chat)))
+    if Channel.VOICE in channels and adapters.voice is not None:
+        drivers[Channel.VOICE] = make_voice_driver(
+            adapters.voice,
+            personas,
+            asr_model=project.config.models.asr,
+            output_dir=project.output_dir,
+            run_dir=run_dir,
+        )
+    if Channel.EMAIL in channels and adapters.email is not None:
+        drivers[Channel.EMAIL] = make_email_driver(adapters.email)
     return drivers
 
 
@@ -300,6 +314,21 @@ async def execute_run(
     if llm_providers is None:
         llm_providers = scripted_models()
     await check_model_providers(config.models, prepared.models_called, llm_providers)
+    try:
+        return await _execute(prepared, llm_providers, on_trial, on_adaptive)
+    finally:
+        for release in prepared.releases:
+            release()
+
+
+async def _execute(
+    prepared: PreparedRun,
+    llm_providers: Mapping[str, LLMProvider],
+    on_trial: TrialCallback | None,
+    on_adaptive: Callable[[int], None] | None,
+) -> RunResults:
+    project = prepared.project
+    config = project.config
     async with (
         open_llm(config, project.output_dir, providers=llm_providers) as llm,
         Sandbox(tool_mode=config.agent.tool_mode) as sandbox,
