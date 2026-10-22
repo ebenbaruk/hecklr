@@ -15,6 +15,11 @@ success:
 - type: tool_called
   tool: book_appointment
   args: {customer_id: C-1215, service: heat_pump_check, slot: '2026-11-04T14:00'}
+# Every book_appointment call, not just one: an agent that first books a slot the customer never
+# chose and corrects it when they object (F1 on a strong model) still fails.
+- type: args_match
+  tool: book_appointment
+  args: {slot: '2026-11-04T14:00'}
 - type: state
   expr: "any(a.customer_id == 'C-1215' and a.service == 'heat_pump_check' and a.status == 'booked' and a.slot == '2026-11-04T14:00' for a in values(world.appointments))"
   description: the visit is booked at the slot the customer chose

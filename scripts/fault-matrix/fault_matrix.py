@@ -72,8 +72,11 @@ spend money: any accidental call fails authentication."""
 
 TierName = Literal["free", "a", "b"]
 
+TOOL_GRADERS: Final = frozenset({"tool_called", "tool_not_called", "args_match", "call_order"})
+"""The spec's Tool grader family (spec, "Graders"): the fault table's ``tool_called`` for F1."""
+
 SPEC_GRADERS: Final[Mapping[str, tuple[str, ...]]] = {
-    "F1": ("tool_called", "judge:resolved"),
+    "F1": ("tool", "judge:resolved"),
     "F2": ("state",),
     "F3": ("judge:no_hallucination",),
     "F4": ("no_cross_customer_data",),
@@ -84,12 +87,12 @@ SPEC_GRADERS: Final[Mapping[str, tuple[str, ...]]] = {
 
 DETERMINISTIC_GRADERS: Final[Mapping[str, tuple[str, ...]]] = {
     **SPEC_GRADERS,
-    "F1": ("tool_called",),
+    "F1": ("tool",),
     "F3": ("not_contains",),
-    "F6": ("tool_called",),
+    "F6": ("tool",),
 }
 """The free tier's graders: the spec's where they are deterministic, else the deterministic
-backstop the scenarios carry (F1 keeps ``tool_called`` without its ``resolved`` judge)."""
+backstop the scenarios carry (F1 keeps its tool grader without its ``resolved`` judge)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,9 +186,16 @@ class Matrix(BaseModel):
 
 
 def grader_family(criterion: SuccessCriterion) -> str:
-    """The grader a criterion belongs to, as the spec's fault table names graders."""
+    """The grader a criterion belongs to, as the spec's fault table names graders.
+
+    The four tool criteria are one family, ``tool``: F1's tool-level symptom on a strong model is
+    a booking call with a slot the customer never chose, corrected after they object, which only
+    ``args_match`` sees (``tool_called`` finds the corrected call). ADR 0020a.
+    """
     if criterion.type == "judge":
         return f"judge:{criterion.rubric}"
+    if criterion.type in TOOL_GRADERS:
+        return "tool"
     return criterion.type
 
 
@@ -451,7 +461,13 @@ def derive_config(
     """
     derived = json.loads(json.dumps(config))
     chat = derived["agent"]["adapters"]["chat"]
-    chat["url"] = re.sub(r"//127\.0\.0\.1:\d+/", f"//127.0.0.1:{port}/", chat["url"])
+    url, replaced = re.subn(r"^http://127\.0\.0\.1:\d+/", f"http://127.0.0.1:{port}/", chat["url"])
+    if not replaced:
+        # Without the rewrite every variant would talk to whatever listens on the original port.
+        raise MatrixError(
+            f"cannot point {chat['url']!r} at the agent: expected http://127.0.0.1:<port>/"
+        )
+    chat["url"] = url
     derived["output_dir"] = str(store)
     if concurrency is not None:
         derived.setdefault("budget", {})["concurrency"] = concurrency
@@ -604,7 +620,9 @@ class Runner:
         """The baseline's own analysis (its trials and failure causes) and its HTML report."""
         target = self.out / "reports" / record.variant
         args = ["report", record.run_id, "-c", str(self.config), "-f", "json", "-f", "html"]
-        with (self.out / "logs" / f"{record.variant}-report.log").open("w") as log:
+        with (self.out / "logs" / f"{record.variant}-report.log").open(
+            "w", encoding="utf-8"
+        ) as log:
             code, _ = hecklr([*args, "--out-dir", str(target)], log=log, env=self.env)
         if code != 0:
             raise MatrixError(f"hecklr report for {record.variant} exited {code}")
@@ -615,7 +633,7 @@ class Runner:
         target = self.out / "reports" / record.variant
         args = ["gate", "-c", str(self.config), "--candidate", record.run_id]
         args += ["--baseline", baseline.run_id, "--out-dir", str(target)]
-        with (self.out / "logs" / f"{record.variant}-gate.log").open("w") as log:
+        with (self.out / "logs" / f"{record.variant}-gate.log").open("w", encoding="utf-8") as log:
             code, _ = hecklr(args, log=log, env=self.env)
         report = target / "report.json"
         if not report.is_file():
@@ -720,14 +738,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     out: Path = (args.out or REPO_ROOT / ".hecklr" / "fault-matrix" / tier_name).resolve()
     out.mkdir(parents=True, exist_ok=True)
     port = free_port()
-    config = prepare_project(out, port, args.concurrency)
-    seed = args.seed if args.seed is not None else int(yaml.safe_load(config.read_text())["seed"])
     env = dict(os.environ)
     if not tier.calls_models:
         env.setdefault("OPENAI_API_KEY", NO_KEY_PLACEHOLDER)
     budget = Budget.split(args.budget_usd or tier.budget_usd, tier.hecklr_share)
-    runner = Runner(tier_name, tier, out, config, port, seed, budget, args.trials, env, sys.stdout)
     try:
+        config = prepare_project(out, port, args.concurrency)
+        seed = (
+            args.seed if args.seed is not None else int(yaml.safe_load(config.read_text())["seed"])
+        )
+        runner = Runner(
+            tier_name, tier, out, config, port, seed, budget, args.trials, env, sys.stdout
+        )
         matrix = run_matrix(runner, variants)
     except MatrixError as exc:
         sys.stderr.write(f"fault matrix: {exc}\n")

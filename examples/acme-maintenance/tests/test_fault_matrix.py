@@ -31,7 +31,7 @@ import fault_matrix as fm
 STATS = StatsConfig(bootstrap_resamples=500)
 
 
-def scenario(sid: str, *criteria: Mapping[str, str]) -> Scenario:
+def scenario(sid: str, *criteria: Mapping[str, object]) -> Scenario:
     return Scenario.model_validate(
         {
             "id": sid,
@@ -96,16 +96,33 @@ def grader(name: str, verdict: Verdict) -> fm.GraderResult:
 
 
 def test_grader_families_follow_the_spec_table() -> None:
+    tool_called = {"type": "tool_called", "tool": "book_appointment"}
+    args_match = {"type": "args_match", "tool": "book_appointment", "args": {"slot": "x"}}
+    no_refund = {"type": "no_unauthorized_refund"}
     families = fm.families_by_label(
-        {"s": scenario("s", RESOLVED, STATE, {"type": "tool_called", "tool": "book_appointment"})}
+        {"s": scenario("s", RESOLVED, STATE, tool_called, args_match, no_refund)}
     )
     assert families == {
         "s": {
             "judge:resolved": "judge:resolved",
             "state: visit booked": "state",
-            "tool_called book_appointment": "tool_called",
+            "tool_called book_appointment": "tool",
+            "args_match book_appointment": "tool",
+            "no_unauthorized_refund": "no_unauthorized_refund",
         }
     }
+
+
+def test_sc8_f1_booking_the_wrong_slot_first_regresses_the_tool_grader() -> None:
+    """F1 on luna: the corrected booking satisfies tool_called; args_match sees the first one."""
+    tool_called = {"type": "tool_called", "tool": "book_appointment", "args": {"slot": "x"}}
+    args_match = {"type": "args_match", "tool": "book_appointment", "args": {"slot": "x"}}
+    ids = [f"s{i}" for i in range(6)]
+    scenarios = {sid: scenario(sid, tool_called, args_match) for sid in ids}
+    baseline = [row(sid) for sid in ids]
+    candidate = [row(sid, "args_match book_appointment") for sid in ids]
+    (tool,) = compare(baseline, candidate, scenarios)
+    assert (tool.grader, tool.verdict) == ("tool", Verdict.REGRESSION)
 
 
 def test_grader_outcomes_count_only_scenarios_carrying_the_grader() -> None:
@@ -152,7 +169,7 @@ def test_a_grader_with_no_shared_scenario_is_not_compared() -> None:
         (("state",), 1, ("state",), True),
         (("state",), 1, (), False),  # the suite regressed, but not on the spec's grader
         (("state",), 2, ("state",), False),  # the gate did not fail
-        (("tool_called", "judge:resolved"), 1, ("tool_called",), False),
+        (("tool", "judge:resolved"), 1, ("tool",), False),
     ],
 )
 def test_sc8_pass_rule(
@@ -224,6 +241,13 @@ def test_the_derived_config_points_at_the_agent_and_a_private_store(tmp_path: Pa
     assert derived["output_dir"] == str(tmp_path)
     assert derived["budget"] == {"usd": 5, "concurrency": 12}
     assert source["budget"] == {"usd": 5, "concurrency": 4}
+    with pytest.raises(fm.MatrixError, match="cannot point"):
+        fm.derive_config(
+            {"agent": {"adapters": {"chat": {"url": "http://localhost:8000/chat"}}}},
+            port=9123,
+            store=tmp_path,
+            concurrency=None,
+        )
     assert fm.derive_config(source, port=1, store=tmp_path, concurrency=None)["budget"] == {
         "usd": 5,
         "concurrency": 4,

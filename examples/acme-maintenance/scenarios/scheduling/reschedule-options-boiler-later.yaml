@@ -16,6 +16,11 @@ success:
 - type: tool_called
   tool: reschedule_appointment
   args: {appointment_id: A-3010, slot: '2026-11-12T09:00'}
+# Every reschedule_appointment call, not just one: an agent that first books a slot the customer never
+# chose and corrects it when they object (F1 on a strong model) still fails.
+- type: args_match
+  tool: reschedule_appointment
+  args: {slot: '2026-11-12T09:00'}
 - type: state
   expr: "world.appointments['A-3010'].slot == '2026-11-12T09:00'"
   description: the visit moved to the slot the customer chose
