@@ -20,6 +20,7 @@ from hecklr_voice.asr import (
     reference_samples,
     wer,
 )
+from hecklr_voice.asr_assemblyai import AssemblyAIASR, AssemblyAIBatchASR
 from hecklr_voice.call import CallStats, VoiceSettings
 from hecklr_voice.codec import line_available
 from hecklr_voice.driver import VoiceDriver
@@ -45,6 +46,8 @@ __all__ = [
     "TTS_PROVIDERS",
     "AsrQuality",
     "AsrSample",
+    "AssemblyAIASR",
+    "AssemblyAIBatchASR",
     "CachedTTS",
     "CallStats",
     "CartesiaTTS",

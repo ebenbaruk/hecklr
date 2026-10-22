@@ -13,6 +13,7 @@ from typing import Final
 import httpx2
 
 from hecklr_voice.asr import ASR, DeepgramASR, FakeASR, WhisperASR
+from hecklr_voice.asr_assemblyai import AssemblyAIASR, AssemblyAIBatchASR
 from hecklr_voice.errors import VoiceConfigError
 from hecklr_voice.models import DEFAULT_MODELS_DIR
 from hecklr_voice.tts import TTS, CachedTTS, SyntheticTTS
@@ -56,7 +57,11 @@ def make_asr(
     environ: Mapping[str, str] | None = None,
     transport: httpx2.AsyncBaseTransport | None = None,
 ) -> ASR:
-    """The ASR named by ``models.asr``: ``fake/*``, ``faster-whisper/<size>``, ``deepgram/<model>``.
+    """The ASR named by ``models.asr``.
+
+    ``fake/*``, ``faster-whisper/<size>``, ``deepgram/<model>``, ``assemblyai/<speech model>``
+    (streaming, e.g. ``assemblyai/universal-streaming-english``) or
+    ``assemblyai-batch/<speech model>`` (pre-recorded, e.g. ``assemblyai-batch/universal-2``).
 
     Raises:
         VoiceConfigError: unknown provider, missing API key, or the ``local`` extra not installed.
@@ -72,6 +77,10 @@ def make_asr(
             return WhisperASR(name, models_dir=models_dir)
         case "deepgram":
             return DeepgramASR.from_environ(env, name, transport=transport)
+        case "assemblyai":
+            return AssemblyAIASR.from_environ(env, name)
+        case "assemblyai-batch":
+            return AssemblyAIBatchASR.from_environ(env, name, transport=transport)
         case _:
-            known = "fake, faster-whisper, deepgram"
+            known = "fake, faster-whisper, deepgram, assemblyai, assemblyai-batch"
             raise VoiceConfigError(f"unknown ASR provider {provider!r}; known: {known}")

@@ -1390,6 +1390,7 @@ dependencies = [
     { name = "httpx2" },
     { name = "numpy" },
     { name = "scipy" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1418,6 +1419,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.3" },
     { name = "onnxruntime", marker = "extra == 'local'", specifier = ">=1.22" },
     { name = "scipy", specifier = ">=1.16" },
+    { name = "websockets", specifier = ">=15" },
 ]
 provides-extras = ["local"]
 
