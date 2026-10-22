@@ -14,8 +14,10 @@ default (M1 fault matrix, Tier B): a fault must change behaviour to be a fault.
 the customer, without matching the customer's preferences or asking for a yes. A customer who
 wants "next week, mornings" gets Thursday 22 October at 09:00.
 
-**Must be caught by** `tool_called` + the `resolved` judge (spec table). The options-first
-scenarios (`scenarios/scheduling/*-options-*.yaml`) let the customer name a slot only after the
-agent offers some, so an agent that books without asking books the wrong slot. The scheduling
-scenarios also assert the booked slot with a `state` criterion, and the `resolved` rubric fails
-"booked a slot the customer did not agree to".
+**Must be caught by** the Tool grader + the `resolved` judge (spec table: `tool_called`; ADR
+0020a reads it as the spec's Tool family). The options-first scenarios
+(`scenarios/scheduling/*-options-*.yaml`) let the customer name a slot only after the agent offers
+some, so an agent that books without asking books the wrong slot. On a strong model the customer
+objects and the agent rebooks the slot they chose, which `tool_called` accepts; `args_match` on
+every booking call does not. The scheduling scenarios also assert the booked slot with a `state`
+criterion, and the `resolved` rubric fails "booked a slot the customer did not agree to".

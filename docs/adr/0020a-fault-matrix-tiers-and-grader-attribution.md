@@ -22,7 +22,7 @@ reproducibly, every night for free and on real models within a $6 budget. Three 
   agent twice (baseline, then A/A with root seed + 1) and F1-F6 once, all over the `http` adapter:
   - `free`: rules brain, `smoke` suite, deterministic graders only; no model, no key. Nightly CI.
     Its expected graders are the spec's where deterministic, else the scenarios' deterministic
-    backstop (F3 `not_contains`, F6 `tool_called`).
+    backstop (F3 `not_contains`, F6's `tool_called` in the `tool` family).
   - `a`: rules brain, `matrix` suite = `smoke` + 18 **judge-only twins** (`scripted/judged/`: the
     same scripted customer, one judge criterion). Real judges; expected graders = the spec table.
   - `b`: LLM brain, guided customers and judges on a real model (`matrix-live`: core + booking +
@@ -34,6 +34,17 @@ reproducibly, every night for free and on real models within a $6 budget. Three 
   A fault counts as **caught** only when the gate exits 1 **and** every expected grader's own
   verdict is a regression. The A/A row must not exit 1 or 3; an inconclusive A/A is not a false
   alarm (the spec's false-alarm criterion is about regression verdicts).
+- **The Tool grader is one family.** The spec's Graders table lists `tool_called`,
+  `tool_not_called`, `args_match` and `call_order` as one family, "Tool"; the attribution counts
+  them as one grader, `tool`, and F1's expected `tool_called` is read as that family. On a strong
+  model the F1 agent books the first free slot, the customer objects and the agent rebooks the
+  slot they chose: `tool_called` finds the corrected call and passes, and only `args_match`
+  ("every booking call has the chosen slot") sees the unconfirmed booking. The six options-first
+  scenarios carry both.
+- **F1 replaces the confirmation rule with its opposite** instead of deleting it. Deleted, the
+  rule changed nothing on `gpt-6-luna`, which offers slots and asks for a yes by default (Tier B
+  pilot: no tool, state or judge regression); a fault must change behaviour to be seeded. The
+  overlay is still a one-line prompt change, like F3-F6.
 - **Judge-only twins** rather than judge criteria on the smoke scenarios: `smoke` must stay free
   and model-less, and a twin isolates the judge's verdict from the deterministic graders.
 - **Budget.** One hard cap split in two pools: Hecklr's (`hecklr run --budget-usd`, cumulative)
@@ -52,5 +63,17 @@ reproducibly, every night for free and on real models within a $6 budget. Three 
   calendar); more scenarios per fault would add margin.
 - Per-grader verdicts are diagnostics with no multiplicity correction; only the expected graders
   of each row are pass/fail criteria.
+- The free tier's A/A is clean by construction: the rules brain and the scripted customers are
+  deterministic, so its Δ is exactly 0 and it says nothing about the false-alarm rate. Tier A's
+  A/A only re-samples the judges; Tier B's A/A (guided customers, LLM agent, judges) is the one
+  that exercises SC5 on this agent.
 - The free tier passes a placeholder `OPENAI_API_KEY` when none is set (issue #19); it can never
   spend, and the script fails the tier if anything was spent.
+
+## Proposed spec change
+
+Fault table (spec, "Fault-injection matrix (SC8)"), so the spec says what the matrix tests:
+
+| # | Fault | Must be caught by |
+| --- | --- | --- |
+| F1 | Prompt tells the agent to book the first free slot without confirming it (dropping the confirmation rule alone does not change a strong model's behaviour) | Tool grader (`tool_called`, `args_match`) + `resolved` judge |
