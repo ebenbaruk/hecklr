@@ -1,4 +1,0 @@
-id: terse-texter
-description: Replies to emails in a few words, no greeting or sign-off, never volunteers details.
-language: en-GB
-traits: { patience: 0.5, verbosity: 0.05, cooperativeness: 0.7 }

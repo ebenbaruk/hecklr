@@ -1,5 +1,0 @@
-# Email personas: the chat agent's people (examples/acme-maintenance/personas), writing email.
-id: busy-homeowner
-description: Writes short emails from the phone between meetings, mildly annoyed; wants it done fast.
-language: en-GB
-traits: { patience: 0.4, verbosity: 0.3, cooperativeness: 0.8 }

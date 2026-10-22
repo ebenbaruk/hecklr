@@ -1,4 +1,0 @@
-id: polite-professional
-description: Writes courteous, precise emails with a greeting and a sign-off; gives exact references and expects exact answers.
-language: en-GB
-traits: { patience: 0.7, verbosity: 0.5, cooperativeness: 1.0 }
