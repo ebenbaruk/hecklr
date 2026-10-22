@@ -39,8 +39,10 @@ harness normalizes every caller utterance's level, which destroys the tag.
   1,500 ms. Hesitations are 450-550 ms pauses, 570-700 ms of silence once Kokoro's own padding
   is added (measured): the clean agent's 800 ms endpoint waits them out, and F9's agent (150 ms,
   then about 350 ms of ASR started at 100 ms) speaks about 450 ms in, while the caller is still
-  thinking. A call runs one early transcription at a time: one per pause, never cancelled,
-  queued up behind each other and delayed two answers by 4-5 s. The timing suite runs the agent on the energy VAD (clean
+  thinking. A call runs one early transcription at a time, and speech-model jobs are never
+  cancelled (anyio kills a cancelled job's worker). The agent gives every DSP worker a short
+  job each minute: anyio retires workers idle for five minutes, last in first out, and the
+  replacement loaded whisper on a caller's answer path (4-7 s, five minutes into every run). The timing suite runs the agent on the energy VAD (clean
   lines): Silero's per-window thread hop and its lag on speech offsets made the agent's
   endpointing wander with machine load.
 - **CI without models.** A driver-level matrix runs real graded calls over localhost with the
@@ -65,6 +67,6 @@ harness normalizes every caller utterance's level, which destroys the tag.
   F10, whose weak ASR does not fail every task).
 - `ScriptedSimulator` counts barge-in interjections as script lines (#44), so barge-in scenarios
   gate the metric only; `CachedTTS` races on identical concurrent requests (#43) and costs a
-  retry, not a result.
+  retry, not a result; the harness's own DSP workers face the same idle retirement (#47).
 - Voice timings depend on the machine: the matrix should run on an otherwise idle machine, and
   the timing gates leave headroom for load in the direction it pushes.

@@ -1,10 +1,13 @@
 """``voice.yaml``, its fault overlays F7-F10, transcript normalization and the command line."""
 
 import difflib
+import time
 from pathlib import Path
 
+import anyio
 import pytest
 import yaml
+from acme_voice import __main__ as cli
 from acme_voice.__main__ import main, options_from, parse_args, speech_stack
 from acme_voice.config import (
     FAULTS_ROOT,
@@ -18,6 +21,7 @@ from acme_voice.config import (
 from acme_voice.normalize import normalize_transcript
 
 from hecklr_voice import EnergyVad, FakeASR, SileroVad, SyntheticTTS
+from hecklr_voice.pool import dsp_workers
 
 VOICE_FAULTS = {
     "F7": ("tts_pre_delay_ms", 700),
@@ -170,3 +174,19 @@ def test_cli_reports_configuration_errors(capsys: pytest.CaptureFixture[str]) ->
 def test_voice_yaml_documents_every_setting() -> None:
     keys = set(yaml.safe_load((PROJECT_ROOT / VOICE_FILE).read_text()))
     assert keys == set(PipelineConfig.__dataclass_fields__) - {"variant"}
+
+
+@pytest.mark.anyio
+async def test_keep_warm_gives_every_worker_work_each_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs: list[tuple[object, ...]] = []
+
+    async def run_dsp(func: object, *args: object) -> None:
+        jobs.append((func, *args))
+
+    monkeypatch.setattr(cli, "run_dsp", run_dsp)
+    with anyio.move_on_after(0.05):
+        await cli.keep_warm(interval_s=0.01)
+    assert len(jobs) >= 2 * dsp_workers()
+    assert all(job == (time.sleep, cli.WARM_JOB_S) for job in jobs)
