@@ -91,10 +91,15 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   OpenAI credit ran out mid-F1). CI's `FORCE_COLOR=1` hid the run id (now stripped).
 - Evidence on the final head: free tier PASS ($0), Tier A PASS ($0.1473), Tier B baseline and
   A/A valid (A/A inconclusive, no grader regressed), F1-F6 unmeasured: #45 (no OpenAI credit).
+- Review round 2: the A/A row now names any grader that regressed (reported, not gated;
+  `test_sc5_an_aa_grader_regression_is_shown_but_not_gated`); `SpendMeter` documents its
+  overshoot bound (one completion per concurrent trial). Credit rechecked 2026-10-22: still
+  `429 credit_balance_exhausted`.
 
 ## Next (WS-m1)
 
 - Rerun Tier B when #45 is resolved (`--tier b --budget-usd 3.2`, ~$2.8) and record it in M1.md.
+  This needs the user to add credit and raise WS-m1's $6 cap to about $6.4 (about $2.4 is left).
 
 ## Open (owned elsewhere)
 
