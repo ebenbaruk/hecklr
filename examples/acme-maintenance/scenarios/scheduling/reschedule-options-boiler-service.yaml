@@ -1,0 +1,28 @@
+# Options first (M1): the customer picks a slot only after the agent offers some, so an
+# agent that books without offering slots and asking for a yes (F1) books the wrong one.
+id: reschedule-options-boiler-service
+title: Customer asks for options before moving a visit
+channels: [chat]
+tags: [scheduling, reschedule, options]
+persona: polite-professional
+world: acme-maintenance
+goal: Move the boiler service on Wednesday 4 November to another day. Ask which slots are free next week (26-30 October) before choosing anything, and do not name a day or time until the agent has offered you options; then choose Tuesday 27 October in the afternoon and confirm it.
+facts:
+  customer_id: C-1533
+  postcode: '75013'
+  appointment_id: A-3008
+  preferred_time: Tuesday 27 October in the afternoon, said only after options are offered
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3008, slot: '2026-10-27T14:00'}
+# Every reschedule_appointment call, not just one: an agent that first books a slot the customer never
+# chose and corrects it when they object (F1 on a strong model) still fails.
+- type: args_match
+  tool: reschedule_appointment
+  args: {slot: '2026-10-27T14:00'}
+- type: state
+  expr: "world.appointments['A-3008'].slot == '2026-10-27T14:00'"
+  description: the visit moved to the slot the customer chose
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

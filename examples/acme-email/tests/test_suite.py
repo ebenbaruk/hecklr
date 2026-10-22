@@ -44,6 +44,19 @@ def test_every_email_scenario_grades_threading() -> None:
         assert any(criterion.type == "email_threading" for criterion in scenario.success)
 
 
+@pytest.mark.parametrize("scenario", SCRIPTED + GUIDED, ids=lambda s: s.id)
+def test_scenario_facts_match_the_world(scenario: Scenario, world: World) -> None:
+    """The customer's facts name a real customer and their own records (PR #30: a postcode that
+    disagreed with the customer made every trial of a scenario a harness error)."""
+    records = {name: {r[c.key]: r for r in c.records} for name, c in world.collections.items()}
+    facts = scenario.facts
+    customer = records["customers"][facts["customer_id"]]
+    assert facts.get("postcode", customer["postcode"]) == customer["postcode"]
+    for fact, collection in (("appointment_id", "appointments"), ("invoice_id", "invoices")):
+        if fact in facts:
+            assert records[collection][facts[fact]]["customer_id"] == facts["customer_id"]
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize("scenario", SCRIPTED, ids=lambda s: s.id)
 async def test_sc8_clean_email_agent_passes_every_scripted_scenario(

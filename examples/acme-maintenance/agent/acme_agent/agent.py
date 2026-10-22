@@ -3,6 +3,7 @@
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Final, Protocol
 
 import anyio
@@ -10,6 +11,7 @@ import anyio
 from acme_agent.config import AgentConfigError, AgentFiles, AgentSettings
 from acme_agent.llm_brain import LLMBrain
 from acme_agent.rules.brain import RulesBrain
+from acme_agent.spend import SpendMeter
 from acme_agent.tools import Reply, ToolBackend, ToolRunner
 from hecklr_schemas import LLMProvider
 
@@ -44,14 +46,21 @@ class AcmeAgent:
         self.files = files
         self.settings = settings
         self._new_brain: Callable[[], Brain]
+        self._meter: SpendMeter | None = None
         if settings.brain == "rules":
             self._new_brain = lambda: RulesBrain(files, settings.today)
         elif llm is None:
             raise AgentConfigError("the llm brain needs an LLM provider")
         else:
-            provider = llm
-            self._new_brain = lambda: LLMBrain(files, settings, provider)
+            meter = SpendMeter(llm, settings.budget_usd)
+            self._meter = meter
+            self._new_brain = lambda: LLMBrain(files, settings, meter)
         self._sessions: OrderedDict[str, _Session] = OrderedDict()
+
+    @property
+    def spent_usd(self) -> Decimal:
+        """What the agent's own model calls have cost so far (zero for the rules brain)."""
+        return self._meter.spent_usd if self._meter is not None else Decimal(0)
 
     def _session(self, session_id: str, backend: BackendFactory) -> _Session:
         session = self._sessions.get(session_id)

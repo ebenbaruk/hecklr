@@ -17,12 +17,21 @@ from hecklr_schemas import Persona, Scenario, SimulationMode, World
 
 GUIDED = load_scenarios("scenarios/**/*.yaml")
 SCRIPTED = load_scenarios("scripted/*.yaml")
+JUDGED = load_scenarios("scripted/judged/*.yaml")
 
 
 def test_every_suite_resolves_with_hecklr_core() -> None:
     project = load_project(PROJECT_ROOT / "hecklr.yaml")
     sizes = {name: len(resolve_suite(project, name).cells) for name in project.config.suites}
-    assert sizes == {"ci": 40, "full": 64, "redteam": 9, "smoke": 33}
+    assert sizes == {
+        "ci": 40,
+        "full": 73,
+        "redteam": 12,
+        "data-protection": 8,
+        "smoke": 33,
+        "matrix": 51,
+        "matrix-live": 56,
+    }
     assert project.world.id == "acme-maintenance"
     assert project.config.agent.editable == ["prompts/system.md", "tools/descriptions.yaml"]
 
@@ -37,9 +46,9 @@ def test_reference_suite_meets_adr_0005a_size() -> None:
 def test_scenarios_cover_every_area_and_persona(personas: dict[str, Persona]) -> None:
     areas = Counter(path.parent.name for path in PROJECT_ROOT.glob("scenarios/*/*.yaml"))
     assert areas == {
-        "scheduling": 23,
+        "scheduling": 29,
         "billing": 9,
-        "refunds": 13,
+        "refunds": 16,
         "emergency": 11,
         "data-protection": 8,
     }
@@ -110,7 +119,7 @@ def test_data_probes_name_the_caller_and_use_the_adversarial_persona() -> None:
         assert scenario.facts.get("customer_id") != "C-2077"
 
 
-@pytest.mark.parametrize("scenario", GUIDED + SCRIPTED, ids=lambda s: s.id)
+@pytest.mark.parametrize("scenario", GUIDED + SCRIPTED + JUDGED, ids=lambda s: s.id)
 def test_every_criterion_builds_a_grader(scenario: Scenario) -> None:
     graders = build_graders(scenario)
     assert len([g for g in graders if g.criterion_index is not None]) == len(scenario.success)
@@ -118,10 +127,47 @@ def test_every_criterion_builds_a_grader(scenario: Scenario) -> None:
 
 def test_world_facts_match_the_world(world: World) -> None:
     customers = {c["customer_id"]: c for c in world.collections["customers"].records}
-    for scenario in GUIDED + SCRIPTED:
+    for scenario in GUIDED + SCRIPTED + JUDGED:
         customer = scenario.facts.get("customer_id")
         if customer is not None and "postcode" in scenario.facts:
             assert customers[str(customer)]["postcode"] == scenario.facts["postcode"], scenario.id
+
+
+SPEC_GRADER = {
+    "f1": ("tool_called", "resolved"),
+    "f2": ("state", None),
+    "f3": ("not_contains", "no_hallucination"),
+    "f4": ("no_cross_customer_data", None),
+    "f5": ("no_unauthorized_refund", None),
+    "f6": ("tool_called", "handoff_appropriate"),
+}
+"""Per fault: the deterministic grader every scripted scenario catching it carries, and the
+judge its judge-only twins carry (spec, "Fault-injection matrix"; F3's and F6's deterministic
+graders are backstops for their judges)."""
+
+
+@pytest.mark.parametrize("fault", sorted(SPEC_GRADER))
+def test_sc8_scripted_scenarios_carry_the_spec_grader_of_their_fault(fault: str) -> None:
+    deterministic, rubric = SPEC_GRADER[fault]
+    catching = [s for s in SCRIPTED if f"catches-{fault}" in s.tags]
+    carrying = [s for s in catching if deterministic in {c.type for c in s.success}]
+    # At least 6, so the grader alone can reach p < 0.05 (ADR 0008a). F1's two reschedules to
+    # "any morning next week" have no single right slot for tool_called; a state range checks them.
+    assert len(carrying) >= 6
+    assert len(catching) - len(carrying) <= (2 if fault == "f1" else 0)
+    twins = [s for s in JUDGED if f"catches-{fault}" in s.tags]
+    assert len(twins) == (6 if rubric else 0)
+    for twin in twins:
+        assert [(c.type, getattr(c, "rubric", None)) for c in twin.success] == [("judge", rubric)]
+
+
+@pytest.mark.parametrize("twin", JUDGED, ids=lambda s: s.id)
+def test_judged_twins_replay_their_scripted_scenario(twin: Scenario) -> None:
+    [original] = [s for s in SCRIPTED if s.id == twin.id.replace("judged-", "scripted-")]
+    assert twin.user_turns == original.user_turns
+    for field in ("persona", "facts", "mode"):
+        assert getattr(twin, field) == getattr(original, field), field
+    assert set(twin.tags) - {"judged"} == set(original.tags) - {"catches-f2"}
 
 
 # --- the deterministic fault matrix -----------------------------------------------------------
