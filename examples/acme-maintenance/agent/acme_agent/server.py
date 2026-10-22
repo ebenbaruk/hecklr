@@ -5,8 +5,8 @@
 - ``POST /chat/stream``: the same request, answered as server-sent events: unnamed events carry
   text deltas; named events ``tool_call`` / ``tool_result`` (only when Hecklr cannot see the
   tools), ``handoff`` and ``end`` carry ``hecklr_schemas`` payloads (ADR 0006a).
-- ``GET /healthz``: brain, variant, the agent's own model spend and where the tools went, for
-  ``hecklr doctor`` and humans.
+- ``GET /healthz``: brain, variant, the agent's own model spend, the turns that failed and where
+  the tools went, for ``hecklr doctor``, the fault matrix and humans.
 
 Which world the tools act on, per request (ADR 0007d), the first of:
 
@@ -75,6 +75,9 @@ class Health(BaseModel):
     """Requests served so far per world source; a Hecklr run should only grow ``header``."""
     spent_usd: Decimal
     """What the agent's own model calls have cost so far; Hecklr's budget does not see it."""
+    failed_turns: dict[str, int] = Field(default_factory=dict)
+    """Turns that failed (HTTP 500) so far, by exception type. A model outage or an exhausted
+    quota (``LLMProviderError``) looks like agent errors to Hecklr; this says which they were."""
 
 
 def sse_frame(event: str | None, data: str) -> str:
@@ -119,6 +122,7 @@ def create_app(
     app = FastAPI(title="acme-maintenance agent", lifespan=lifespan)
     base_url = agent.settings.world_base_url
     served: Counter[WorldSource] = Counter()
+    failures: Counter[str] = Counter()
 
     def backend_for(body: ChatRequest, request: Request) -> BackendFactory:
         trial_id = request.headers.get(TRIAL_ID_HEADER) or body.trial_id
@@ -129,7 +133,12 @@ def create_app(
         return lambda: HttpWorldTools(clients[0], world_url, trial_id)
 
     async def answer(body: ChatRequest, request: Request) -> Reply:
-        return await agent.respond(body.session_id, body.message, backend_for(body, request))
+        try:
+            return await agent.respond(body.session_id, body.message, backend_for(body, request))
+        except Exception as exc:
+            # Counted for /healthz, then re-raised: the turn still fails as an HTTP 500.
+            failures[type(exc).__name__] += 1
+            raise
 
     @app.post("/chat")
     async def chat(body: ChatRequest, request: Request) -> ChatResponse:
@@ -155,6 +164,7 @@ def create_app(
             fallback_tools="sandbox_base_url" if base_url else "local",
             requests_by_world_source={source: served[source] for source in WORLD_SOURCES},
             spent_usd=agent.spent_usd,
+            failed_turns=dict(failures),
         )
 
     return app

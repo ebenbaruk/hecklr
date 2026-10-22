@@ -70,6 +70,10 @@ NO_KEY_PLACEHOLDER: Final = "fault-matrix-free-tier-calls-no-model"
 configured providers even for a suite that calls no model (issue #19). A placeholder can never
 spend money: any accidental call fails authentication."""
 
+OUTAGE_ERRORS: Final = frozenset({"LLMProviderError", "AgentBudgetError"})
+"""Agent turn failures that are the model provider's or the budget's, never the agent's: a run
+with any of them measures an outage, and its agent errors would pass for a caught fault."""
+
 TierName = Literal["free", "a", "b"]
 
 TOOL_GRADERS: Final = frozenset({"tool_called", "tool_not_called", "args_match", "call_order"})
@@ -369,6 +373,7 @@ class Health:
     variant: str
     spent_usd: Decimal
     requests_by_world_source: dict[str, int]
+    failed_turns: dict[str, int]
 
 
 @contextmanager
@@ -424,7 +429,30 @@ def read_health(url: str) -> Health:
         variant=body["variant"],
         spent_usd=Decimal(str(body.get("spent_usd", "0"))),
         requests_by_world_source=dict(body["requests_by_world_source"]),
+        failed_turns=dict(body.get("failed_turns", {})),
     )
+
+
+def check_health(health: Health, variant: str) -> None:
+    """Refuse a run whose agent did not measure ``variant`` cleanly.
+
+    Raises:
+        MatrixError: the agent ran another variant, served tools outside the trial sandboxes,
+            or had turns fail because of its model provider or its budget.
+    """
+    expected = BASELINE if variant in (BASELINE, AA) else variant
+    if health.variant != expected:
+        raise MatrixError(f"the agent ran {health.variant!r}, not {variant!r}")
+    outside = {s: n for s, n in health.requests_by_world_source.items() if s != "header" and n}
+    if outside:
+        # Tools that did not act on the trial's sandbox are invisible to the graders.
+        raise MatrixError(f"the agent served requests outside the trial sandboxes: {outside}")
+    outage = {e: n for e, n in health.failed_turns.items() if e in OUTAGE_ERRORS and n}
+    if outage:
+        raise MatrixError(
+            f"the agent's model calls failed during {variant} ({outage}): the run measured "
+            "an outage or an exhausted quota, not the variant; see its agent log"
+        )
 
 
 def hecklr(args: Sequence[str], *, log: TextIO, env: Mapping[str, str]) -> tuple[int, str]:
@@ -594,12 +622,7 @@ class Runner:
             health = read_health(url)
         if code != 0:
             raise MatrixError(f"hecklr run for {variant} exited {code}; see {run_log.name}")
-        if health.variant != (fault or BASELINE):
-            raise MatrixError(f"the agent ran {health.variant!r}, not {variant!r}")
-        outside = {s: n for s, n in health.requests_by_world_source.items() if s != "header" and n}
-        if outside:
-            # Tools that did not act on the trial's sandbox are invisible to the graders.
-            raise MatrixError(f"the agent served requests outside the trial sandboxes: {outside}")
+        check_health(health, variant)
         run_id = recorded_run(stdout)
         spent = self._hecklr_spend(run_id)
         if not self.tier.calls_models and spent + health.spent_usd > 0:

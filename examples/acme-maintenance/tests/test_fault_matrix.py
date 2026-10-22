@@ -276,6 +276,36 @@ def test_the_budget_keeps_two_pools_under_one_cap() -> None:
     assert budget.spent == Decimal("1.023456")
 
 
+def health(variant: str = "F1", **failed: int) -> fm.Health:
+    return fm.Health(
+        variant=variant,
+        spent_usd=Decimal("0.1"),
+        requests_by_world_source={"header": 30, "local": 0},
+        failed_turns=failed,
+    )
+
+
+def test_a_clean_agent_run_is_accepted() -> None:
+    fm.check_health(health("clean"), "clean-aa")
+    fm.check_health(health(LLMOutputError=1), "F1")  # the agent's own bad output counts
+
+
+@pytest.mark.parametrize(
+    ("bad", "match"),
+    [
+        (health("F2"), "ran 'F2', not 'F1'"),
+        (fm.Health("F1", Decimal(0), {"header": 3, "local": 2}, {}), "outside the trial"),
+        (health(LLMProviderError=21), "exhausted quota"),
+        (health(AgentBudgetError=1), "AgentBudgetError"),
+    ],
+)
+def test_a_run_that_did_not_measure_the_variant_is_refused(bad: fm.Health, match: str) -> None:
+    """M1 Tier B: an exhausted OpenAI quota turned F1's turns into agent errors, which the
+    per-grader comparison would have counted as a caught fault."""
+    with pytest.raises(fm.MatrixError, match=match):
+        fm.check_health(bad, "F1")
+
+
 def test_the_run_id_comes_from_hecklr_runs_output() -> None:
     out = "Spent: $0.0000 of budget $0.10\nRun 01M5GDZ04C453482PASREZA5P9 (completed)\nResults: x\n"
     assert fm.recorded_run(out) == "01M5GDZ04C453482PASREZA5P9"

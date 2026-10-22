@@ -65,6 +65,19 @@ async def test_healthz_reports_the_llm_brains_spend(world: World) -> None:
     assert Decimal(health["spent_usd"]) == Decimal("0.001")
 
 
+async def test_healthz_counts_failed_turns_by_error(world: World) -> None:
+    """An exhausted quota fails the turn (HTTP 500) and shows on /healthz, for the fault matrix."""
+    settings = AgentSettings(brain="llm", model="fake/agent", budget_usd=Decimal("0.001"))
+    agent = AcmeAgent(load_agent_files(), settings, PricedLLM("0.001"))
+    transport = httpx2.ASGITransport(app=create_app(agent, world), raise_app_exceptions=False)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://agent") as client:
+        for session in ("a", "b", "c"):
+            response = await client.post("/chat", json={"message": "Hi", "session_id": session})
+        health = (await client.get("/healthz")).json()
+    assert response.status_code == 500
+    assert health["failed_turns"] == {"AgentBudgetError": 2}
+
+
 def test_the_rules_brain_spends_nothing() -> None:
     assert AcmeAgent(load_agent_files(), AgentSettings(brain="rules")).spent_usd == 0
 
