@@ -7,16 +7,18 @@ The deterministic checks are cheap and run on every draft:
 
 - **Wrong fact value:** a token shaped like a fact value (``C-1042`` → one letter, dash, four
   digits) that is not that value. Date and time values get no shape: a new date in the same
-  format (the slot the customer asks for) is legitimate.
+  format (the slot the customer asks for) is legitimate. A shape never matches inside a longer
+  dash-joined identifier: the digits of ``INV-20482`` are not a postcode.
 - **Invented identifier:** an ID-like token (``ORD-5581``, ``4412345678``) found nowhere in the
   facts, the goal, the attack strategy's decoys or what the agent said.
 - **Unknown fact:** ``facts_revealed`` names a fact the brief does not have.
 - **Malformed decision:** ``speak`` with no text, ``end`` with no reason, or JSON spilled into
   the text (seen with small local models).
 
-Tokens are matched whole (``ORD-558`` is not ``ORD-5581``). Tokens the agent itself said and
-tokens inside an attack strategy's decoys (another customer's ID or address to probe) are never
-flagged, so "no, not C-1043, it's C-1042" passes. A changed goal cannot be detected by pattern
+Tokens are matched whole (``ORD-558`` is not ``ORD-5581``). Tokens the brief names (its facts,
+its goal, an attack strategy's decoys such as another customer's ID to probe) and tokens the agent
+itself said are never flagged, so "no, not C-1043, it's C-1042" and the second invoice of a
+duplicate charge named in the goal both pass. A changed goal cannot be detected by pattern
 matching; the optional LLM check (``ConsistencyVerdict``) covers it.
 """
 
@@ -47,6 +49,9 @@ _FORMAT_LEAK = re.compile(
 )
 """Braces or answer-format field names in the text: the model spilled its JSON into the message."""
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+_NOT_DASH_JOINED_BEFORE = r"(?<![^\W_]-)"
+_NOT_DASH_JOINED_AFTER = r"(?!-[^\W_])"
+"""A dash between letters or digits joins one identifier (``INV-20482``); it is not a token edge."""
 
 
 @dataclass(frozen=True)
@@ -65,7 +70,6 @@ class ConsistencyGuard:
         self._values = {name: render_fact_value(value) for name, value in scenario.facts.items()}
         self._fact_names = {name.casefold() for name in scenario.facts}
         self._fact_values = {value.casefold() for value in _scalar_texts(scenario.facts)}
-        self._decoy_text = " ".join(decoys).casefold()
         self._brief_text = " ".join([scenario.goal, *self._values.values(), *decoys]).casefold()
         # Only scalar facts get a shape; a nested fact rendered as JSON is not an identifier.
         self._shapes = {
@@ -93,8 +97,8 @@ class ConsistencyGuard:
                 if (
                     folded in flagged
                     or folded in self._fact_values
-                    or mentions(self._decoy_text, folded)
-                    or mentions(agent_text, folded)
+                    or _names(self._brief_text, folded)
+                    or _names(agent_text, folded)
                 ):
                     continue
                 flagged.add(folded)
@@ -161,7 +165,19 @@ def _shape(value: str) -> re.Pattern[str] | None:
             parts.append(rf"[A-Za-z]{{{len(run)}}}")
         else:
             parts.append(re.escape(run))
-    return re.compile(rf"{WORD_EDGE_BEFORE}{''.join(parts)}{WORD_EDGE_AFTER}")
+    return re.compile(
+        rf"{WORD_EDGE_BEFORE}{_NOT_DASH_JOINED_BEFORE}{''.join(parts)}"
+        rf"{_NOT_DASH_JOINED_AFTER}{WORD_EDGE_AFTER}"
+    )
+
+
+def _names(text: str, token: str) -> bool:
+    """Whether ``text`` names ``token`` on its own; ``20482`` inside ``INV-20482`` is not it."""
+    pattern = (
+        rf"{WORD_EDGE_BEFORE}{_NOT_DASH_JOINED_BEFORE}{re.escape(token)}"
+        rf"{_NOT_DASH_JOINED_AFTER}{WORD_EDGE_AFTER}"
+    )
+    return re.search(pattern, text) is not None
 
 
 def _scalar_texts(value: JsonValue) -> Iterable[str]:
