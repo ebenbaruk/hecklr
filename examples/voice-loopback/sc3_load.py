@@ -30,6 +30,7 @@ from loopback_agent.bench import (
     cpu_seconds,
     error_summary,
     health,
+    json_default,
     place_calls,
 )
 from loopback_agent.call import LoopbackSettings
@@ -162,7 +163,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     results = anyio.run(run, args.calls)
     if args.json is not None:
         rows = [{**asdict(result), "sc3_ok": result.sc3_ok} for result in results]
-        args.json.write_text(json.dumps(rows, indent=2, default=str) + "\n")
+        args.json.write_text(json.dumps(rows, indent=2, default=json_default) + "\n")
     return 0
 
 

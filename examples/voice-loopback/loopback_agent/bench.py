@@ -224,6 +224,13 @@ def error_summary(
     )
 
 
+def json_default(value: object) -> object:
+    """``json.dumps`` fallback for the reports: estimates as their fields, the rest as text."""
+    if isinstance(value, Estimate):
+        return value.model_dump(mode="json")
+    return str(value)
+
+
 def cpu_seconds(pids: Sequence[int]) -> float:
     """User plus system CPU time of live processes, as ``ps`` reports it (macOS and Linux)."""
     if not pids:

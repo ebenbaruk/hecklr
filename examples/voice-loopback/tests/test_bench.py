@@ -13,6 +13,7 @@ from loopback_agent.bench import (
     child_pids,
     cpu_seconds,
     error_summary,
+    json_default,
 )
 
 pytestmark = [pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
@@ -29,6 +30,14 @@ def test_error_summary_measures_bias_spread_and_worst_case_per_call() -> None:
     assert not summary.within(20.0)  # a missing measurement is never within tolerance
     assert error_summary([[605]], 600.0, seed=1).within(5.0)
     assert not error_summary([[605]], 600.0, seed=1).within(4.0)
+
+
+def test_reports_serialize_estimates_as_fields() -> None:
+    summary = error_summary([[602]], 600.0, seed=1)
+    dumped = json_default(summary.bias_ms)
+    assert isinstance(dumped, dict)
+    assert dumped["value"] == 2.0
+    assert json_default(Path("x")) == "x"
 
 
 def test_error_summary_needs_a_measurement() -> None:

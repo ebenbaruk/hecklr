@@ -24,6 +24,7 @@ from loopback_agent.bench import (
     agent_process,
     error_summary,
     health,
+    json_default,
     place_calls,
 )
 from loopback_agent.call import LoopbackSettings
@@ -119,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     results = anyio.run(run, args.calls, args.tolerance_ms)
     if args.json is not None:
         rows = [asdict(result) for result in results]
-        args.json.write_text(json.dumps(rows, indent=2, default=str) + "\n")
+        args.json.write_text(json.dumps(rows, indent=2, default=json_default) + "\n")
     return 0 if all(result.within(args.tolerance_ms) for result in results) else 1
 
 
