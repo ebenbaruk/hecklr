@@ -20,6 +20,7 @@ pytestmark = [
 TOLERANCE_MS = 20
 
 
+@pytest.mark.sc4_timing
 @pytest.mark.parametrize(("delay_ms", "reaction_ms"), [(300, 150), (600, 300), (900, 200)])
 async def test_sc4_latency_and_barge_in_within_20ms_over_the_network(
     delay_ms: int, reaction_ms: int
