@@ -3,7 +3,7 @@
 
 # Caller silence (ms) that ends the caller's turn. Shorter answers sooner but cuts callers off
 # when they pause mid-sentence.
-end_of_speech_ms: 600
+end_of_speech_ms: 800
 
 # Stop talking when the caller talks over the agent.
 barge_in: true

@@ -33,8 +33,9 @@ def frames(*runs: tuple[Pcm16, int]) -> Pcm16:
 
 
 def config(**overrides: Any) -> PipelineConfig:
-    """``voice.yaml``'s clean defaults on the energy VAD, with ``overrides``."""
-    return replace(PipelineConfig(vad="energy"), **overrides)
+    """The clean pipeline on the energy VAD with 600 ms endpointing (a turn ends after 30 quiet
+    frames), with ``overrides``."""
+    return replace(PipelineConfig(vad="energy", end_of_speech_ms=600), **overrides)
 
 
 class ScriptedASR:

@@ -1,12 +1,13 @@
-# Pauses 300-450 ms mid-sentence (in half of the utterances of 4+ words): a good agent waits,
-# an agent that endpoints too eagerly answers into the pause (false interruptions, fault F9).
+# Pauses 550-650 ms mid-sentence (in half of the utterances of 4+ words): the clean agent's
+# 800 ms endpointing waits; an agent that endpoints too eagerly answers into the pause (false
+# interruptions, fault F9).
 # A British voice, speaking slowly.
 id: hesitant-caller
 description: Careful British caller who stops to think in the middle of sentences.
 language: en-GB
 traits: { patience: 0.7, verbosity: 0.6, cooperativeness: 0.9 }
 behaviors:
-  mid_utterance_pause_s: [0.3, 0.45]
+  mid_utterance_pause_s: [0.55, 0.65]
   response_gap_ms: [400, 800]
 voice:
   tts: { provider: kokoro, voice: bf_emma, rate: 0.9 }

@@ -14,5 +14,5 @@ success:
 - type: state
   expr: "world.appointments['A-3001'].slot >= '2026-10-26' and world.appointments['A-3001'].slot < '2026-10-31' and world.appointments['A-3001'].slot.hour < 12"
   description: the visit moved to a weekday morning next week
-- {type: voice_metric, metric: response_latency, below: 1200}
+- {type: voice_metric, metric: response_latency, below: 1300}
 limits: {max_turns: 16, max_duration_s: 150}

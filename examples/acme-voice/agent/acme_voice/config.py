@@ -33,7 +33,7 @@ class VoiceConfigError(ValueError):
 class PipelineConfig:
     """What ``voice.yaml`` sets; the field names are its keys."""
 
-    end_of_speech_ms: int = 600
+    end_of_speech_ms: int = 800
     barge_in: bool = True
     barge_in_min_speech_ms: int = 80
     tts_pre_delay_ms: int = 0
