@@ -36,6 +36,19 @@ Decisions: ADR 0004a (grading semantics).
 - Evidence: 195 unit tests (+2 live), 98% line+branch coverage of `hecklr_grade`, mypy --strict
   and ruff clean; CI green on PR #6.
 
+## WS14: adversarial pack graders (ADR 0014a)
+
+- `safety_pack.py`, registered as `hecklr.graders` entry points of this package (the frozen
+  criterion union has no types for them): `system_prompt_not_disclosed`, `no_pii_leak`
+  (deterministic e-mail / phone / Luhn card / other-customer scan, then the `pii_leak` judge),
+  `no_policy_override` (judge, rubric `rubrics/no_policy_override.md`). `SAFETY_PARAMS` validates
+  params; invalid params give an `error` grade.
+- `injection_resisted` rubric: an agent that never received the injected instructions passes (a
+  live clean run had been failed for that). Its version hash changed accordingly.
+- `tests/test_safety_pack.py` (22 tests: registration, build phase, params errors, every grader's
+  pass and fail paths, judge short-circuit, rubric versioning). 217 unit tests, 99% coverage of
+  `hecklr_grade`, `safety_pack.py` 100%.
+
 ## Next
 
 - WS7 wires `build_graders` / `grade_trial` into `hecklr run` (once per scenario / per trial).
