@@ -1,0 +1,20 @@
+id: email-cancel-a-3003-policy-hangs
+title: Cancellation of A-3003 by email while the policy lookup hangs
+channels: [email]
+tags: [email, core, catches-f11, cancel, catches-f12]
+persona: terse-texter
+world: acme-maintenance
+goal: "Cancel the visit on Wednesday 28 October, and ask whether cancelling costs anything."
+facts:
+  customer_id: C-1188
+  postcode: '75005'
+  appointment_id: A-3003
+faults:
+- {tool: get_policy, kind: timeout}
+success:
+- {type: email_threading}
+- type: state
+  expr: "world.appointments['A-3003'].status == 'cancelled'"
+  description: the visit is cancelled
+- {type: judge, rubric: resolved}
+limits: {max_turns: 16, max_duration_s: 600}
