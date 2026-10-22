@@ -4,7 +4,7 @@ channels: [email]
 tags: [email, core, catches-f11, cancel, catches-f12]
 persona: polite-professional
 world: acme-maintenance
-goal: "Cancel the visit on Friday 30 October, and ask whether cancelling costs anything."
+goal: "Cancel the visit on Friday 30 October. Ask whether cancelling costs anything, but cancel anyway: being told the fee cannot be checked right now is an acceptable answer."
 facts:
   customer_id: C-1306
   postcode: '92200'
