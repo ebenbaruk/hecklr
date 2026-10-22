@@ -133,11 +133,25 @@ def test_ws2_guard_still_flags_real_contradictions_in_refund_turns_issue_29(
 def test_ws2_guard_does_not_read_digits_inside_a_longer_identifier_as_a_fact(
     guard: ConsistencyGuard,
 ) -> None:
-    # The postcode shape (five digits) fits inside this ID; the ID is judged whole instead.
+    # The postcode shape (five digits) fits inside this ID. The postcode check skips it because
+    # the invented-identifier check judges the whole ID: one issue, naming the ID.
     issues = guard.check(decision_reply("Order ORD-92100."), [])
 
     assert [issue.kind for issue in issues] == ["invented_identifier"]
     assert "'ORD-92100'" in issues[0].detail
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["My postcode is 92001-1234.", "postcode 92001-ish", "Call me on 020-555-0143."],
+)
+def test_ws2_guard_still_flags_wrong_values_joined_by_a_dash_to_something_else(
+    make_brief: BriefFactory, text: str
+) -> None:
+    # Only a match inside an ID-like token is skipped; a dash alone does not hide a wrong value.
+    brief = make_brief(scenario={"facts": {"postcode": "92000", "phone": "555-0142"}})
+
+    assert _kinds(ConsistencyGuard(brief.scenario), text) == ["wrong_fact_value"]
 
 
 def test_ws2_guard_accepts_a_new_date_in_the_same_format_as_a_date_fact(

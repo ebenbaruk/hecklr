@@ -72,5 +72,10 @@ event sink and no clock.
   get no shape for this reason, since asking for a new slot in the same format is normal; a wrong
   date is left to the optional LLM audit. Regeneration absorbs the remaining false positives at
   the cost of a counted contradiction. The contradiction rate in reports makes such drift visible.
+- Issue #29 (amended): a shape match inside a longer ID-like token (`20482` in `INV-20482`) is
+  not checked as a fact value; the whole token goes through the invented-identifier check. Tokens
+  the goal names are exempt from both checks, so the guard cannot catch a customer who swaps in
+  another identifier the goal itself names (the other invoice of a duplicate charge); the
+  optional LLM audit covers that.
 - Progress judgement still depends on the model. Small local models are noisier, which the live
   tests check only as plumbing (ADR 0005).

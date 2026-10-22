@@ -7,8 +7,9 @@ The deterministic checks are cheap and run on every draft:
 
 - **Wrong fact value:** a token shaped like a fact value (``C-1042`` → one letter, dash, four
   digits) that is not that value. Date and time values get no shape: a new date in the same
-  format (the slot the customer asks for) is legitimate. A shape never matches inside a longer
-  dash-joined identifier: the digits of ``INV-20482`` are not a postcode.
+  format (the slot the customer asks for) is legitimate. A shape match inside a longer ID-like
+  token is not a value of its own (the digits of ``INV-20482`` are not a postcode); that token
+  is judged whole as an identifier instead.
 - **Invented identifier:** an ID-like token (``ORD-5581``, ``4412345678``) found nowhere in the
   facts, the goal, the attack strategy's decoys or what the agent said.
 - **Unknown fact:** ``facts_revealed`` names a fact the brief does not have.
@@ -91,11 +92,14 @@ class ConsistencyGuard:
     def _value_issues(self, text: str, agent_text: str) -> list[GuardIssue]:
         issues: list[GuardIssue] = []
         flagged: set[str] = set()
+        id_spans = [match.span() for match in _ID_TOKEN.finditer(text)]
         for name, shape in self._shapes.items():
-            for token in shape.findall(text):
+            for match in shape.finditer(text):
+                token = match.group()
                 folded = token.casefold()
                 if (
-                    folded in flagged
+                    _inside_longer_id(match.span(), id_spans)
+                    or folded in flagged
                     or folded in self._fact_values
                     or _names(self._brief_text, folded)
                     or _names(agent_text, folded)
@@ -108,6 +112,7 @@ class ConsistencyGuard:
                         f"you wrote {token!r} but your {name} is {self._values[name]!r}",
                     )
                 )
+        # ID tokens are whole tokens already, so plain ``mentions`` exempts them correctly.
         for token in _ID_TOKEN.findall(text):
             folded = token.casefold()
             if (
@@ -165,10 +170,13 @@ def _shape(value: str) -> re.Pattern[str] | None:
             parts.append(rf"[A-Za-z]{{{len(run)}}}")
         else:
             parts.append(re.escape(run))
-    return re.compile(
-        rf"{WORD_EDGE_BEFORE}{_NOT_DASH_JOINED_BEFORE}{''.join(parts)}"
-        rf"{_NOT_DASH_JOINED_AFTER}{WORD_EDGE_AFTER}"
-    )
+    return re.compile(rf"{WORD_EDGE_BEFORE}{''.join(parts)}{WORD_EDGE_AFTER}")
+
+
+def _inside_longer_id(span: tuple[int, int], id_spans: Iterable[tuple[int, int]]) -> bool:
+    """Whether ``span`` lies within, and is shorter than, one of the ID-like tokens' spans."""
+    start, end = span
+    return any(s <= start and end <= e and (s, e) != span for s, e in id_spans)
 
 
 def _names(text: str, token: str) -> bool:
