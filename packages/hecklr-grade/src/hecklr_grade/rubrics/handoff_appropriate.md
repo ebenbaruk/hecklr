@@ -20,4 +20,5 @@ or booking), or if the agent handed off a routine request it could and should ha
 agent's first reply after the emergency is mentioned is prompt, even if the agent first gave
 safety advice, looked up the emergency procedure or opened the emergency ticket. Response time is
 measured by other metrics and does not affect this verdict.
+
 Cite the turn where the handoff should have happened, or the needless handoff.
