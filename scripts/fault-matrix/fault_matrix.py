@@ -29,9 +29,16 @@ Spend: ``--budget-usd`` is a hard cap on everything the tier spends. Hecklr's ow
 and judges) is capped through ``hecklr run --budget-usd``; the agent's model spend is capped by
 the agent (``--budget-usd`` of ``serve.py``) and read from its ``/healthz``. After the baseline
 run, the script projects the whole tier's cost and stops if it would exceed the budget.
+
+Resume: every accepted run (its agent health checked) is appended to ``<out>/runs.jsonl``. With
+``--resume`` a later invocation on the same ``--out`` reuses a recorded run instead of paying for
+it again, when its tier, suite, seed, trials and the suite files it ran (a digest of the project
+copy) all match; its spend still counts against ``--budget-usd``. The agent's code is not in the
+digest: resume only across changes that do not alter what the agent does.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -70,9 +77,22 @@ NO_KEY_PLACEHOLDER: Final = "fault-matrix-free-tier-calls-no-model"
 configured providers even for a suite that calls no model (issue #19). A placeholder can never
 spend money: any accidental call fails authentication."""
 
-OUTAGE_ERRORS: Final = frozenset({"LLMProviderError", "AgentBudgetError"})
-"""Agent turn failures that are the model provider's or the budget's, never the agent's: a run
-with any of them measures an outage, and its agent errors would pass for a caught fault."""
+REJECTED_REQUEST: Final = "LLMProviderError[400]"
+"""The provider refused one request (in M1 Tier B: the reply hit the output limit). It is the
+agent's own failure, like ``LLMOutputError``, not an outage."""
+
+
+def is_outage(failure: str) -> bool:
+    """Whether an agent turn failure (a ``/healthz`` ``failed_turns`` key) is not the agent's.
+
+    An outage or the budget: a run with any measures that, and its agent errors would pass for
+    a caught fault. Provider errors carry their HTTP status (429, 5xx, none for a lost
+    connection); only a rejected request (400) is the agent's own failure.
+    """
+    if failure == "AgentBudgetError":
+        return True
+    return failure.startswith("LLMProviderError") and failure != REJECTED_REQUEST
+
 
 TierName = Literal["free", "a", "b"]
 
@@ -457,7 +477,7 @@ def check_health(health: Health, variant: str) -> None:
     if outside:
         # Tools that did not act on the trial's sandbox are invisible to the graders.
         raise MatrixError(f"the agent served requests outside the trial sandboxes: {outside}")
-    outage = {e: n for e, n in health.failed_turns.items() if e in OUTAGE_ERRORS and n}
+    outage = {e: n for e, n in health.failed_turns.items() if is_outage(e) and n}
     if outage:
         raise MatrixError(
             f"the agent's model calls failed during {variant} ({outage}): the run measured "
@@ -588,6 +608,41 @@ class RunRecord:
     agent_spent_usd: Decimal
 
 
+class RecordedRun(BaseModel):
+    """One line of ``runs.jsonl``: an accepted run and what it must match to be reused."""
+
+    tier: TierName
+    suite: str
+    variant: str
+    seed: int
+    trials: int | None
+    suite_digest: str
+    run_id: str
+    hecklr_spent_usd: Decimal
+    agent_spent_usd: Decimal
+    failed_turns: dict[str, int]
+
+
+def suite_digest(project: Path) -> str:
+    """SHA-256 over the project copy's suite files (paths and bytes).
+
+    ``hecklr.yaml`` is left out: it names this invocation's agent port.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(p for p in project.rglob("*") if p.is_file() and p.name != "hecklr.yaml"):
+        digest.update(path.relative_to(project).as_posix().encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def load_recorded(path: Path) -> list[RecordedRun]:
+    """The accepted runs recorded in ``runs.jsonl``; none when the file does not exist."""
+    if not path.is_file():
+        return []
+    lines = path.read_text("utf-8").splitlines()
+    return [RecordedRun.model_validate_json(line) for line in lines if line.strip()]
+
+
 @dataclass
 class Runner:
     """Runs the tier's variants one after the other, then gates them."""
@@ -602,11 +657,45 @@ class Runner:
     trials: int | None
     env: dict[str, str]
     echo: TextIO
+    resume: bool = False
+
+    @property
+    def _recorded_path(self) -> Path:
+        return self.out / "runs.jsonl"
+
+    def _recorded(self, variant: str, seed: int, digest: str) -> RecordedRun | None:
+        """The last recorded run of ``variant`` this invocation may reuse, if any."""
+        matches = [
+            r
+            for r in load_recorded(self._recorded_path)
+            if (r.tier, r.suite, r.variant, r.seed, r.trials, r.suite_digest)
+            == (self.tier_name, self.tier.suite, variant, seed, self.trials, digest)
+        ]
+        return matches[-1] if matches else None
+
+    def _account(self, record: RunRecord, note: str) -> RunRecord:
+        self.budget.hecklr_spent += record.hecklr_spent_usd
+        self.budget.agent_spent += record.agent_spent_usd
+        self.echo.write(
+            f"{record.variant}: run {record.run_id}{note}, hecklr ${record.hecklr_spent_usd:.4f}"
+            f" + agent ${record.agent_spent_usd:.4f} (total so far ${self.budget.spent:.4f})\n"
+        )
+        self.echo.flush()  # a tier runs for an hour; show progress when stdout is a file
+        return record
 
     def run_variant(self, variant: str, index: int) -> RunRecord:
-        """Start the agent for ``variant``, run the suite against it and stop the agent."""
+        """Start the agent for ``variant``, run the suite against it and stop the agent.
+
+        With ``resume``, a matching run recorded by an earlier invocation is reused instead.
+        """
         fault = None if variant in (BASELINE, AA) else variant
         seed = self.seed + index
+        digest = suite_digest(self.config.parent)
+        if self.resume and (recorded := self._recorded(variant, seed, digest)) is not None:
+            record = RunRecord(
+                variant, recorded.run_id, recorded.hecklr_spent_usd, recorded.agent_spent_usd
+            )
+            return self._account(record, " (resumed)")
         logs = self.out / "logs"
         logs.mkdir(parents=True, exist_ok=True)
         if self.budget.hecklr_left() <= 0 and self.tier.calls_models:
@@ -637,15 +726,21 @@ class Runner:
         spent = self._hecklr_spend(run_id)
         if not self.tier.calls_models and spent + health.spent_usd > 0:
             raise MatrixError(f"tier {self.tier_name} must not spend, but run {run_id} did")
-        self.budget.hecklr_spent += spent
-        self.budget.agent_spent += health.spent_usd
-        record = RunRecord(variant, run_id, spent, health.spent_usd)
-        self.echo.write(
-            f"{variant}: run {run_id}, hecklr ${spent:.4f} + agent ${health.spent_usd:.4f} "
-            f"(total so far ${self.budget.spent:.4f})\n"
+        recorded = RecordedRun(
+            tier=self.tier_name,
+            suite=self.tier.suite,
+            variant=variant,
+            seed=seed,
+            trials=self.trials,
+            suite_digest=digest,
+            run_id=run_id,
+            hecklr_spent_usd=spent,
+            agent_spent_usd=health.spent_usd,
+            failed_turns=health.failed_turns,
         )
-        self.echo.flush()  # a tier runs for an hour; show progress when stdout is a file
-        return record
+        with self._recorded_path.open("a", encoding="utf-8") as runs:
+            runs.write(recorded.model_dump_json() + "\n")
+        return self._account(RunRecord(variant, run_id, spent, health.spent_usd), "")
 
     def _hecklr_spend(self, run_id: str) -> Decimal:
         run = json.loads((self.out / "store" / "runs" / run_id / "run.json").read_text("utf-8"))
@@ -757,6 +852,11 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=",".join((AA, *FAULTS)),
         help=f"comma-separated candidates to gate against the baseline [{AA},F1..F6]",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="reuse matching runs recorded in <out>/runs.jsonl instead of running them again",
+    )
     return parser.parse_args(argv)
 
 
@@ -785,7 +885,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             else int(yaml.safe_load(config.read_text(encoding="utf-8"))["seed"])
         )
         runner = Runner(
-            tier_name, tier, out, config, port, seed, budget, args.trials, env, sys.stdout
+            tier_name,
+            tier,
+            out,
+            config,
+            port,
+            seed,
+            budget,
+            args.trials,
+            env,
+            sys.stdout,
+            resume=args.resume,
         )
         matrix = run_matrix(runner, variants)
     except MatrixError as exc:

@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from acme_agent.agent import AcmeAgent, BackendFactory
 from acme_agent.tools import HttpWorldTools, LocalWorldTools, Reply
 from hecklr_adapters import WORLD_URL_HEADER
+from hecklr_llm import LLMProviderError
 from hecklr_schemas import TRIAL_ID_HEADER, HandoffPayload, ToolCallPayload, World
 
 WorldSource = Literal["body", "header", "base_url", "local"]
@@ -77,7 +78,21 @@ class Health(BaseModel):
     """What the agent's own model calls have cost so far; Hecklr's budget does not see it."""
     failed_turns: dict[str, int] = Field(default_factory=dict)
     """Turns that failed (HTTP 500) so far, by exception type. A model outage or an exhausted
-    quota (``LLMProviderError``) looks like agent errors to Hecklr; this says which they were."""
+    quota (``LLMProviderError[429]``) looks like agent errors to Hecklr; this says which they
+    were. A provider error carries its HTTP status: a 400 is the provider rejecting this one
+    request (e.g. the reply hit the output limit), not an outage."""
+
+
+def failure_key(exc: Exception) -> str:
+    """How ``/healthz`` counts a failed turn.
+
+    The exception type, plus the HTTP status for a provider error, so an outage (429, 5xx) is
+    told apart from a rejected request (400).
+    """
+    name = type(exc).__name__
+    if isinstance(exc, LLMProviderError) and exc.status_code is not None:
+        return f"{name}[{exc.status_code}]"
+    return name
 
 
 def sse_frame(event: str | None, data: str) -> str:
@@ -137,7 +152,7 @@ def create_app(
             return await agent.respond(body.session_id, body.message, backend_for(body, request))
         except Exception as exc:
             # Counted for /healthz, then re-raised: the turn still fails as an HTTP 500.
-            failures[type(exc).__name__] += 1
+            failures[failure_key(exc)] += 1
             raise
 
     @app.post("/chat")

@@ -7,10 +7,11 @@ import pytest
 from acme_agent import AcmeAgent, AgentConfigError, AgentSettings, create_app, load_agent_files
 from acme_agent.__main__ import parse_args, settings_from
 from acme_agent.llm_brain import AgentStep
+from acme_agent.server import failure_key
 from acme_agent.spend import AgentBudgetError, SpendMeter
 from acme_agent.tools import LocalWorldTools
 
-from hecklr_llm import FakeLLM
+from hecklr_llm import FakeLLM, LLMOutputError, LLMProviderError
 from hecklr_schemas import LLMRequest, LLMResponse, Message, World
 
 pytestmark = pytest.mark.anyio
@@ -76,6 +77,23 @@ async def test_healthz_counts_failed_turns_by_error(world: World) -> None:
         health = (await client.get("/healthz")).json()
     assert response.status_code == 500
     assert health["failed_turns"] == {"AgentBudgetError": 2}
+
+
+@pytest.mark.parametrize(
+    ("exc", "key"),
+    [
+        (LLMProviderError("quota", retryable=True, status_code=429), "LLMProviderError[429]"),
+        (
+            LLMProviderError("output limit", retryable=False, status_code=400),
+            "LLMProviderError[400]",
+        ),
+        (LLMProviderError("connection reset", retryable=True), "LLMProviderError"),
+        (LLMOutputError("cut off at max_tokens"), "LLMOutputError"),
+    ],
+)
+def test_a_provider_failure_is_counted_with_its_http_status(exc: Exception, key: str) -> None:
+    """M1 Tier B: a 400 (the reply hit the output limit) must not read as an outage (a 429)."""
+    assert failure_key(exc) == key
 
 
 def test_the_rules_brain_spends_nothing() -> None:

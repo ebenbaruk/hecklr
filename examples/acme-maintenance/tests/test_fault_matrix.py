@@ -307,6 +307,8 @@ def health(variant: str = "F1", **failed: int) -> fm.Health:
 def test_a_clean_agent_run_is_accepted() -> None:
     fm.check_health(health("clean"), "clean-aa")
     fm.check_health(health(LLMOutputError=1), "F1")  # the agent's own bad output counts
+    # M1 Tier B F1: a reply that hit the output limit came back as a provider 400.
+    fm.check_health(health(**{"LLMProviderError[400]": 1}), "F1")
 
 
 @pytest.mark.parametrize(
@@ -315,6 +317,8 @@ def test_a_clean_agent_run_is_accepted() -> None:
         (health("F2"), "ran 'F2', not 'F1'"),
         (fm.Health("F1", Decimal(0), {"header": 3, "local": 2}, {}), "outside the trial"),
         (health(LLMProviderError=21), "exhausted quota"),
+        (health(**{"LLMProviderError[429]": 21}), "exhausted quota"),
+        (health(**{"LLMProviderError[503]": 1}), "outage"),
         (health(AgentBudgetError=1), "AgentBudgetError"),
     ],
 )
@@ -354,6 +358,61 @@ def test_the_free_tier_expects_only_deterministic_graders() -> None:
         for s in load_scenarios("scripted/*.yaml")
         if s.id in tagged
     )
+
+
+def recorded(variant: str, seed: int, digest: str) -> fm.RecordedRun:
+    return fm.RecordedRun(
+        tier="b",
+        suite="matrix-live",
+        variant=variant,
+        seed=seed,
+        trials=None,
+        suite_digest=digest,
+        run_id=f"run-{variant}-{seed}",
+        hecklr_spent_usd=Decimal("0.3"),
+        agent_spent_usd=Decimal("0.1"),
+        failed_turns={},
+    )
+
+
+def test_resume_reuses_only_a_run_of_the_same_variant_seed_and_suite_files(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    (project / "scenarios").mkdir(parents=True)
+    (project / "scenarios" / "a.yaml").write_text("id: a\n")
+    (project / "hecklr.yaml").write_text("port: 1\n")
+    digest = fm.suite_digest(project)
+    (project / "hecklr.yaml").write_text("port: 2\n")  # another invocation's port
+    assert fm.suite_digest(project) == digest
+    lines = [
+        recorded("clean", 7, digest),
+        recorded("clean-aa", 8, "another-suite"),
+        recorded("F1", 99, digest),
+    ]
+    (tmp_path / "runs.jsonl").write_text("".join(r.model_dump_json() + "\n" for r in lines))
+    budget = fm.Budget.split(Decimal(4), Decimal("0.7"))
+    runner = fm.Runner(
+        "b",
+        fm.TIERS["b"],
+        tmp_path,
+        project / "hecklr.yaml",
+        0,
+        7,
+        budget,
+        None,
+        {},
+        sys.stdout,
+        resume=True,
+    )
+
+    record = runner.run_variant("clean", 0)
+
+    assert (record.run_id, budget.spent) == ("run-clean-7", Decimal("0.4"))
+    assert runner._recorded("clean-aa", 8, digest) is None  # the suite files changed
+    assert runner._recorded("F1", 9, digest) is None  # another seed
+    (project / "scenarios" / "a.yaml").write_text("id: b\n")
+    assert fm.suite_digest(project) != digest
 
 
 # --- real processes --------------------------------------------------------------------------
@@ -400,3 +459,16 @@ def test_sc8_free_tier_end_to_end(
     assert (tmp_path / "reports" / "F5" / "report.html").is_file()
     assert (tmp_path / "reports" / "clean" / "report.html").is_file()
     assert "tier free: PASS" in printed
+
+    # --resume reuses every recorded run: the same run ids, no new run, the same verdicts.
+    assert len((tmp_path / "runs.jsonl").read_text().splitlines()) == 3
+    resumed = fm.main(
+        ["--tier", "free", "--out", str(tmp_path), "--variants", "clean-aa,F5", "--resume"]
+    )
+    again = capsys.readouterr().out
+    assert resumed == 0, again
+    assert again.count("(resumed)") == 3
+    assert len((tmp_path / "runs.jsonl").read_text().splitlines()) == 3
+    rerun = json.loads((tmp_path / "matrix.json").read_text())
+    assert [r["run_id"] for r in rerun["rows"]] == [aa["run_id"], f5["run_id"]]
+    assert rerun["baseline_run_id"] == matrix["baseline_run_id"]
