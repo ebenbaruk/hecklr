@@ -94,8 +94,9 @@ async def run(args: argparse.Namespace, settings: AgentSettings, world: World) -
             await serve_mailbox(
                 desk, world, mailbox_from(args), world_base_url=settings.world_base_url
             )
-        app = create_app(desk, world, world_base_url=settings.world_base_url)
-        await uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port)).serve()
+        else:
+            app = create_app(desk, world, world_base_url=settings.world_base_url)
+            await uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port)).serve()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

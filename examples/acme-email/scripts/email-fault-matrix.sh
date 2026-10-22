@@ -46,8 +46,16 @@ start_agent() {
   return 1
 }
 
-newest_run() {
-  ls -t "$RUNS" | head -n 1
+# The id of the run that `hecklr run` printed in its log ("Run <ULID> (...)"), checked against the
+# run directory it must have written: never an older run's, which would compare the wrong runs.
+run_id_from() {
+  local id
+  id=$(grep -oE '^Run [0-9A-HJKMNP-TV-Z]{26} ' "$1" | tail -n 1 | cut -d' ' -f2 || true)
+  if [[ -z "$id" || ! -d "$RUNS/$id" ]]; then
+    echo "hecklr run wrote no run; see $1" >&2
+    return 1
+  fi
+  echo "$id"
 }
 
 mkdir -p "$REPORTS"
@@ -55,10 +63,11 @@ for label in "${LABELS[@]}"; do
   echo "== $label: hecklr run --suite $SUITE --channels email ($BRAIN brain)"
   start_agent "$label"
   # A run with failing trials still records them; the comparison below is the verdict.
-  uv run hecklr run -c "$CONFIG" -s "$SUITE" --channels email --budget-usd "$BUDGET_USD" || true
+  uv run hecklr run -c "$CONFIG" -s "$SUITE" --channels email --budget-usd "$BUDGET_USD" \
+    2>&1 | tee "$REPORTS/run-$label.log" || true
   curl -fsS "http://127.0.0.1:$PORT/healthz" >"$REPORTS/health-$label.json"
   stop_agent
-  RUN_IDS+=("$(newest_run)")
+  RUN_IDS+=("$(run_id_from "$REPORTS/run-$label.log")")
   echo "$label run: ${RUN_IDS[${#RUN_IDS[@]}-1]}"
 done
 

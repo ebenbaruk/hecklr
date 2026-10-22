@@ -6,6 +6,10 @@
   background and POSTed as an ``EmailMessage`` to ``reply_url``.
 - ``GET /healthz``: variant, brain, mailer settings, where the tools went, replies in flight.
 
+``reply_url`` is POSTed to as given: this is a local test agent that trusts its caller (Hecklr).
+Deployed where anyone can reach it, it would let them make it POST anywhere; a real agent sends
+replies through its mail provider instead.
+
 A reply that cannot be worked out (the LLM brain failed) or delivered is logged and dropped: the
 customer hears nothing, which is exactly what Hecklr must notice.
 """

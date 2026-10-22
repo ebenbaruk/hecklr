@@ -51,8 +51,9 @@ def fetch_unseen(mailbox: Mailbox) -> list[bytes]:
     """Every unseen message in the inbox, marked seen as it is fetched (blocking)."""
     user = mailbox.username or mailbox.inbox
     password = mailbox.password or mailbox.inbox
-    imap = imaplib.IMAP4(mailbox.imap_host, mailbox.imap_port, timeout=mailbox.timeout_s)
-    try:
+    # The context manager logs out on exit and ignores a socket error while doing so, so a login
+    # or command error on a dropped connection is the one that surfaces.
+    with imaplib.IMAP4(mailbox.imap_host, mailbox.imap_port, timeout=mailbox.timeout_s) as imap:
         _ok(imap.login(user, password))
         _ok(imap.select("INBOX"))
         uids = b" ".join(_ok(imap.uid("SEARCH", "UNSEEN"))).split()
@@ -61,8 +62,6 @@ def fetch_unseen(mailbox: Mailbox) -> list[bytes]:
             data = _ok(imap.uid("FETCH", uid.decode(), "(BODY[])"))
             raws += [item[1] for item in data if isinstance(item, tuple)]
         return raws
-    finally:
-        imap.logout()
 
 
 def send(mailbox: Mailbox, message: MimeMessage) -> None:

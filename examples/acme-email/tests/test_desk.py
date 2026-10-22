@@ -1,5 +1,6 @@
 """The email front end: threading, quoted history, one conversation per sender, tool deadlines."""
 
+import itertools
 from collections.abc import Mapping
 
 import anyio
@@ -19,11 +20,12 @@ from hecklr_schemas import TRIAL_ID_HEADER, EmailMessage, World
 pytestmark = pytest.mark.anyio
 
 CUSTOMER = "camille.01J@customers.hecklr.test"
+_MESSAGE_NUMBERS = itertools.count(1)
 
 
 def customer_email(body: str, *, sender: str = CUSTOMER, subject: str = "My visit") -> EmailMessage:
     return EmailMessage(
-        message_id=f"<{abs(hash((body, sender)))}@customers.hecklr.test>",
+        message_id=f"<customer-{next(_MESSAGE_NUMBERS)}@customers.hecklr.test>",
         subject=subject,
         body=body,
         from_addr=sender,
