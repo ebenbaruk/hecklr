@@ -4,8 +4,13 @@
 successful ones (some deliberately close to a failure mode, e.g. two addresses handled well), five
 planted failure modes, and a few unrelated one-off failures (off-topic requests the agent turns
 down, which are not a planted mode). The ground truth (``planted``) is returned beside the
-conversations, never inside them, so the miner cannot peek. Every conversation carries PII
-(names, e-mails, phones, addresses), so scrubbing is exercised too.
+conversations, never inside them, so the miner cannot peek. Many conversations carry PII (names,
+e-mails, phones, addresses, in most planted failures and several kinds of success), so scrubbing
+is exercised too; some, such as opening-hours questions, carry none.
+
+Half of the planted failures end with a polite agent sign-off instead of the customer's
+unanswered complaint, so detection has to rely on escalation, repetition and sentiment, not only
+on the last message going unanswered.
 """
 
 import random
@@ -125,9 +130,9 @@ class SyntheticLogSet:
     conversations: list[Conversation]
     planted: dict[str, str | None]
 
-    def write_jsonl(self, path: Path) -> None:
+    def write_jsonl(self, path: str | Path) -> None:
         """Write the conversations as native JSONL (the ground truth is not written)."""
-        path.write_text(
+        Path(path).write_text(
             "".join(c.model_dump_json() + "\n" for c in self.conversations), encoding="utf-8"
         )
 
@@ -494,6 +499,12 @@ _ONE_OFF_REPLIES: Final = (
     "I have no information about {topic}, sorry.",
     "That {topic} request isn't something we offer.",
 )
+_SIGN_OFFS: Final = (
+    "I'm sorry to hear that. Have a good day.",
+    "Understood. Thank you for contacting us.",
+    "I've noted your feedback. Goodbye.",
+    "Sorry for the trouble. This chat will now close.",
+)
 _ONE_OFF_ENDINGS: Final = ("Never mind then.", "Forget it.", "Pointless. Bye", "I give up.")
 
 
@@ -543,6 +554,8 @@ def generate_log_set(
         if draw < failure_share:
             mode = rng.choice(sorted(_FAILURES))
             script = _FAILURES[mode](customer, rng)
+            if rng.random() < 0.5:
+                script.append(_say("agent", rng.choice(_SIGN_OFFS)))
         elif draw < failure_share + one_off_share:
             mode, script = ONE_OFF, _one_off(customer, rng)
         else:

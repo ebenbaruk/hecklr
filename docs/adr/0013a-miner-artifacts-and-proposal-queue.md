@@ -57,5 +57,13 @@ queue. DuckDB allows one writer process per file.
 - `O_APPEND` single-write atomicity is a POSIX guarantee on local filesystems. On network
   filesystems two simultaneous reviews could interleave. Reviews are rare, human-paced events,
   so this is accepted.
+- `decide` checks the current state and then appends, without a lock. Two reviewers deciding the
+  same proposal at the same moment (CLI and UI) can both see `proposed` and both append; the last
+  line wins. Two approvals cannot write the scenario twice (the file is created with `open("x")`),
+  but an approval racing a rejection can leave the scenario file written while the record says
+  `rejected`. Reviews are human-paced, so the window is accepted; the UI should refresh the queue
+  after each decision.
+- `summary.json` also lists `scrub_errors` and `summary_errors` (conversation id -> why the LLM
+  scrub or LLM summary fell back). Both default to empty, so older summaries still read.
 - The format is versioned by the frozen schemas (`schema_version` on every record) and by
   `MineSummary.schema_version`. Changing a file's layout requires a new ADR.

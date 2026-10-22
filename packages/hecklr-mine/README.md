@@ -20,6 +20,17 @@ hecklr mine export.csv --format csv --mapping mapping.yaml --no-model
 | 4. Cluster | `embed`, `cluster` | Hashing embedder (free, offline) or OpenAI `text-embedding-3-small`. Vectors are mean-centered and grouped with scikit-learn HDBSCAN. Clusters get LLM labels ("fails when …"), or keyword labels offline |
 | 5. Synthesize | `synthesize`, `store` | Each cluster's central conversation becomes a `mined` scenario (via `hecklr_sim.extract_scenario`), deduplicated against the suite and the queue, and appended to the review queue |
 
+**Names are not scrubbed by default.** The regex rules find patterns (e-mails, phones, addresses,
+postcodes, cards, IBANs), not person names, so `conversations.jsonl` keeps names such as "this is
+Karim Dubois" unless you add `--presidio` or `--llm-scrub`; the CLI warns when neither is set. The
+LLM pass merges what it finds across the batch, so a name it spotted in one conversation is also
+scrubbed in the others. A conversation whose LLM reply is unusable keeps its pattern scrubbing and
+is listed in `summary.json` (`scrub_errors`); an unusable LLM summary falls back to the heuristic
+one (`summary_errors`).
+
+`--budget-usd` is checked before every model call, so the calls already in flight (up to 8) can
+overshoot it slightly; without a model, embedding spend over the cap stops the run after clustering.
+
 ## Review queue
 
 Results go to `.hecklr/mine/<mine id>/`, and `proposals.jsonl` there is append-only (ADR 0013a).
