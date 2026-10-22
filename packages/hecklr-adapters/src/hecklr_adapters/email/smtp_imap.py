@@ -23,6 +23,7 @@ from typing import Any, Final
 
 import anyio
 
+from hecklr_adapters.context import session_headers
 from hecklr_adapters.email._routing import TrialAddresses
 from hecklr_adapters.email.messages import from_mime, to_mime
 from hecklr_adapters.errors import AdapterConfigError, AgentError, AgentTimeoutError
@@ -50,9 +51,9 @@ class SmtpImapEmailTarget:
         self._addresses = TrialAddresses()
 
     async def deliver(self, msg: EmailMessage, ctx: SessionContext) -> None:
-        """Send ``msg`` to the agent over SMTP, tagged with the trial id header."""
+        """Send ``msg`` to the agent over SMTP, tagged with the trial and world URL headers."""
         self._addresses.add(ctx.trial_id, msg.from_addr)
-        mime = to_mime(msg, ctx.headers())
+        mime = to_mime(msg, session_headers(ctx))
         await anyio.to_thread.run_sync(self._send, mime, ctx.timeout_s)
 
     async def replies(self, ctx: SessionContext) -> AsyncIterator[EmailMessage]:

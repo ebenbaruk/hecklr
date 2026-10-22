@@ -2,12 +2,14 @@
 
 Hecklr POSTs each customer email to the agent's ``url`` as JSON::
 
-    {"trial_id": "...", "reply_url": "http://<listen_host>:<listen_port>/hecklr/email/replies",
+    {"trial_id": "...", "world_url": "...", "world_mcp_url": "...",
+     "reply_url": "http://<listen_host>:<listen_port>/hecklr/email/replies",
      "message": <EmailMessage>}
 
-with the ``X-Hecklr-Trial-Id`` header and any configured ``headers``. The agent answers, whenever
-it likes, by POSTing an ``EmailMessage`` as JSON to ``reply_url``. Hecklr routes the reply by its
-recipient (see ``_routing``) and answers ``202`` (accepted), ``400`` (not a valid
+with the ``X-Hecklr-Trial-Id`` and world URL headers (``session_headers``; the world fields and
+headers only when the trial has a sandbox) and any configured ``headers``. The agent answers,
+whenever it likes, by POSTing an ``EmailMessage`` as JSON to ``reply_url``. Hecklr routes the
+reply by its recipient (see ``_routing``) and answers ``202`` (accepted), ``400`` (not a valid
 ``EmailMessage``) or ``404`` (no live conversation has that address).
 
 The reply endpoint is a standard-library HTTP server on its own thread: it outlives any one trial
@@ -26,6 +28,7 @@ import httpx2
 from pydantic import ValidationError
 
 from hecklr_adapters._http import agent_http_errors, check_status, new_client
+from hecklr_adapters.context import session_fields, session_headers
 from hecklr_adapters.email._routing import TrialAddresses
 from hecklr_schemas import EmailMessage, SessionContext, WebhookAdapterConfig
 
@@ -89,11 +92,11 @@ class WebhookEmailTarget:
         self.start()
         self._addresses.add(ctx.trial_id, msg.from_addr)
         body = {
-            "trial_id": ctx.trial_id,
+            **session_fields(ctx),
             "reply_url": self.reply_url,
             "message": msg.model_dump(mode="json"),
         }
-        headers = {**self._config.headers, **ctx.headers()}
+        headers = {**self._config.headers, **session_headers(ctx)}
         with agent_http_errors(self._url, self._config.timeout_s):
             async with new_client(self._config.timeout_s, self._transport) as client:
                 response = await client.post(self._url, json=body, headers=headers)

@@ -35,6 +35,12 @@ Decisions: `docs/adr/0009a-voice-engine-timing-and-dsp.md`.
   WER 4.5% at 20 and 10 dB, 11% at 5 dB, 42-46% at 0 dB; Silero detects Kokoro speech.
 - Coverage of the package: 96% (`uv run pytest packages/hecklr-voice -n auto --cov=...`).
 
+- Issue #20 (WS-wire): `test_dsp_pool_never_blocks_the_event_loop` measures loop CPU per 1 ms
+  beat (a 5 ms beat summed several ~1 ms IPC steps, up to 6.2 ms on a loaded machine), bound
+  unchanged at 5 ms, plus a load-invariant check: loop CPU over two renders without the heartbeat
+  is under half of one render's CPU. Issue #31: DSP workers cannot start when the parent's main
+  module imports duckdb (fixed for the `hecklr` console script; the general fix is here).
+
 ## Next
 
 - WS10: voice adapters (Pipecat, LiveKit) deliver 16 kHz `TimedFrame`s with media-clock

@@ -5,6 +5,46 @@ report, calibrate, model defaults, the GitHub Action in `action/`). Spec: `docs/
 "Developer experience", "Run lifecycle", "Agent adapters", "Statistics and reporting".
 Decisions: ADR 0007a, ADR 0007c.
 
+## WS-wire (Wave 2b): voice and email in `hecklr run` (ADR 0007e, ADR 0005c, RFC 0010a)
+
+Plan: (1) world URLs over every voice/email adapter; (2) issues #14 and #19; (3) compose voice
+and email drivers, provider checks, recordings, RFC 0010a; (4) `calibrate --voice-loopback`
+(#24); (5) flaky tests #20 and #28; (6) SC1 timing with luna (#13); (7) real CLI runs.
+
+Done:
+- World URLs on voice/email transports: `hecklr-adapters/tests/test_world_forwarding_voice_email.py`
+  (pcm start message, Twilio customParameters, WebSocket handshake headers for all three
+  protocols, Pipecat offer headers + `request_data`, LiveKit token metadata/attributes, email
+  webhook headers + body, SMTP headers).
+- #14: Wilson on the scenario count when every scenario is all-or-nothing
+  (`test_us01_all_passing_suite_interval_does_not_collapse_at_small_n`, coverage test >= 90%).
+- #19: `models_called` pre-flights only models the suite can call
+  (`test_issue19_a_suite_that_calls_no_model_needs_no_key`, judge/simulator counterparts). The
+  Action self-test's unstartable run now uses a missing agent entry point.
+- Compose (`channels.py`, `config.py`): voice and email drivers; ASR/TTS/impairments checked in
+  `prepare_run`; recordings in the run directory; webhook endpoint released after the run;
+  `websocket` voice adapter selectable from `hecklr.yaml`. `tests/test_compose_channels.py`:
+  real WebSocket voice agent (latency within 20 ms of the agent's 500 ms, recordings on disk and
+  in the report), email webhook, SMTP/IMAP through GreenMail in Docker, `hecklr run --channels
+  voice,email` through the CLI; each agent found its trial's world from what the adapter sent.
+- #24: `hecklr calibrate --voice-loopback` (`test_sc4_calibrate_voice_loopback_measures_within_20ms`
+  runs the installed console script). Found and fixed: DSP workers failed to start under the
+  console script (duckdb import without `__main__`), `cli._keep_dsp_workers_off_the_entry_script`.
+- #20 / #28: see the commit and the hecklr-voice / hecklr-adapters tests. Repeated full-suite
+  `-n auto` runs: both tests passed in all 8 runs (the only other failure seen was the
+  pre-existing hecklr-grade hypothesis bug, issue #38).
+- #13 SC1 measured on this laptop with luna: `hecklr init --yes` (luna simulator and judge,
+  concurrency 8) then `hecklr run` (15 trials): **44 s** wall, $0.0102. No change needed; the
+  8.3 min in the issue was a shared local Ollama.
+- Real CLI exercises (scratch projects): `hecklr run -s multi --channels voice,email` against
+  `tests/fixtures/voice_agent.py` (WebSocket pcm) and `email_agent.py` (webhook): 4/4 ok,
+  response latency p50 502-516 ms for a 500 ms agent; `hecklr compare` -> NO CHANGE (exit 0);
+  `hecklr report latest -f html -f md -f json`; the HTML has a Voice section, 4 players, 6 WAVs.
+  Email over smtp-imap through GreenMail in Docker: 2/2 ok. A guided luna caller over voice and
+  email: 4/4 ok, $0.0011. `hecklr calibrate --voice-loopback`: all errors within 4 ms (idle).
+  Found on the way: another process holding the webhook's default port 8787 makes every email
+  trial a harness error (`Address already in use`); set `listen_port`.
+
 ## Plan (WS7c, Wave 2a)
 
 1. `hecklr run` summarizes with `hecklr_report.analyze` + `render_terminal` (plus every scenario's
@@ -107,22 +147,21 @@ Decisions: ADR 0007a, ADR 0007c.
 
 ## Next
 
-- `calibrate --voice-loopback` (SC4) from the CLI once a voice suite runs through `hecklr run`
-  (issue #24).
 - Pass judge calibrations (from the UI's labels, WS16) into reports and `gate`.
-- Voice and email drivers plug into `compose.build_drivers` when WS9/WS10/WS12 land.
+- When the schema carries RFC 0010a's `websocket` voice member: delete `hecklr/config.py` and
+  load with `hecklr_core.load_project`.
 
 ## Open questions
 
-- HTTP agents in sandbox mode cannot learn their trial's world URLs from the `http` adapter
-  (WS7d). Compose already gives every trial a reachable `SessionContext.world_http_url`
-  (`http://127.0.0.1:<port>/t/<trial id>`); the Action's self-test uses the `python` adapter.
-- SC1 on a laptop with a local model is model-bound (8.3 min measured): issue #13.
-- The suite pass rate's cluster-bootstrap interval collapses to [100%, 100%] when every trial
-  passes: issue #14 (WS5/WS7b).
+- SDK users whose own `__main__` imports duckdb (e.g. `hecklr_core` at module top) hit the same
+  DSP-worker start failure the console script had; the general fix belongs in `hecklr-voice`'s
+  pool (issue #31).
 
 ## Decisions
 
+- ADR 0007e: voice/email drivers, provider defaults and checks, recordings, world URLs on
+  every transport, RFC 0010a shim, `--voice-loopback`. ADR 0005c: suite interval at the
+  all-or-nothing boundary.
 - ADR 0007c: run aliases, gate only compares (3 on any lookup failure, `--missing-baseline`),
   A/A with seeds s and s+1, judges from JSONL labels, scripted `fake/` models, model defaults,
   the Action's `hecklr github` plumbing.

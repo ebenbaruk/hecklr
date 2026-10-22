@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from hecklr.compose import (
-    ChannelUnavailableError,
     RunRequest,
     UnknownBaselineError,
     detect_git_sha,
@@ -163,7 +162,7 @@ def test_suite_adaptive_setting_is_the_default(config_path: Path, edit: Edit) ->
     assert not prepare_run(_request(config_path, adaptive=False)).adaptive
 
 
-def test_voice_suite_names_the_missing_driver(config_path: Path, edit: Edit) -> None:
+def test_a_chat_and_voice_suite_gets_a_driver_per_channel(config_path: Path, edit: Edit) -> None:
     project = config_path.parent
     edit(
         config_path,
@@ -171,15 +170,19 @@ def test_voice_suite_names_the_missing_driver(config_path: Path, edit: Edit) -> 
         "  adapters:\n    voice: { type: pipecat, url: http://localhost:7860/offer }\n",
     )
     edit(config_path, "channels: [chat] }", "channels: [chat, voice] }")
-    voice = "voice: { tts: { provider: kokoro, voice: af_bella } }\n"
+    edit(config_path, "  judge: fake/judge\n", "  judge: fake/judge\n  asr: fake/asr\n")
+    voice = "voice: { tts: { provider: synthetic, voice: caller } }\n"
     for persona in (project / "personas").glob("*.yaml"):
         persona.write_text(persona.read_text() + voice)
     for scenario in (project / "scenarios").glob("*.yaml"):
         edit(scenario, "channels: [chat]", "channels: [chat, voice]")
 
-    with pytest.raises(ChannelUnavailableError, match=r"hecklr\[voice\].*--channels chat"):
-        prepare_run(_request(config_path))
-    assert prepare_run(_request(config_path, channels=[Channel.CHAT])).drivers
+    prepared = prepare_run(_request(config_path))
+    assert set(prepared.drivers) == {Channel.CHAT, Channel.VOICE}
+    assert prepared.drivers[Channel.VOICE].channel is Channel.VOICE
+    assert set(prepare_run(_request(config_path, channels=[Channel.CHAT])).drivers) == {
+        Channel.CHAT
+    }
 
 
 def test_unknown_baseline_is_refused(config_path: Path) -> None:

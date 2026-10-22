@@ -39,6 +39,7 @@ from hecklr_stats.outcomes import (
     slice_key,
     slices_of,
 )
+from hecklr_stats.rates import all_or_nothing_estimate
 from hecklr_stats.sequential import group_sequential_boundaries
 
 PASS_RATE = "pass_rate"  # noqa: S105 - a metric name; "pass" here is not a password
@@ -109,18 +110,27 @@ def paired_comparison(
     base_reps, cand_reps = _paired_bootstrap(baseline, candidate, rng, resamples)
     delta_reps = cand_reps - base_reps
     p_value = sign_flip_p_value(differences, rng=rng, resamples=resamples)
-    estimates = [
-        _bootstrap_estimate(float(np.mean(point)), reps, baseline.n_scenarios, confidence, method)
-        for point, reps, method in (
-            (baseline.rates, base_reps, IntervalMethod.CLUSTER_BOOTSTRAP),
-            (candidate.rates, cand_reps, IntervalMethod.CLUSTER_BOOTSTRAP),
-            (differences, delta_reps, IntervalMethod.PAIRED_CLUSTER_BOOTSTRAP),
+    n = baseline.n_scenarios
+    run_estimates = [
+        # Each run's own pass rate gets the suite interval's boundary rule (ADR 0005c); Δ keeps
+        # the paired bootstrap the verdicts and their measured error rates are built on.
+        all_or_nothing_estimate(counts, counts.rates, confidence)
+        or _bootstrap_estimate(
+            float(np.mean(counts.rates)), reps, n, confidence, IntervalMethod.CLUSTER_BOOTSTRAP
         )
+        for counts, reps in ((baseline, base_reps), (candidate, cand_reps))
     ]
+    delta = _bootstrap_estimate(
+        float(np.mean(differences)),
+        delta_reps,
+        n,
+        confidence,
+        IntervalMethod.PAIRED_CLUSTER_BOOTSTRAP,
+    )
     return PairedResult(
-        baseline=estimates[0],
-        candidate=estimates[1],
-        delta=estimates[2],
+        baseline=run_estimates[0],
+        candidate=run_estimates[1],
+        delta=delta,
         p_value=p_value,
         delta_se=float(np.std(delta_reps)),
         n_trials_baseline=int(baseline.trials.sum()),
