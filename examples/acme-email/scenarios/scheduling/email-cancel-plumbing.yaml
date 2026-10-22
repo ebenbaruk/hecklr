@@ -1,0 +1,18 @@
+id: email-cancel-plumbing
+title: Customer cancels a plumbing visit by email
+channels: [email]
+tags: [email, core, catches-f11, cancel]
+persona: busy-homeowner
+world: acme-maintenance
+goal: "Cancel the plumbing visit on Tuesday 3 November."
+facts:
+  customer_id: C-1420
+  postcode: '75019'
+  appointment_id: A-3007
+success:
+- {type: email_threading}
+- type: state
+  expr: "world.appointments['A-3007'].status == 'cancelled'"
+  description: the visit is cancelled
+- {type: judge, rubric: resolved}
+limits: {max_turns: 16, max_duration_s: 600}
