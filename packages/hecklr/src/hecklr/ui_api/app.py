@@ -5,7 +5,7 @@ UI"; ADR 0016a). Endpoints are synchronous: FastAPI runs them in its thread pool
 run or bootstrapping an analysis never blocks the event loop.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final
@@ -13,6 +13,7 @@ from typing import Annotated, Final
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hecklr import __version__
 from hecklr.ui_api.labels import (
@@ -59,6 +60,9 @@ from hecklr_stats import PASS_RATE
 STATIC_DIR: Final = Path(__file__).parent / "static"
 """Where ``npm run build`` in ``ui/`` puts the app; shipped inside the wheel."""
 
+LOCAL_HOSTS: Final = ("localhost", "127.0.0.1", "[::1]")
+"""Host headers a local server answers: a DNS-rebinding page names its own host instead."""
+
 DEFAULT_QUEUE_SIZE: Final = 50
 """US-11: "I label 50 judged trials"."""
 
@@ -81,6 +85,7 @@ def create_app(
     user: str,
     static_dir: Path | None = STATIC_DIR,
     clock: Callable[[], datetime] = utc_now,
+    allowed_hosts: Sequence[str] = LOCAL_HOSTS,
 ) -> FastAPI:
     """The UI server for ``project``.
 
@@ -89,8 +94,12 @@ def create_app(
         user: Default labeler and reviewer name shown by the app.
         static_dir: The built app to serve at ``/``; ``None`` serves the API only (``--dev``).
         clock: Wall-clock source for label and decision timestamps (injected by tests).
+        allowed_hosts: ``Host`` header names answered; any other gets ``400``, so a page on
+            another site that rebinds its DNS name to this machine can neither read results nor
+            write labels and decisions.
     """
     app = FastAPI(title="Hecklr", version=__version__, docs_url="/api/docs", openapi_url=None)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
     library = RunLibrary(project)
     labels = LabelBook(project.output_dir / LABELS_FILE)
     mine = MineFiles(project)

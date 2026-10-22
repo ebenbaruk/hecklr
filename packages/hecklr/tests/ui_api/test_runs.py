@@ -158,7 +158,7 @@ async def test_unknown_trial_is_404(client: httpx2.AsyncClient, lab: Lab) -> Non
 async def test_us03_voice_trial_has_recordings_with_turn_markers(lab: Lab) -> None:
     run_id, trial_id = await store_voice_run(lab)
     transport = httpx2.ASGITransport(app=make_app(lab))
-    async with httpx2.AsyncClient(transport=transport, base_url="http://ui") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
         detail = (await client.get(f"/api/runs/{run_id}/trials/{trial_id}")).json()
 
         escaping, mix = detail["recordings"]
@@ -218,7 +218,7 @@ def held_database(lab: Lab) -> Iterator[None]:
 @pytest.mark.usefixtures("held_database")
 async def test_a_run_being_written_is_listed_but_its_results_are_busy(lab: Lab) -> None:
     transport = httpx2.ASGITransport(app=make_app(lab))
-    async with httpx2.AsyncClient(transport=transport, base_url="http://ui") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
         listed = (await client.get("/api/runs")).json()
         summary = await client.get(f"/api/runs/{lab.baseline}/summary")
 
@@ -233,7 +233,7 @@ async def test_a_run_without_exports_is_read_from_its_database_read_only(lab: La
         (run_dir / f"{table}.parquet").unlink()
     before = (run_dir / "results.duckdb").read_bytes()
     transport = httpx2.ASGITransport(app=make_app(lab))
-    async with httpx2.AsyncClient(transport=transport, base_url="http://ui") as client:
+    async with httpx2.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
         summary = (await client.get(f"/api/runs/{lab.baseline}/summary")).json()
 
     assert summary["counts"]["analyzed"] == 10

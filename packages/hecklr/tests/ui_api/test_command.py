@@ -1,5 +1,6 @@
 """``hecklr ui`` and the serving of the built app (ADR 0016a)."""
 
+import ipaddress
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,53 @@ async def test_paths_outside_the_app_get_the_index_not_the_file(lab: Lab, built:
     assert response.text == INDEX
 
 
+async def test_a_static_file_at_the_app_root_is_served_with_its_type(lab: Lab, built: Path) -> None:
+    (built / "robots.txt").write_text("User-agent: *", encoding="utf-8")
+    async with _client(make_app(lab, built)) as client:
+        response = await client.get("/robots.txt")
+
+    assert response.text == "User-agent: *"
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "cache-control" not in response.headers
+
+
+@pytest.mark.parametrize("host", ["localhost:8484", "127.0.0.1", "[::1]:8484"])
+async def test_local_host_names_are_answered(lab: Lab, host: str) -> None:
+    async with _client(make_app(lab)) as client:
+        response = await client.get("/api/meta", headers={"host": host})
+
+    assert response.status_code == 200
+
+
+async def test_other_host_names_are_refused_against_dns_rebinding(lab: Lab) -> None:
+    async with _client(make_app(lab)) as client:
+        read = await client.get("/api/runs", headers={"host": "attacker.example"})
+        write = await client.post(
+            "/api/labels",
+            headers={"host": "attacker.example:8484"},
+            json={"grade_id": "x", "passed": True, "labeler": "eve"},
+        )
+
+    assert (read.status_code, write.status_code) == (400, 400)
+    assert not (lab.output_dir / "labels.jsonl").exists()
+
+
+@pytest.mark.parametrize(
+    ("bind", "hosts"),
+    [
+        ("127.0.0.1", ["localhost", "127.0.0.1", "[::1]"]),
+        ("192.168.1.20", ["localhost", "127.0.0.1", "[::1]", "192.168.1.20"]),
+        ("fe80::1", ["localhost", "127.0.0.1", "[::1]", "[fe80::1]"]),
+        ("myhost.lan", ["localhost", "127.0.0.1", "[::1]", "myhost.lan"]),
+        ("localhost", ["localhost", "127.0.0.1", "[::1]"]),
+        (str(ipaddress.IPv4Address(0)), ["*"]),
+        (str(ipaddress.IPv6Address(0)), ["*"]),
+    ],
+)
+def test_allowed_hosts_follow_the_bind(bind: str, hosts: list[str]) -> None:
+    assert hecklr.commands.ui.allowed_hosts(bind) == hosts
+
+
 async def test_meta_names_the_project_files_and_defaults(lab: Lab) -> None:
     async with _client(make_app(lab)) as client:
         meta = (await client.get("/api/meta")).json()
@@ -76,7 +124,7 @@ async def test_meta_names_the_project_files_and_defaults(lab: Lab) -> None:
 
 
 def _client(app: FastAPI) -> httpx2.AsyncClient:
-    return httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://ui")
+    return httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://127.0.0.1")
 
 
 # --- the command ------------------------------------------------------------------------------

@@ -148,7 +148,7 @@ class Clock:
 async def client(lab: Lab) -> AsyncIterator[httpx2.AsyncClient]:
     """The API of ``lab`` over ASGI (no socket)."""
     transport = httpx2.ASGITransport(app=make_app(lab))
-    async with httpx2.AsyncClient(transport=transport, base_url="http://ui") as http:
+    async with httpx2.AsyncClient(transport=transport, base_url="http://127.0.0.1") as http:
         yield http
 
 
