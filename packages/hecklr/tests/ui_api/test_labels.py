@@ -183,20 +183,19 @@ async def test_the_labels_file_is_what_hecklr_calibrate_judges_reads(
         "--labels", str(lab.output_dir / "labels.jsonl"), "--run", lab.candidate,
     ]  # fmt: skip
     # The CLI runs its own event loop, so it cannot run on this test's.
-    result = await anyio.to_thread.run_sync(
-        lambda: CliRunner().invoke(cli_app, args, env={"COLUMNS": "200"})
-    )
+    result = await anyio.to_thread.run_sync(lambda: CliRunner().invoke(cli_app, args))
 
+    # Exit 0: the CLI matched these labels to the run's judge grades and found every judge
+    # trusted, as the UI did (it exits non-zero on no match or an untrusted judge).
     output = click.unstyle(result.output)
     assert result.exit_code == 0, output
+    assert "Judge agreement with human labels" in output
     assert {j["grader"]: j["n"] for j in ui_report["judges"]} == {
         "judge:no_hallucination": 4,
         "judge:resolved": 4,
         "judge:tone": 2,
     }
-    for judge in ui_report["judges"]:
-        assert judge["grader"] in output
-        assert judge["kappa"]["value"] == 1.0
+    assert all(judge["kappa"]["value"] == 1.0 and judge["trusted"] for judge in ui_report["judges"])
 
 
 # --- unit level ----------------------------------------------------------------------------

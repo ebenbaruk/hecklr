@@ -20,6 +20,7 @@ import click
 import httpx2
 import numpy as np
 import pytest
+import structlog
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typer.testing import CliRunner
@@ -103,13 +104,19 @@ def lab_template(tmp_path_factory: pytest.TempPathFactory) -> Lab:
     """Two real runs, made once per module (each takes a couple of seconds)."""
     root = tmp_path_factory.mktemp("lab") / "shop"
     write_project(root, "shop-agent", AgentChoice("python"), FAKE_MODELS)
+    # The CLI configures structlog for its process and imports the project's starter agent:
+    # give both back, since this module-scoped fixture runs outside the per-test restores and
+    # other packages' tests in this worker capture logs.
+    logging_config = structlog.get_config()
     with pytest.MonkeyPatch.context() as patch:
-        # The run imports the project's starter agent; keep sys.path and modules as they were.
         patch.setattr(sys, "path", list(sys.path))
         patch.setattr(sys, "modules", dict(sys.modules))
-        config = root / "hecklr.yaml"
-        baseline = _run(config)
-        candidate = _run(config, _no_saturdays)
+        try:
+            config = root / "hecklr.yaml"
+            baseline = _run(config)
+            candidate = _run(config, _no_saturdays)
+        finally:
+            structlog.configure(**logging_config)
     return Lab(root=root, baseline=baseline, candidate=candidate)
 
 
