@@ -7,7 +7,9 @@ silence. Each finished turn is transcribed, normalized, answered by the acme bra
 one turn at a time, after ``tts_pre_delay_ms``. Transcription starts speculatively once the
 caller has been quiet for ``SPECULATE_AFTER_MS``: a batch recognizer takes a few hundred
 milliseconds, and starting it early takes it off the response path whenever the caller does
-not resume (the result is dropped when they do).
+not resume (the result is dropped when they do). A call runs one early transcription at a time:
+a caller who pauses often would otherwise queue a transcription per pause, and the backlog
+delayed answers by seconds.
 
 The caller *takes the floor* once they have spoken for ``barge_in_min_speech_ms`` without a
 break. With ``barge_in`` on, taking the floor stops the agent mid-reply (a ``clear`` on the
@@ -94,6 +96,11 @@ class Transcription:
         finally:
             self._done.set()
 
+    @property
+    def done(self) -> bool:
+        """Whether the transcript (or its failure) is ready."""
+        return self._done.is_set()
+
     async def result(self) -> str:
         """The transcript, once ready."""
         await self._done.wait()
@@ -141,6 +148,9 @@ class VoiceCall:
         self._silence_ms = 0
         self._took_floor = False
         self._speculation: Transcription | None = None
+        """The call's latest early transcription."""
+        self._speculated = False
+        """Whether ``_speculation`` covers all of the current turn's speech."""
         self._group: anyio.abc.TaskGroup | None = None
         self._over = False
         self.floor = 0
@@ -190,7 +200,7 @@ class VoiceCall:
                 self._preroll.clear()
             self._utterance.append(frame)
             self._silence_ms = 0
-            self._speculation = None  # the caller resumed: that transcript is incomplete
+            self._speculated = False  # the caller resumed: the early transcript is incomplete
             self._speech_ms += FRAME_MS
             if not self._took_floor and self._speech_ms >= self._config.barge_in_min_speech_ms:
                 self._took_floor = True
@@ -203,19 +213,20 @@ class VoiceCall:
         self._utterance.append(frame)
         self._silence_ms += FRAME_MS
         end_ms = self._config.end_of_speech_ms
-        if self._speculation is None and self._silence_ms >= min(SPECULATE_AFTER_MS, end_ms):
+        if not self._speculated and self._silence_ms >= min(SPECULATE_AFTER_MS, end_ms):
             self._speculate(np.concatenate(self._utterance))
         if self._silence_ms >= end_ms:
-            turn = CallerTurn(
-                np.concatenate(self._utterance), self.floor, self._clock(), self._speculation
-            )
+            early = self._speculation if self._speculated else None
+            turn = CallerTurn(np.concatenate(self._utterance), self.floor, self._clock(), early)
             self._utterance, self._silence_ms, self._took_floor = None, 0, False
-            self._speculation = None
+            self._speculation, self._speculated = None, False
             self._turns_in.send_nowait(turn)
 
     def _speculate(self, pcm: Pcm16) -> None:
-        if self._group is None:
-            return  # not answering yet: the turn is transcribed when it is answered
+        busy = self._speculation is not None and not self._speculation.done
+        if self._group is None or busy:
+            return  # the turn is transcribed when it is answered, or at a later pause
+        self._speculated = True
         self._speculation = Transcription()
         self._group.start_soon(self._speculation.run, self._stack.asr, pcm, self._stack.language)
 

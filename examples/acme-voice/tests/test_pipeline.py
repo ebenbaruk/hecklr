@@ -112,9 +112,10 @@ async def test_a_resumed_turn_drops_the_early_transcript() -> None:
     brain = Brain()
     async with call(config(end_of_speech_ms=600), lines=["whole"], brain=brain) as c:
         await c.say((SPEECH, 10), (QUIET, 10), (SPEECH, 10), (QUIET, 30))
-        # Transcribed 100 ms into the first pause, then 100 ms into the last one, which ended
-        # the turn: that second transcript is the one answered.
-        assert c.asr.heard == [(10 + 5) * 320, (10 + 10 + 10 + 5) * 320]
+        # Transcribed 100 ms into the first pause. That transcription had not finished by the
+        # second pause (all the audio arrived at once), and a call runs one at a time, so the
+        # turn is transcribed whole once it has ended.
+        assert c.asr.heard == [(10 + 5) * 320, (10 + 10 + 10 + 30) * 320]
         assert brain.messages == ["whole"]
 
 

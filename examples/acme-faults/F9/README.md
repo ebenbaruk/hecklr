@@ -6,10 +6,11 @@ in the middle of a sentence.
 
 **Caught by** the false interruption rate: `voice_metric` `false_interruptions` (agent speech
 starting inside a caller hesitation, per 100 caller turns) `below: 3` in the eight `catches-f9`
-scenarios of the `voice-timing` suite (`hesitant-caller`, who pauses 550-650 ms in about half of
-their sentences). The clean agent waits 800 ms and never starts inside a hesitation; F9 starts
-talking about 500 ms into the pause (150 ms, then speech recognition), while the caller is still
-thinking. The cut-up sentences often break the task too.
+scenarios of the `voice-timing` suite (`hesitant-caller`, who pauses 450-550 ms in about half of
+their sentences: 570-700 ms of silence with the speech engine's own padding). The clean agent
+waits 800 ms and never starts inside a hesitation; F9 starts talking about 450 ms into the
+pause (150 ms, then speech recognition), while the caller is still thinking. The cut-up
+sentences often break the task too.
 
 ## Run it
 
