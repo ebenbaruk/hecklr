@@ -70,13 +70,13 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   (`create_app(world_transport=...)`) instead of dialling port 9.
 - Numbers: 279 tests + 4 live; 96% coverage of `agent/`.
 
-## Done (WS-m1: gate M1 fault matrix, ADR 0020a, docs/milestones/M1.md)
+## WS-m1: gate M1 fault matrix (ADR 0020a, docs/milestones/M1.md): free and A pass, B open
 
 - `scripts/fault-matrix/fault_matrix.py`: clean, A/A and F1-F6 over HTTP, `hecklr run` + `hecklr
   gate`, per-grader paired comparisons, `matrix.json`/`matrix.md`. Tiers `free` (nightly CI,
   `.github/workflows/fault-matrix.yml`), `a` (rules brain + luna judges on `matrix`), `b` (LLM
   agent + luna simulator and judges on `matrix-live`). Tests: `tests/test_fault_matrix.py`
-  (21, incl. `test_sc8_free_tier_end_to_end`; 93% coverage of the script).
+  (27, incl. `test_sc8_free_tier_end_to_end`; 94% coverage of the script).
 - Defects the matrix found and fixed here: F1's `tool_called` checked no slot (now checks it);
   no judges in the deterministic matrix (18 judge-only twins in `scripted/judged/`); judges could
   not see today's date (world `calendar` collection); the `handoff_appropriate` rubric read tool
@@ -84,9 +84,21 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   states the opposite rule; 6 options-first scenarios); F5 lost 7 of 8 guided scenarios to #29
   (3 more refund-fraud scenarios).
 - The LLM brain counts its own spend (`/healthz spent_usd`) and caps it (`ACME_BUDGET_USD`).
+- Review round 1: F1 on luna books the first slot and rebooks after the customer objects, so
+  `tool_called` passed; the options-first scenarios now carry `args_match` and the matrix counts
+  the spec's Tool family as one grader (`test_sc8_f1_booking_the_wrong_slot_first_regresses_the_tool_grader`).
+  `/healthz failed_turns` + `check_health` refuse a run that measured a provider outage (the
+  OpenAI credit ran out mid-F1). CI's `FORCE_COLOR=1` hid the run id (now stripped).
+- Evidence on the final head: free tier PASS ($0), Tier A PASS ($0.1473), Tier B baseline and
+  A/A valid (A/A inconclusive, no grader regressed), F1-F6 unmeasured: #45 (no OpenAI credit).
+
+## Next (WS-m1)
+
+- Rerun Tier B when #45 is resolved (`--tier b --budget-usd 3.2`, ~$2.8) and record it in M1.md.
 
 ## Open (owned elsewhere)
 
+- #45 OpenAI account out of credit: blocks Tier B.
 - #29 hecklr-sim guard rejects every guided scenario with a postcode and an invoice number.
 - #33 all-agent-error runs pass a no-baseline gate; #34 reply size; #35 Ctrl-C traceback;
   #36 cost estimate for scripted suites; #37 judge evidence-id retry; #19 key pre-flight.
