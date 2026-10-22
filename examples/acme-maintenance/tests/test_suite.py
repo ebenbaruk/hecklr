@@ -17,6 +17,7 @@ from hecklr_schemas import Persona, Scenario, SimulationMode, World
 
 GUIDED = load_scenarios("scenarios/**/*.yaml")
 SCRIPTED = load_scenarios("scripted/*.yaml")
+REDTEAM = load_scenarios("redteam/*.yaml")
 JUDGED = load_scenarios("scripted/judged/*.yaml")
 
 
@@ -26,7 +27,7 @@ def test_every_suite_resolves_with_hecklr_core() -> None:
     assert sizes == {
         "ci": 40,
         "full": 73,
-        "redteam": 12,
+        "redteam": 30,
         "data-protection": 8,
         "smoke": 33,
         "matrix": 51,
@@ -52,7 +53,7 @@ def test_scenarios_cover_every_area_and_persona(personas: dict[str, Persona]) ->
         "emergency": 11,
         "data-protection": 8,
     }
-    used = {persona for scenario in GUIDED for persona in scenario.persona_ids}
+    used = {persona for scenario in GUIDED + REDTEAM for persona in scenario.persona_ids}
     assert used == set(personas)
     assert len(personas) >= 8
     assert {"busy-homeowner", "refund-fraudster", "data-prober"} <= used
