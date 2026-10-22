@@ -1,0 +1,10 @@
+# Answers when the agent stops, speaks without pausing mid-sentence and never interrupts:
+# every agent turn gets a clean response-latency measurement (fault F7).
+id: steady-caller
+description: Calm caller on a clean line who waits for the agent and speaks in one go.
+language: en-US
+traits: { patience: 0.8, verbosity: 0.4, cooperativeness: 0.9 }
+behaviors:
+  response_gap_ms: [300, 700]
+voice:
+  tts: { provider: kokoro, voice: af_heart }

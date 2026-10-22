@@ -40,9 +40,10 @@ jobs:
         run: |
           cp action/selftest/hecklr.yaml "$PROJECT/hecklr.action.yaml"
           cp action/selftest/hecklr_action_agent.py "$PROJECT/"
-          # The same project with a model it has neither a price nor an API key for: `hecklr run`
-          # exits 78 before it records a run.
-          sed 's#simulator: fake/customer#simulator: openai/gpt-6-luna#' \
+          # The same project with an agent entry point that does not exist: `hecklr run` exits 78
+          # before it records a run. (A model without a key no longer stops a scripted suite that
+          # calls no model, issue #19.)
+          sed 's#hecklr_action_agent:reply#hecklr_action_agent:no_such_agent#' \
             action/selftest/hecklr.yaml > "$PROJECT/hecklr.unusable.yaml"
 
       - name: Baseline run (clean agent)

@@ -11,7 +11,8 @@ from rich.console import Console
 from rich.markup import escape
 
 from hecklr import exit_codes
-from hecklr.compose import ChannelUnavailableError, UnknownBaselineError, load_run_project
+from hecklr.channels import ChannelUnavailableError
+from hecklr.compose import UnknownBaselineError, load_run_project
 from hecklr.results import RunLookupError
 from hecklr_adapters import AdapterConfigError
 from hecklr_core import ConfigError, Project, RunNotFoundError

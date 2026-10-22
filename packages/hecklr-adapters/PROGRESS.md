@@ -90,6 +90,16 @@ Owner: WS6 (chat), WS10 (voice), WS12 (email). Spec: `docs/SPEC.md` → "Agent a
     `run_mailbox_agent` (a minimal IMAP/SMTP agent) for this and the next batch's reference agent.
 - 31 email tests; package coverage 98%.
 
+## Done (WS-wire, Wave 2b)
+
+- World URLs on every voice and email transport (ADR 0007e): `session_fields(ctx)` in the pcm
+  `start` message, Twilio `customParameters`, Pipecat `request_data`, LiveKit metadata and
+  `hecklr.*` attributes, the email webhook body; `session_headers(ctx)` on the WebSocket voice
+  handshake, the Pipecat offer, the email webhook and SMTP mail.
+  `tests/test_world_forwarding_voice_email.py` (10 tests).
+- Issue #28: the caller-audio contract test judges the heard speech span only where the case's
+  timing is meaningful (LiveKit times speech by arrival); the rate check runs everywhere.
+
 ## Next
 
 - `webhook` chat adapter (P1, spec table). `make_chat_target` refuses it with a clear error.

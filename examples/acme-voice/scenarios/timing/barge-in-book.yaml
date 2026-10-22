@@ -1,0 +1,14 @@
+id: voice-barge-in-book
+title: A caller who talks over the agent
+channels: [voice]
+tags: [voice, timing, catches-f8]
+persona: interrupter
+world: acme-maintenance
+mode: scripted
+goal: A caller who talks over the agent
+user_turns:
+- "I'd like to book a boiler service please."
+- "Sorry, I'll call back later."
+success:
+- {type: voice_metric, metric: barge_in_reaction, below: 400}
+limits: {max_turns: 16, max_duration_s: 150}

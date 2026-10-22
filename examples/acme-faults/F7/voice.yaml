@@ -1,0 +1,27 @@
+# The voice pipeline of the acme-voice reference agent: VAD -> ASR -> acme brain -> TTS.
+# Fault variants F7-F10 (examples/acme-faults/F7..F10) replace this file with one line changed.
+
+# Caller silence (ms) that ends the caller's turn. Shorter answers sooner but cuts callers off
+# when they pause mid-sentence.
+end_of_speech_ms: 800
+
+# Stop talking when the caller talks over the agent.
+barge_in: true
+
+# Caller speech (ms) that counts as a barge-in, so a click or a cough does not stop the agent.
+barge_in_min_speech_ms: 80
+
+# Wait (ms) before synthesizing a reply.
+tts_pre_delay_ms: 700
+
+# How the agent hears the caller: faster-whisper/<size> (local), or fake/tag for the synthetic
+# speech Hecklr's tests use.
+asr_model: faster-whisper/base.en
+
+# Voice activity detection: silero (robust to background noise) or energy (a level threshold,
+# for clean lines and synthetic speech).
+vad: silero
+
+# How the agent speaks: kokoro (local) or synthetic (tagged speech-like audio for tests).
+tts_provider: kokoro
+tts_voice: af_heart

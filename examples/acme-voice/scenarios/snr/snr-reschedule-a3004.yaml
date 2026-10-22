@@ -1,0 +1,17 @@
+id: voice-snr-reschedule-a3004
+title: Move visit A-3004 to Monday morning (background noise)
+channels: [voice]
+tags: [voice, snr, catches-f10]
+persona: [cafe-caller-clean, cafe-caller-20db, cafe-caller-10db, cafe-caller-5db, cafe-caller-0db]
+world: acme-maintenance
+mode: scripted
+goal: Move visit A-3004 to Monday morning (background noise)
+user_turns:
+- 'Can you move my electrical visit to Monday 2 November, morning?'
+- 'My customer number is C-1215 and my postcode is 92100.'
+- 'Yes please.'
+success:
+- type: state
+  expr: "world.appointments['A-3004'].slot == '2026-11-02T09:00'"
+  description: the visit moved to the slot asked for
+limits: {max_turns: 16, max_duration_s: 150}

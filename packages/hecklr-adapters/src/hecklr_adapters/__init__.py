@@ -8,7 +8,12 @@ build one with ``make_voice_target``. Email adapters (``hecklr_adapters.email``)
 failure.
 """
 
-from hecklr_adapters.context import WORLD_MCP_URL_HEADER, WORLD_URL_HEADER, session_headers
+from hecklr_adapters.context import (
+    WORLD_MCP_URL_HEADER,
+    WORLD_URL_HEADER,
+    session_fields,
+    session_headers,
+)
 from hecklr_adapters.email import make_email_target
 from hecklr_adapters.errors import AdapterConfigError, AgentError, AgentTimeoutError
 from hecklr_adapters.factory import make_chat_target
@@ -50,5 +55,6 @@ __all__ = [
     "make_chat_target",
     "make_email_target",
     "make_voice_target",
+    "session_fields",
     "session_headers",
 ]

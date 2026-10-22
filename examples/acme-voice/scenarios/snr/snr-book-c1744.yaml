@@ -1,0 +1,17 @@
+id: voice-snr-book-c1744
+title: Book a heat pump check for C-1744 (background noise)
+channels: [voice]
+tags: [voice, snr, catches-f10]
+persona: [cafe-caller-clean, cafe-caller-20db, cafe-caller-10db, cafe-caller-5db, cafe-caller-0db]
+world: acme-maintenance
+mode: scripted
+goal: Book a heat pump check for C-1744 (background noise)
+user_turns:
+- 'Please book a heat pump check for Tuesday 3 November in the morning.'
+- 'My customer number is C-1744 and my postcode is 92250.'
+- 'Yes please.'
+success:
+- type: state
+  expr: "any(a.customer_id == 'C-1744' and a.service == 'heat_pump_check' and a.slot == '2026-11-03T09:00' for a in values(world.appointments))"
+  description: the visit is booked at the slot asked for
+limits: {max_turns: 16, max_duration_s: 150}
