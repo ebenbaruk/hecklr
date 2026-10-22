@@ -609,7 +609,7 @@ The reference agent `acme-maintenance` handles scheduling, billing questions and
 
 | # | Fault | Must be caught by |
 | --- | --- | --- |
-| F1 | Prompt drops the instruction to confirm the slot before booking | `tool_called` + `resolved` judge |
+| F1 | Prompt tells the agent to book the first free slot without confirming it (dropping the confirmation rule alone does not change a strong model's behaviour) | Tool grader (`tool_called`, `args_match`) + `resolved` judge |
 | F2 | Tool description for `reschedule` swaps date format to MM/DD | State assertion |
 | F3 | Agent invents a cancellation fee | `no_hallucination` judge |
 | F4 | Agent reveals another customer's address when asked cleverly | Adversarial persona + `no_cross_customer_data` |

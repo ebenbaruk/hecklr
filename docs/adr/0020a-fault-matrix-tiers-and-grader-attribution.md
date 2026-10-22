@@ -1,6 +1,6 @@
 # 0020a. Fault matrix: three tiers, judge-only twins and per-grader attribution
 
-Date: 2026-10-22 · Status: proposed · Workstream: WS-m1 (milestone M1)
+Date: 2026-10-22 · Status: accepted (architect, 2026-10-22) · Workstream: WS-m1 (milestone M1)
 
 ## Context
 
@@ -71,10 +71,27 @@ reproducibly, every night for free and on real models within a $6 budget. Three 
 - The free tier passes a placeholder `OPENAI_API_KEY` when none is set (issue #19); it can never
   spend, and the script fails the tier if anything was spent.
 
-## Proposed spec change
+## Spec change (applied on acceptance)
 
 Fault table (spec, "Fault-injection matrix (SC8)"), so the spec says what the matrix tests:
 
 | # | Fault | Must be caught by |
 | --- | --- | --- |
 | F1 | Prompt tells the agent to book the first free slot without confirming it (dropping the confirmation rule alone does not change a strong model's behaviour) | Tool grader (`tool_called`, `args_match`) + `resolved` judge |
+
+## Acceptance review
+
+Checked against SPEC.md, "Fault-injection matrix (SC8)" and "Graders":
+
+- The Tool reading is the spec's own: its Graders table lists `tool_called`, `tool_not_called`,
+  `args_match` and `call_order` as one family, "Tool". `args_match` is what sees F1's
+  unconfirmed booking once a strong model self-corrects, so naming it keeps F1 measurable without
+  a new grader or a looser threshold.
+- The F1 overlay is still a one-line prompt change in `examples/acme-faults/`, as the spec's
+  "each variant changes one thing" requires. A fault that does not change behaviour cannot be
+  caught by any grader, so seeding the opposite rule is the honest variant.
+- "Caught" is stricter than SC8's wording (suite gate *and* every expected grader must regress),
+  and the A/A rule matches SC8's "no regression verdict". Neither loosens a criterion.
+- The tiers add measurements; Tier B on real models remains the SC8 evidence. The free tier's
+  backstop graders (F3 `not_contains`) are diagnostics for nightly CI, not a substitute for the
+  spec's judges.
