@@ -16,7 +16,7 @@ from hecklr_mine.errors import IngestError, MineError, MissingExtraError
 from hecklr_mine.ingest import CsvMapping, LogFormat, load_logs
 from hecklr_mine.pipeline import BudgetExceededError, MineResult, MineSettings, mine
 from hecklr_mine.presidio import PresidioDetector
-from hecklr_mine.scrub import LlmPiiFinder, Placeholders, RegexDetector, Scrubber
+from hecklr_mine.scrub import LlmPiiFinder, PiiDetector, Placeholders, RegexDetector, Scrubber
 from hecklr_mine.store import (
     MINE_DIR,
     MineSummary,
@@ -57,6 +57,7 @@ __all__ = [
     "MineSummary",
     "MissingExtraError",
     "OpenAIEmbedder",
+    "PiiDetector",
     "Placeholders",
     "PresidioDetector",
     "Recovery",

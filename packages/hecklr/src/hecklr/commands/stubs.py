@@ -9,7 +9,6 @@ from hecklr import __version__, exit_codes
 from hecklr.commands._common import stderr
 
 PENDING_COMMANDS: Final[dict[str, str]] = {
-    "mine": "Mine production logs into failure clusters and proposed scenarios.",
     "fix": "Generate and validate prompt patches for a failure cluster.",
     "bench": "Run or reproduce the public voice benchmark.",
     "ui": "Start the local web UI.",
