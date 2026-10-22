@@ -20,7 +20,6 @@ from email_testing import (
     serving,
 )
 
-from hecklr_adapters import WORLD_URL_HEADER
 from hecklr_adapters.email import WebhookEmailTarget
 from hecklr_channels import EmailDriver
 from hecklr_channels.email import WEBHOOK_AGENT_ADDR
@@ -29,10 +28,8 @@ from hecklr_schemas import (
     EmailMessage,
     Persona,
     Scenario,
-    TrialId,
     WebhookAdapterConfig,
     World,
-    new_id,
 )
 from hecklr_world import Sandbox
 
@@ -110,35 +107,31 @@ async def test_sc8_webhook_agent_on_a_real_sandbox(
     assert health["variant"] == variant
     sources = health["requests_by_world_source"]
     assert isinstance(sources, dict)
-    assert sources["base_url"] >= 1
-    assert sources["local"] == 0
+    # Hecklr's webhook adapter forwards the trial's world in the body (ADR 0007e).
+    assert sources["body"] >= 1
+    assert sources["base_url"] == sources["local"] == 0
     if variant == "F12" and failed:
         assert trial.emails("agent") == []  # dead air: the email was never answered
 
 
-async def test_the_world_url_header_beats_the_base_url(
+async def test_the_forwarded_world_beats_the_base_url(
     personas: dict[str, Persona], world: World
 ) -> None:
-    # What Hecklr's webhook adapter sends once it forwards the trial's world (ADR 0007d).
     scenario = SCENARIOS["email-cancel-1"]
     async with Sandbox() as sandbox:
+        # A base URL nothing listens on: every tool call must go to the world Hecklr forwards.
         app = create_app(email_desk(), world, world_base_url="http://127.0.0.1:9")
         async with serving(app) as url:
             persona = personas[scenario.persona_ids[0]]
-            # The header names the world before the trial opens it: fix the trial id up front.
-            trial_id = TrialId(new_id())
-            world_url = f"{sandbox.base_url}/t/{trial_id}"
-            with webhook_target(url, **{WORLD_URL_HEADER: world_url}) as target:
+            with webhook_target(url) as target:
                 driver = EmailDriver(
                     target, agent_addr=WEBHOOK_AGENT_ADDR, reply_timeout_s=REPLY_TIMEOUT_S
                 )
-                trial = await run_served_email_trial(
-                    scenario, persona, world, sandbox, driver, trial_id=trial_id
-                )
+                trial = await run_served_email_trial(scenario, persona, world, sandbox, driver)
             async with httpx2.AsyncClient() as client:
                 health = (await client.get(f"{url}/healthz")).json()
     assert trial.passed, trial.failed()
-    assert health["requests_by_world_source"]["header"] == 3
+    assert health["requests_by_world_source"]["body"] == 3
 
 
 async def test_a_reply_that_cannot_be_delivered_is_counted_and_logged(world: World) -> None:

@@ -157,10 +157,8 @@ class EmailTrial:
         ]
 
 
-def _brief(
-    scenario: Scenario, persona: Persona, trial_id: TrialId | None = None
-) -> tuple[TrialBrief, ListSink]:
-    trial_id = trial_id or TrialId(new_id())
+def _brief(scenario: Scenario, persona: Persona) -> tuple[TrialBrief, ListSink]:
+    trial_id = TrialId(new_id())
     brief = TrialBrief(
         trial_id=trial_id, scenario=scenario, persona=persona, channel=Channel.EMAIL, seed=SEED
     )
@@ -195,11 +193,9 @@ async def run_served_email_trial(
     world: World,
     sandbox: Sandbox,
     driver: EmailDriver,
-    *,
-    trial_id: TrialId | None = None,
 ) -> EmailTrial:
     """One graded trial against an agent server, its tools on ``sandbox`` over HTTP."""
-    brief, sink = _brief(scenario, persona, trial_id)
+    brief, sink = _brief(scenario, persona)
     trial_world = await sandbox.open(brief, world, sink)
     context = SessionContext(
         trial_id=brief.trial_id,

@@ -15,9 +15,9 @@ intervals (`hecklr_stats.compare_runs`, alpha 0.05, minimum effect 0.03).
 `uv run python examples/acme-email/scripts/driver_matrix.py`: for each variant, the agent runs as
 its own process (`serve.py --brain rules [--fault Fn] webhook`); each of the 14 scripted
 scenarios is one graded trial through Hecklr's `webhook` adapter and `EmailDriver`, the agent's
-tools on a real world `Sandbox` over HTTP (`ACME_WORLD_BASE_URL` + `X-Hecklr-Trial-Id`, since the
-adapter on `main` does not forward the world URL yet; every email was served from the sandbox,
-none from a local copy).
+tools on a real world `Sandbox` over HTTP (`ACME_WORLD_BASE_URL` + `X-Hecklr-Trial-Id`: the adapter did not
+forward the world URL when this ran; every email was served from the sandbox, none from a local
+copy). Since #32 the `webhook` adapter sends `world_url` in the body, which the agent prefers.
 
 | Variant | Pass rate | Failure causes | vs clean: verdict, delta [95% CI], p |
 | --- | --- | --- | --- |
