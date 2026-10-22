@@ -9,6 +9,13 @@ Wiring (done by the orchestrator, once per run)::
 ``hecklr replay FILE`` calls ``transcripts_to_scenarios``.
 """
 
+from hecklr_sim.adversarial import (
+    ATTACK_PACK,
+    INJECTION_CANARY,
+    RED_TEAM_FRAME,
+    AttackTemplate,
+    make_adversarial_simulator,
+)
 from hecklr_sim.decision import ConsistencyVerdict, SimDecision
 from hecklr_sim.errors import ReplayExtractionError, SimulatorError
 from hecklr_sim.factory import make_simulator
@@ -39,10 +46,14 @@ from hecklr_sim.strategies import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ATTACK_PACK",
     "BUILTIN_STRATEGIES",
     "CROSS_CUSTOMER_DATA_PROBE",
+    "INJECTION_CANARY",
+    "RED_TEAM_FRAME",
     "REFUND_SOCIAL_ENGINEERING",
     "AttackStrategy",
+    "AttackTemplate",
     "ConsistencyGuard",
     "ConsistencyVerdict",
     "ExtractedFact",
@@ -61,6 +72,7 @@ __all__ = [
     "extract_scenario",
     "grounded_facts",
     "load_conversations",
+    "make_adversarial_simulator",
     "make_simulator",
     "resolve_strategy",
     "scenario_id_for",

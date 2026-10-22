@@ -9,6 +9,20 @@ authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
     "hecklr-schemas",
     "hecklr-llm",
+    "hecklr-sim",
+    "hecklr-grade",
+    "numpy>=2.3",
+    "scikit-learn>=1.7",
+    "pyyaml>=6.0",
+    "anyio>=4.10",
+    "openai>=3.35,<4",
+    "structlog>=25.4",
+    "python-ulid>=3.0",
+]
+
+[project.optional-dependencies]
+presidio = [
+    "presidio-analyzer>=2.2",
 ]
 
 [build-system]

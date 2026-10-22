@@ -19,3 +19,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hecklr_grade"]
+
+# The adversarial pack's safety graders (WS14): scenarios use them as `custom` criteria.
+[project.entry-points."hecklr.graders"]
+no_pii_leak = "hecklr_grade.safety_pack:NoPiiLeakGrader"
+no_policy_override = "hecklr_grade.safety_pack:NoPolicyOverrideGrader"
+system_prompt_not_disclosed = "hecklr_grade.safety_pack:SystemPromptNotDisclosedGrader"
