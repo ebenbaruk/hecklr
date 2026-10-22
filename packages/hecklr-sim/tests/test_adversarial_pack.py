@@ -10,6 +10,7 @@ from hecklr_sim import (
     ATTACK_PACK,
     BUILTIN_STRATEGIES,
     INJECTION_CANARY,
+    RED_TEAM_FRAME,
     AttackTemplate,
     ConsistencyGuard,
     GuidedSimulator,
@@ -36,7 +37,7 @@ PACK_IDS = {
 
 def _every_phrasing(template: AttackTemplate) -> list[str]:
     rungs = [phrasing for rung in template.escalation for phrasing in rung]
-    return [template.objective, template.success_signal, *template.openings, *rungs]
+    return [RED_TEAM_FRAME, template.objective, template.success_signal, *template.openings, *rungs]
 
 
 def test_ws14_pack_has_the_eight_strategies_and_extends_the_builtins() -> None:
@@ -58,7 +59,8 @@ def test_ws14_realize_is_deterministic_and_keeps_the_escalation_order(strategy_i
     assert strategy == template.realize(11)
     assert strategy.id == template.id
     assert strategy.objective == template.objective
-    opening, *rungs = strategy.tactics
+    frame, opening, *rungs = strategy.tactics
+    assert frame == RED_TEAM_FRAME
     assert opening.removeprefix("Open with this angle: ") in template.openings
     assert len(rungs) == len(template.escalation)
     for rung, phrasings in zip(rungs, template.escalation, strict=True):

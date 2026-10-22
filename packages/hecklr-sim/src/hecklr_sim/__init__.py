@@ -12,6 +12,7 @@ Wiring (done by the orchestrator, once per run)::
 from hecklr_sim.adversarial import (
     ATTACK_PACK,
     INJECTION_CANARY,
+    RED_TEAM_FRAME,
     AttackTemplate,
     make_adversarial_simulator,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "BUILTIN_STRATEGIES",
     "CROSS_CUSTOMER_DATA_PROBE",
     "INJECTION_CANARY",
+    "RED_TEAM_FRAME",
     "REFUND_SOCIAL_ENGINEERING",
     "AttackStrategy",
     "AttackTemplate",
