@@ -35,6 +35,7 @@ from acme_agent import (
     load_agent_files,
 )
 
+from acme_voice.asr import make_agent_asr
 from acme_voice.config import (
     PROJECT_ROOT,
     PipelineConfig,
@@ -50,7 +51,6 @@ from hecklr_voice import (
     SileroVad,
     SpeechRequest,
     VoiceProviderError,
-    make_asr,
     make_tts,
     warm_dsp_pool,
 )
@@ -125,7 +125,7 @@ def speech_stack(pipeline: PipelineConfig, models_dir: Path) -> SpeechStack:
     if pipeline.vad == "silero":
         vad = partial(SileroVad, models_dir=models_dir)
     return SpeechStack(
-        asr=make_asr(pipeline.asr_model, models_dir=models_dir),
+        asr=make_agent_asr(pipeline.asr_model, models_dir=models_dir),
         tts=make_tts(
             pipeline.tts_provider, cache_dir=models_dir.parent / "agent-tts", models_dir=models_dir
         ),

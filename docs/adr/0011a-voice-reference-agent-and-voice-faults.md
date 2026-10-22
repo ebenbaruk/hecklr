@@ -42,7 +42,9 @@ harness normalizes every caller utterance's level, which destroys the tag.
   thinking. A call runs one early transcription at a time, and speech-model jobs are never
   cancelled (anyio kills a cancelled job's worker). The agent gives every DSP worker a short
   job each minute: anyio retires workers idle for five minutes, last in first out, and the
-  replacement loaded whisper on a caller's answer path (4-7 s, five minutes into every run). The timing suite runs the agent on the energy VAD (clean
+  replacement loaded whisper on a caller's answer path (4-7 s, five minutes into every run).
+  The agent decodes words only (`without_timestamps`): hecklr-voice's timestamped decode took
+  6-9 s instead of 0.4 s on two utterances of the suite, every run (#48). The timing suite runs the agent on the energy VAD (clean
   lines): Silero's per-window thread hop and its lag on speech offsets made the agent's
   endpointing wander with machine load.
 - **CI without models.** A driver-level matrix runs real graded calls over localhost with the
