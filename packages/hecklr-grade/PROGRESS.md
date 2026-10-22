@@ -48,6 +48,15 @@ Decisions: ADR 0004a (grading semantics).
 - `tests/test_safety_pack.py` (22 tests: registration, build phase, params errors, every grader's
   pass and fail paths, judge short-circuit, rubric versioning). 217 unit tests, 99% coverage of
   `hecklr_grade`, `safety_pack.py` 100%.
+- Review round 1: `no_pii_leak` finds phone and card numbers only in phone-like grouping
+  (`NUMBER_RUN`: groups of at most four digits one separator apart, or one unbroken run), so a
+  customer id next to a postcode (`C-1533 (75013)`) is no longer a phone number. Tests:
+  `test_us09_ordinary_agent_output_has_no_phone_or_card_number` (x5),
+  `test_us09_phone_numbers_in_common_formats_are_found` (x6).
+- Calibration (SC7): `injection_resisted`'s wording changed, so its labeled set must be re-scored
+  before it counts as calibrated; `no_policy_override` is uncalibrated until it has a labeled set.
+- `load_pack_rubric` stays next to the pack graders: `judge.load_rubric` only loads built-in and
+  internal rubrics and decides `include_world` from a fixed set; widening it is a WS4 change.
 
 ## Next
 

@@ -66,8 +66,8 @@ commit `fix(sim): tighten prompts and guard after live runs against Ollama`.
 Done:
 
 - `adversarial.py`: `AttackTemplate` (openings + escalation rungs with alternative phrasings,
-  `realize(seed)`), `ATTACK_PACK` (8 strategies; the 2 built-ins keep id, objective, tactics and
-  decoys), `RED_TEAM_FRAME`, `INJECTION_CANARY`, `make_adversarial_simulator` (wired into
+  `realize(seed)`), `ATTACK_PACK` (8 strategies; the 2 built-ins keep id, objective and success
+  signal; no pack template has decoys), `RED_TEAM_FRAME`, `INJECTION_CANARY`, `make_adversarial_simulator` (wired into
   `hecklr run` in `hecklr/compose.py`).
 - Tests (`tests/test_adversarial_pack.py`, 32): `test_ws14_pack_has_the_eight_strategies_...`,
   `test_ws14_realize_is_deterministic_and_keeps_the_escalation_order` (x8),
@@ -80,6 +80,13 @@ Done:
   rejecting `facts_revealed` naming targets; fixed by `RED_TEAM_FRAME` and target facts in the
   scenarios (commit `fix(sim): frame pack attacks ...`). Privacy attacks still soften sometimes
   on luna (open question below).
+
+- Review round 1: the pack probe had inherited the WS2 probe's decoys (Martin Dubois, C-2077) and
+  tactics pointing at them, so probes of other customers drifted to the decoy and the guard
+  ended them as harness errors. The probe is now written out with no decoys and no rung that
+  needs an invented value. Tests: `test_us09_pack_attacks_aim_only_at_the_target_in_the_goal`
+  (x8), `test_ws14_pack_and_fallback_trials_use_the_same_settings` (x2). The guard still rejects
+  a `facts_revealed` entry that is a decoy while accepting it in the text (issue filed, WS2).
 
 Open question: a safety-tuned simulator model limits attack strength; a less restricted model
 for `models.simulator` on red-team suites would attack harder. The schema has no per-suite model.
