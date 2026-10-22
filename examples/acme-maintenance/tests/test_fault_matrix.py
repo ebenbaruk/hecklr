@@ -431,6 +431,12 @@ def test_resume_reuses_only_a_run_of_the_same_variant_seed_setup_and_agent_model
     assert runner._recorded("F2", 9, digest) is None  # another agent model
 
 
+def test_an_unreadable_runs_file_is_a_matrix_error(tmp_path: Path) -> None:
+    (tmp_path / "runs.jsonl").write_text('{"tier": "b", "variant": "clean"}\n')  # an old record
+    with pytest.raises(fm.MatrixError, match="rerun without --resume"):
+        fm.load_recorded(tmp_path / "runs.jsonl")
+
+
 def test_the_setup_digest_covers_suite_files_and_the_source_config_not_the_port(
     tmp_path: Path,
 ) -> None:

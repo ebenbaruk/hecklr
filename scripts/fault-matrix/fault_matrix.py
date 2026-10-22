@@ -58,7 +58,7 @@ from typing import Final, Literal, TextIO
 
 import httpx2
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from hecklr_core import load_project, resolve_suite
 from hecklr_report import Analysis, TrialRow
@@ -653,7 +653,13 @@ def load_recorded(path: Path) -> list[RecordedRun]:
     if not path.is_file():
         return []
     lines = path.read_text("utf-8").splitlines()
-    return [RecordedRun.model_validate_json(line) for line in lines if line.strip()]
+    try:
+        return [RecordedRun.model_validate_json(line) for line in lines if line.strip()]
+    except ValidationError as exc:
+        raise MatrixError(
+            f"{path} has a run this script cannot read (written by an older version?); "
+            "rerun without --resume or with another --out"
+        ) from exc
 
 
 @dataclass
