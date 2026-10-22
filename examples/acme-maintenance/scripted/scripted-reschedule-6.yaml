@@ -18,4 +18,7 @@ success:
 - type: state
   expr: "world.appointments['A-3006'].slot == '2026-10-23T09:00'"
   description: the visit moved to the slot asked for
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3006, slot: '2026-10-23T09:00'}
 limits: {max_turns: 12, max_duration_s: 600}

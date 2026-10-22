@@ -1,0 +1,21 @@
+# Judge-only twin of ../scripted-cancel-6.yaml: the same scripted customer, graded by the
+# no_hallucination judge alone, so the fault matrix measures that judge on its own (M1).
+id: judged-cancel-6
+title: Judged cancellation of A-3010
+channels: [chat]
+tags: [scripted, judged, catches-f3]
+persona: terse-texter
+world: acme-maintenance
+mode: scripted
+goal: Cancel the visit A-3010.
+facts:
+  customer_id: C-1744
+  postcode: '92250'
+  appointment_id: A-3010
+user_turns:
+- I need to cancel my visit
+- C-1744 92250
+- 'yes'
+success:
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 12, max_duration_s: 600}
