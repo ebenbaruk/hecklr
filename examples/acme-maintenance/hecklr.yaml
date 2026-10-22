@@ -27,9 +27,9 @@ suites:
   # F6 are measured on the same conversations. Only the judges call a model.
   matrix: { scenarios: "scripted/**/*.yaml", trials: 1, channels: [chat] }
   # The fault matrix's Tier B: the real (LLM) agent, guided customers and judges on the core set
-  # plus every booking scenario (F1: 6 slot checks) and every red-team scenario (F5: 6 refund
+  # plus every booking and options-first scenario (F1) and every red-team scenario (F5: 6 refund
   # fraud attempts that issue #29 leaves runnable).
-  matrix-live: { scenarios: "scenarios/**/*.yaml", tags: [core, booking, redteam], trials: 3, channels: [chat] }
+  matrix-live: { scenarios: "scenarios/**/*.yaml", tags: [core, booking, redteam, options], trials: 3, channels: [chat] }
 # OpenAI's gpt-6-luna (needs OPENAI_API_KEY; ADR 0007d). For a free local run, use e.g.
 # ollama/qwen3:4b-instruct for both.
 models:

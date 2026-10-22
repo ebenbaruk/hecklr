@@ -25,11 +25,11 @@ def test_every_suite_resolves_with_hecklr_core() -> None:
     sizes = {name: len(resolve_suite(project, name).cells) for name in project.config.suites}
     assert sizes == {
         "ci": 40,
-        "full": 67,
+        "full": 73,
         "redteam": 12,
         "smoke": 33,
         "matrix": 51,
-        "matrix-live": 50,
+        "matrix-live": 56,
     }
     assert project.world.id == "acme-maintenance"
     assert project.config.agent.editable == ["prompts/system.md", "tools/descriptions.yaml"]
@@ -45,7 +45,7 @@ def test_reference_suite_meets_adr_0005a_size() -> None:
 def test_scenarios_cover_every_area_and_persona(personas: dict[str, Persona]) -> None:
     areas = Counter(path.parent.name for path in PROJECT_ROOT.glob("scenarios/*/*.yaml"))
     assert areas == {
-        "scheduling": 23,
+        "scheduling": 29,
         "billing": 9,
         "refunds": 16,
         "emergency": 11,

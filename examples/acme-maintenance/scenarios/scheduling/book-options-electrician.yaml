@@ -1,0 +1,22 @@
+# Options first (M1): the customer picks a slot only after the agent offers some, so an
+# agent that books without offering slots and asking for a yes (F1) books the wrong one.
+id: book-options-electrician
+title: Customer asks for options before booking an electrician
+channels: [chat]
+tags: [scheduling, booking, options]
+persona: busy-homeowner
+world: acme-maintenance
+goal: Book an electrician to check a socket. Ask which slots are free next week (26-30 October) before choosing anything, and do not name a day or time until the agent has offered you options; then choose Friday 30 October in the morning and confirm it.
+facts:
+  customer_id: C-1420
+  postcode: '75019'
+  preferred_time: Friday 30 October in the morning, said only after options are offered
+success:
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1420, service: electrical, slot: '2026-10-30T09:00'}
+- type: state
+  expr: "any(a.customer_id == 'C-1420' and a.service == 'electrical' and a.status == 'booked' and a.slot == '2026-10-30T09:00' for a in values(world.appointments))"
+  description: the visit is booked at the slot the customer chose
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}
