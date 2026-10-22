@@ -17,6 +17,7 @@ from typing import Final
 
 from pydantic import BaseModel, ValidationError
 
+from hecklr.ui_api.jsonl import append_line
 from hecklr_core import PERSONA_LIBRARY_GLOB, ConfigError, Project, load_model
 from hecklr_schemas import (
     Conversation,
@@ -244,5 +245,4 @@ def _decide(
 
 
 def _append(path: Path, proposal: ScenarioProposal) -> None:
-    with path.open("a", encoding="utf-8") as out:
-        out.write(proposal.model_dump_json() + "\n")
+    append_line(path, proposal.model_dump_json())

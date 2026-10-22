@@ -34,7 +34,12 @@ and how a Python wheel ships a Node-built app.
   holds `FailureCluster` records and `proposals.jsonl` holds `ScenarioProposal` records, one JSON
   object per line, append-only, newest record per `id` wins. An optional `conversations.jsonl`
   (`Conversation` records, already PII-scrubbed) next to them lets production clusters show
-  their exemplars. If WS13 lands a different layout, only `ui_api/review.py` changes.
+  their exemplars. This matches WS13's ADR 0013a (`mine/<mine_id>/` per mining run, the queue
+  is the union of every `proposals.jsonl`, last record per id wins, a decision is appended to
+  the proposal's own file). Like the miner, the UI appends each record as one `write` on an
+  `O_APPEND` descriptor, so the CLI and the UI never interleave lines. Once `hecklr-mine` is
+  merged, `ui_api/review.py` can delegate reading and deciding to `hecklr_mine.load_queue` /
+  `decide`.
 - **Approval.** Approving (optionally with edited YAML) validates the scenario with
   `hecklr_core.load_model` (file and line in errors), checks its world is the project's world,
   its personas exist in `personas/`, and its id is unused under `scenarios/`, then writes

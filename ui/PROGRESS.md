@@ -29,8 +29,8 @@ Decisions: ADR 0016a. Backend: `packages/hecklr/src/hecklr/ui_api/`, command
 
 ## Next
 
-- Re-check `review.py` against WS13's miner output when it lands (ADR 0016a contract).
+- When WS13 (ADR 0013a, compatible layout) merges, delegate `review.py` to `hecklr_mine.load_queue` / `decide`.
 
 ## Open questions
 
-- WS13's miner layout: built against the ADR 0016a contract with fixtures.
+- None: WS13's ADR 0013a layout (mine/<id>/*.jsonl, O_APPEND whole-line writes) matches ADR 0016a.

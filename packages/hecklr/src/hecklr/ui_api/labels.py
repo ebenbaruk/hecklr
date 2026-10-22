@@ -15,6 +15,7 @@ from typing import Final
 
 from pydantic import ValidationError
 
+from hecklr.ui_api.jsonl import append_line
 from hecklr.ui_api.models import Agreement, AgreementReport, QueueItem
 from hecklr_core import RunResults
 from hecklr_schemas import Grade, HumanLabel, LabelId, new_id
@@ -76,8 +77,7 @@ class LabelBook:
         )
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as out:
-                out.write(label.model_dump_json() + "\n")
+            append_line(self.path, label.model_dump_json())
         return label
 
 
