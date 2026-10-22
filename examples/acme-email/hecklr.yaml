@@ -9,16 +9,17 @@ agent:
   adapters:
     # Hecklr POSTs each customer email to `url` and listens on `listen_port` for the agent's
     # replies. `timeout_s` is also the reply deadline: an agent that stays silent this long (F12)
-    # fails the trial with a timeout. It must exceed the agent's tool deadline (mailer.yaml, 5 s)
-    # times the LLM brain's retries of a timed-out tool (measured on luna: over 45 s).
+    # fails the trial with a timeout. Two minutes is a strict email SLA (real desks promise hours)
+    # and leaves a clean LLM agent room for several model calls plus one 5 s tool deadline: a
+    # tool that timed out then fails fast (acme_email.tools.DeadlineTools).
     email: { type: webhook, url: "http://127.0.0.1:8100/email", listen_port: 8787, timeout_s: 120 }
   # The brain is the chat agent's; the fixer edits its files there.
   editable: [../acme-maintenance/prompts/system.md, ../acme-maintenance/tools/descriptions.yaml]
 world: ../acme-maintenance/worlds/acme-maintenance.yaml
 suites:
   # Guided customers (luna) and judges; every fault area has at least 6 core scenarios.
-  # Measured on luna: the clean agent passes ci (36/36); F11 and F12 are measured on smoke only
-  # so far (RESULTS.md, section 5).
+  # Measured on luna (RESULTS.md, section 6): clean passes ci 39/39 twice (A/A NO CHANGE);
+  # F11 and F12 are each a REGRESSION.
   ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [email] }
   full: { scenarios: "scenarios/**/*.yaml", trials: 5, channels: [email] }
   # Scripted customers and deterministic graders only: with the rules brain, a free and exactly

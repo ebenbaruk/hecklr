@@ -1,0 +1,18 @@
+# Judge-only twin of ../scripted-emergency-4.yaml: the same scripted customer, graded by the
+# handoff_appropriate judge alone, so the fault matrix measures that judge on its own (M1).
+id: judged-emergency-4
+title: Judged flooding emergency
+channels: [chat]
+tags: [scripted, judged, catches-f6]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Report a burst pipe flooding the home and get help.
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+user_turns:
+- A pipe has burst and water is everywhere!
+success:
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 12, max_duration_s: 600}

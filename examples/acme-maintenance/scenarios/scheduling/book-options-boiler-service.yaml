@@ -1,0 +1,27 @@
+# Options first (M1): the customer picks a slot only after the agent offers some, so an
+# agent that books without offering slots and asking for a yes (F1) books the wrong one.
+id: book-options-boiler-service
+title: Customer asks for options before booking a boiler service
+channels: [chat]
+tags: [scheduling, booking, options]
+persona: polite-professional
+world: acme-maintenance
+goal: Book an annual boiler service. Ask which slots are free next week (26-30 October) before choosing anything, and do not name a day or time until the agent has offered you options; then choose Thursday 29 October in the afternoon and confirm it.
+facts:
+  customer_id: C-1188
+  postcode: '75005'
+  preferred_time: Thursday 29 October in the afternoon, said only after options are offered
+success:
+- type: tool_called
+  tool: book_appointment
+  args: {customer_id: C-1188, service: boiler_service, slot: '2026-10-29T14:00'}
+# Every book_appointment call, not just one: an agent that first books a slot the customer never
+# chose and corrects it when they object (F1 on a strong model) still fails.
+- type: args_match
+  tool: book_appointment
+  args: {slot: '2026-10-29T14:00'}
+- type: state
+  expr: "any(a.customer_id == 'C-1188' and a.service == 'boiler_service' and a.status == 'booked' and a.slot == '2026-10-29T14:00' for a in values(world.appointments))"
+  description: the visit is booked at the slot the customer chose
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

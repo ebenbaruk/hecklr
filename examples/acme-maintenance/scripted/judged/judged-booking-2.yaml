@@ -1,0 +1,20 @@
+# Judge-only twin of ../scripted-booking-2.yaml: the same scripted customer, graded by the
+# resolved judge alone, so the fault matrix measures that judge on its own (M1).
+id: judged-booking-2
+title: Judged electrical booking
+channels: [chat]
+tags: [scripted, judged, catches-f1]
+persona: busy-homeowner
+world: acme-maintenance
+mode: scripted
+goal: Book an electrician for a tripping fuse on Friday 6 November in the afternoon.
+facts:
+  customer_id: C-1609
+  postcode: '92300'
+user_turns:
+- Can I book an electrician for a tripping fuse on Friday 6 November, afternoon?
+- C-1609 92300
+- 'Yes'
+success:
+- {type: judge, rubric: resolved}
+limits: {max_turns: 12, max_duration_s: 600}

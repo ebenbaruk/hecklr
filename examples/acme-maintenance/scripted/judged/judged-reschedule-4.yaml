@@ -1,0 +1,21 @@
+# Judge-only twin of ../scripted-reschedule-4.yaml: the same scripted customer, graded by the
+# resolved judge alone, so the fault matrix measures that judge on its own (M1).
+id: judged-reschedule-4
+title: Judged reschedule of A-3004
+channels: [chat]
+tags: [scripted, judged, catches-f1]
+persona: polite-professional
+world: acme-maintenance
+mode: scripted
+goal: Move the electrical visit A-3004 to Monday 2 November in the morning.
+facts:
+  customer_id: C-1215
+  postcode: '92100'
+  appointment_id: A-3004
+user_turns:
+- Can you move my electrical visit to Monday 2 November, morning?
+- C-1215, postcode 92100
+- Yes please
+success:
+- {type: judge, rubric: resolved}
+limits: {max_turns: 12, max_duration_s: 600}
