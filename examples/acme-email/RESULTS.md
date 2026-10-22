@@ -1,10 +1,10 @@
 # acme-email results
 
 Summary: on the free scripted `smoke` suite, F11 and F12 are caught and clean vs clean is quiet
-(sections 1, 2 and 4). On the guided luna `ci` suite, the first matrix failed the clean agent
-(38.9%) and left both faults inconclusive. After the fix, the clean agent passes 36/36, but the
-OpenAI account ran out of credit during the next run, so F11 and F12 have not been measured on
-`ci` yet (section 5).
+(sections 1, 2 and 4). On the guided luna `ci` suite (LLM brain, luna customers and judges),
+clean vs clean is NO CHANGE, F11 is a REGRESSION on `email_threading` and F12 a REGRESSION on
+email dead air (reply timeouts) and `resolved` (section 6). Section 5 is the history of the
+earlier, invalid luna attempts.
 
 Measured 2026-10-22 on macOS arm64 (10 cores), commit of the WS12b PR. Every number below comes
 from a command in this file; pass rates are Wilson 95% intervals, deltas paired cluster-bootstrap
@@ -152,3 +152,56 @@ runs; the agent's own luna calls come on top):
 set -a; source .env; set +a
 SUITE=ci BRAIN=llm BUDGET_USD=0.15 examples/acme-email/scripts/email-fault-matrix.sh
 ```
+
+## 6. The guided `ci` suite on luna: the SC8 email matrix
+
+Measured 2026-10-22 on the re-land of this example (PR "acme-email reference agent and faults
+F11/F12 (re-land)" plus the follow-up fixes below), macOS arm64, 13 scenarios x 3 trials per run:
+
+```bash
+set -a; source .env; set +a
+ACME_LLM_BUDGET_USD=0.13 SUITE=ci BRAIN=llm BUDGET_USD=0.13 \
+  examples/acme-email/scripts/email-fault-matrix.sh
+```
+
+Fixes for the PR #30 review before this run:
+
+- **Slow clean agent after a tool timeout.** `DeadlineTools` now marks a tool that missed its 5 s
+  deadline as down for 30 s; calls in that window fail at once with the same timeout error
+  instead of waiting 5 s per retry (`test_a_tool_that_timed_out_fails_fast_until_it_may_be_retried`).
+  The clean agent answered every hung-tool scenario: 0 timeouts in both clean runs.
+- **Postcode mismatch.** The refund scenario's facts match the world's customer;
+  `test_scenario_facts_match_the_world` checks every scenario's customer, postcode, appointment
+  and invoice against the world.
+- **Gas-smell grading.** `email-gas-smell` is graded as a handoff: `tool_called` plus a state check
+  on the open gas emergency ticket. The `handoff_appropriate` judge was tried first: on luna it
+  failed a correct handoff (ticket opened, state check passed) because the email channel has no
+  `handoff` event, and the rubric asks for one or for an "escalation tool" (pilot run
+  `01M5HPV3TQC64WBP38M5GZ3NC8`; issue #54). No other criterion was dropped.
+- The agent's own luna spend is logged and capped (`ACME_LLM_BUDGET_USD`, `acme_email.spend`).
+
+| Run | Run id | Pass rate (scenario level, n 13) | Timeouts | Hecklr spend | Agent spend |
+| --- | --- | --- | --- | --- | --- |
+| clean | `01M5HQ2T2V8T1DKYCVZPKC38GR` | 100.0% [77.2%, 100.0%] (38/38 graded trials) | 0 | $0.0601 | $0.0457 |
+| clean again | `01M5HQD1RS8G421VXW07TAGFAE` | 100.0% [77.2%, 100.0%] (39/39) | 0 | $0.0560 | $0.0593 |
+| F11 | `01M5HQRGSZC9F4B3D37H3D1ZZH` | 0.0% [0.0%, 22.8%] | 0 | $0.0547 | $0.0604 |
+| F12 | `01M5HR38JM7XGYSYH3MYT2STDH` | 53.8% [29.1%, 76.8%] | 18 | $0.0439 | $0.0217 |
+
+`hecklr compare` of each run with the first clean run:
+
+| Comparison | Verdict | Δ pass rate [95% CI] | p | Flipped pass → fail, by cause |
+| --- | --- | --- | --- | --- |
+| clean vs clean (A/A) | **NO CHANGE** | 0.0 pts [0.0, 0.0] | 1.000 | none |
+| clean vs F11 | **REGRESSION** | −100.0 pts [−100.0, −100.0] | < 0.001 | `email_threading` on all 13 scenarios ("no In-Reply-To") |
+| clean vs F12 | **REGRESSION** | −46.2 pts [−69.2, −23.1] | 0.031 | the 6 `catches-f12` scenarios: `timeout` (3 ticket hangs: "agent did not reply within 120.0 s"), `judge:resolved` (2 policy hangs: "the agent timed out before cancelling the visit…"), `state` (1) |
+
+- No agent log has a 429, quota, credit or budget error; every email's tools went to the trial's
+  sandbox through the webhook body's `world_url`.
+- One clean trial has a grade error, not a failure: the `resolved` judge cited an event id that is
+  not in the trial (`email-cancel-heat-pump`), which Hecklr rejects as unusable; that trial is
+  left out of the comparison (38 vs 39 trials).
+- `/healthz` counts `replies_failed` in every run (22-33): answers to the customer's closing
+  email that arrive after the trial has ended (Hecklr answers `404`), plus F12's late answers
+  once the sandbox releases hung calls.
+- Total live spend for this section, pilot included (13 trials, $0.0213 Hecklr + $0.0211 agent):
+  **$0.444** (Hecklr $0.2360, agent $0.2082).

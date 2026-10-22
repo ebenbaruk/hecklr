@@ -6,7 +6,8 @@
 Flags override the chat agent's ``ACME_*`` environment variables (``AgentSettings.from_env``);
 ``--fault F11`` and ``--fault F12`` overlay ``mailer.yaml``, ``--fault F1``..``F6`` the brain files.
 Mailbox credentials, when the server needs any, come from ``ACME_MAIL_USERNAME`` and
-``ACME_MAIL_PASSWORD``.
+``ACME_MAIL_PASSWORD``. ``ACME_LLM_BUDGET_USD`` caps the LLM brain's own spend
+(``acme_email.spend``).
 """
 
 import argparse
@@ -14,6 +15,7 @@ import dataclasses
 import os
 import sys
 from collections.abc import Sequence
+from decimal import Decimal
 from pathlib import Path
 
 import anyio
@@ -24,6 +26,7 @@ from acme_agent.config import PROJECT_ROOT, WORLD_FILE, AgentConfigError, AgentS
 from acme_email.config import load_email_agent_files
 from acme_email.desk import EmailDesk
 from acme_email.mailbox import Mailbox, serve_mailbox
+from acme_email.spend import SpendCappedProvider
 from acme_email.webhook import create_app
 from hecklr_llm import ProviderRouter
 from hecklr_schemas import World
@@ -87,7 +90,9 @@ def mailbox_from(args: argparse.Namespace) -> Mailbox:
 async def run(args: argparse.Namespace, settings: AgentSettings, world: World) -> None:
     """Serve until interrupted."""
     files = load_email_agent_files(overlay=settings.overlay_dir())
-    async with ProviderRouter() as llm:
+    cap = os.environ.get("ACME_LLM_BUDGET_USD")
+    async with ProviderRouter() as router:
+        llm = SpendCappedProvider(router, Decimal(cap) if cap else None)
         agent = AcmeAgent(files.brain, settings, llm if settings.brain == "llm" else None)
         desk = EmailDesk(agent, files.mailer, files.variant)
         if args.transport == "mailbox":

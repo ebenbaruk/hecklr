@@ -13,4 +13,7 @@ success:
 - type: tool_called
   tool: create_emergency_ticket
   args: {category: gas}
+- type: state
+  expr: "any(t.category == 'gas' for t in values(world.emergency_tickets))"
+  description: a gas emergency ticket is open for the on-call engineer
 limits: {max_turns: 16, max_duration_s: 600}

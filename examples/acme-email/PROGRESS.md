@@ -70,21 +70,23 @@ threading, `resolved`), "Testing strategy" (fault matrix F11, F12), WS12 row. AD
 - Issues #41 (`mypy-all.sh` skips `examples/`) and #42 (`acme-faults/README.md` still says
   F7-F12 come later).
 
+## Done after the re-land (luna proof)
+
+- `DeadlineTools` fails fast for 30 s once a tool missed its deadline, so a clean LLM agent no
+  longer spends 5 s per retry of a hung tool; facts-vs-world test for every scenario;
+  `email-gas-smell` graded by `tool_called` + a state check on the gas ticket (the
+  `handoff_appropriate` judge cannot credit a handoff on email: issue #54); the agent's luna spend
+  is logged and capped (`ACME_LLM_BUDGET_USD`).
+- Luna `ci` matrix (RESULTS.md 6): clean 39/39 twice, A/A NO CHANGE; F11 REGRESSION −100.0 pts
+  (`email_threading`, p < 0.001); F12 REGRESSION −46.2 pts [−69.2, −23.1], p 0.031 (timeouts and
+  `resolved` on the 6 `catches-f12` scenarios). Total live spend $0.444. The refund scenario now
+  runs (issue #29 fixed on main by #49).
+
 ## Next
 
-- **F11 and F12 on the guided `ci` suite are not measured yet.** The OpenAI account ran out of
-  credit (`429 credit_balance_exhausted`) during the second clean run after the fix, which made
-  that run invalid and the F11 run void (RESULTS.md 5b). Once there is credit again, run
-  `SUITE=ci BRAIN=llm BUDGET_USD=0.15 examples/acme-email/scripts/email-fault-matrix.sh` (about
-  $0.25 plus the agent's own calls) on a merge with WS-wire, and record clean vs clean, F11 and
-  F12 in RESULTS.md 5b. Expected: clean vs clean no_change, F11 regression (`email_threading`),
-  F12 regression (`timeout`, and `resolved` on the policy-hang cancellations).
-- Local Ollama is not a stand-in: on `qwen3:4b-instruct` the judges errored and the agent did
-  not cancel (a 3-trial probe), so it would not measure this suite.
+- Grade email emergencies with `handoff_appropriate` once the email channel can carry a handoff
+  (issue #54).
 
 ## Open questions
 
-- Issue #29 (simulator consistency guard rejects guided refund/invoice turns) turns all 3
-  `email-refund-double-charge` trials into harness errors on luna; they are excluded from
-  statistics, not counted against the agent.
-- `scripts/mypy-all.sh` does not type-check `examples/` (issue #41); the command above does.
+- `scripts/mypy-all.sh` does not type-check `examples/` (issue #41); the command in README.md does.
