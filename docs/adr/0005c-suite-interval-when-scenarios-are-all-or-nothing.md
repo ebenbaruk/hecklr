@@ -39,5 +39,6 @@ at S = 5 all passing it gives [56.6%, 100%], at S = 33 [89.6%, 100%].
   SC5/SC6 validations are unaffected: realistic suites always have a scenario off the boundary.
 - The rule is discontinuous: one scenario at 2/3 switches back to the bootstrap. That case has
   real within-scenario variance for the bootstrap to see, and both intervals are valid there.
-- Comparisons (Δ, p-values, verdicts) are unchanged; an all-pass baseline and candidate already
+- A comparison reports each run's own pass rate by the same rule (`all_or_nothing_estimate`).
+  Δ, p-values and verdicts are unchanged; an all-pass baseline and candidate already
   yield "no change" through the paired bootstrap's zero-width Δ interval inside [−δ, +δ].

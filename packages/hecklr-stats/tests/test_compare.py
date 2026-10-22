@@ -475,3 +475,16 @@ def test_full_comparison_on_200_by_10_with_10k_resamples_is_fast() -> None:
     start = time.perf_counter()
     compare_runs(base, cand, baseline_run=BASE, candidate_run=CAND, config=StatsConfig(), seed=0)
     assert time.perf_counter() - start < 2.0
+
+
+def test_each_run_pass_rate_in_a_comparison_avoids_the_collapsed_interval() -> None:
+    # Issue #14 / ADR 0005c also hold for the per-run rates a comparison reports.
+    all_pass = ScenarioCounts.from_arrays([2] * 5, [2] * 5)
+    mixed = ScenarioCounts.from_arrays([2] * 5, [2, 2, 2, 2, 1])
+    result = paired_comparison(
+        all_pass, mixed, rng=np.random.default_rng(0), resamples=1_000, confidence=0.95
+    )
+    assert result.baseline.method is IntervalMethod.WILSON
+    assert result.baseline.ci_low == pytest.approx(0.5655, abs=1e-4)
+    assert result.candidate.method is IntervalMethod.CLUSTER_BOOTSTRAP
+    assert result.delta.method is IntervalMethod.PAIRED_CLUSTER_BOOTSTRAP
