@@ -70,6 +70,27 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   (`create_app(world_transport=...)`) instead of dialling port 9.
 - Numbers: 279 tests + 4 live; 96% coverage of `agent/`.
 
+## Done (WS-m1: gate M1 fault matrix, ADR 0020a, docs/milestones/M1.md)
+
+- `scripts/fault-matrix/fault_matrix.py`: clean, A/A and F1-F6 over HTTP, `hecklr run` + `hecklr
+  gate`, per-grader paired comparisons, `matrix.json`/`matrix.md`. Tiers `free` (nightly CI,
+  `.github/workflows/fault-matrix.yml`), `a` (rules brain + luna judges on `matrix`), `b` (LLM
+  agent + luna simulator and judges on `matrix-live`). Tests: `tests/test_fault_matrix.py`
+  (21, incl. `test_sc8_free_tier_end_to_end`; 93% coverage of the script).
+- Defects the matrix found and fixed here: F1's `tool_called` checked no slot (now checks it);
+  no judges in the deterministic matrix (18 judge-only twins in `scripted/judged/`); judges could
+  not see today's date (world `calendar` collection); the `handoff_appropriate` rubric read tool
+  latency as a late handoff (rubric clarified); F1 deleting a rule luna follows anyway (overlay now
+  states the opposite rule; 6 options-first scenarios); F5 lost 7 of 8 guided scenarios to #29
+  (3 more refund-fraud scenarios).
+- The LLM brain counts its own spend (`/healthz spent_usd`) and caps it (`ACME_BUDGET_USD`).
+
+## Open (owned elsewhere)
+
+- #29 hecklr-sim guard rejects every guided scenario with a postcode and an invoice number.
+- #33 all-agent-error runs pass a no-baseline gate; #34 reply size; #35 Ctrl-C traceback;
+  #36 cost estimate for scripted suites; #37 judge evidence-id retry; #19 key pre-flight.
+
 ## Next (integration, WS7a / integrator)
 
 - `hecklr run` pre-flights the simulator and judge providers (`check_model_providers`) even for
