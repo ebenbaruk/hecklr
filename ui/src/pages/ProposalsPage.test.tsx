@@ -32,6 +32,7 @@ describe("ProposalsPage", () => {
       [`/api/proposals/${PROPOSAL}/decision`]: {
         proposal: { ...ITEM.proposal, status: "approved", reviewer: "ada" },
         written: "/work/acme/scenarios/mined/mined-double-address.yaml",
+        warnings: [],
       },
     });
     renderApp("/proposals");
@@ -56,11 +57,29 @@ describe("ProposalsPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("us08: shows the server's warning when no suite runs the approved scenario", async () => {
+    const warning = "no suite runs scenarios/mined/mined-double-address.yaml (suite scenario globs: ci: scenarios/*.yaml); add it to a suite's glob in hecklr.yaml";
+    fakeApi({
+      "/api/meta": META,
+      "/api/proposals?status=proposed": [ITEM],
+      [`/api/proposals/${PROPOSAL}/decision`]: {
+        proposal: { ...ITEM.proposal, status: "approved", reviewer: "ada" },
+        written: "/work/acme/scenarios/mined/mined-double-address.yaml",
+        warnings: [warning],
+      },
+    });
+    renderApp("/proposals");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(warning);
+  });
+
   it("sends no YAML when the scenario is approved unchanged, and rejects", async () => {
     const fake = fakeApi({
       "/api/meta": META,
       "/api/proposals?status=proposed": [ITEM],
-      [`/api/proposals/${PROPOSAL}/decision`]: { proposal: ITEM.proposal, written: null },
+      [`/api/proposals/${PROPOSAL}/decision`]: { proposal: ITEM.proposal, written: null, warnings: [] },
     });
     renderApp("/proposals");
 

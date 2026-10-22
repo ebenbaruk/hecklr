@@ -189,6 +189,8 @@ class DecisionResult(FrozenModel):
 
     proposal: ScenarioProposal
     written: str | None
+    warnings: list[str] = Field(default_factory=list)
+    """E.g. that no configured suite's scenario glob covers the written file."""
 
 
 class ClusterMember(FrozenModel):

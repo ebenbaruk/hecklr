@@ -27,7 +27,7 @@ export function ProposalsPage() {
   const status = (params.get("status") ?? "proposed") as ProposalStatus;
   const proposals = useApi<ProposalItem[]>(withQuery("/api/proposals", { status }));
   const meta = useApi<Meta>("/api/meta");
-  const [written, setWritten] = useState<string | null>(null);
+  const [decided, setDecided] = useState<DecisionResult | null>(null);
 
   return (
     <>
@@ -58,11 +58,16 @@ export function ProposalsPage() {
           </button>
         ))}
       </div>
-      {written && (
+      {decided?.written && (
         <p role="status" className="mb-4 rounded-md bg-emerald-50 p-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
-          Approved: wrote <code className="font-mono">{written}</code>
+          Approved: wrote <code className="font-mono">{decided.written}</code>
         </p>
       )}
+      {decided?.warnings.map((warning) => (
+        <p key={warning} role="alert" className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          {warning}
+        </p>
+      ))}
       {proposals.error && <ErrorBox error={proposals.error} />}
       {proposals.loading && <Loading what="proposals" />}
       {proposals.data?.length === 0 && (
@@ -77,7 +82,7 @@ export function ProposalsPage() {
           key={`${item.proposal.id}-${item.proposal.status}`}
           item={item}
           onDecided={(result) => {
-            setWritten(result.written);
+            setDecided(result);
             proposals.reload();
           }}
         />

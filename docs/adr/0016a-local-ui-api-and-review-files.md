@@ -28,7 +28,10 @@ and how a Python wheel ships a Node-built app.
   `hecklr calibrate --judges --labels .hecklr/labels.jsonl` reads. The queue samples `ok` judge
   grades (`judge:*`) of the chosen runs, stratified by rubric: each rubric's grades are shuffled
   with `random.Random(seed)` (seed = the run seed, or `stats.seed`) and interleaved round-robin,
-  unlabeled ones first. The judge's own verdict is hidden until the human answers, so it cannot
+  unlabeled ones first. The queue is a fixed sample: the first `limit` (default 50, US-11) of
+  that order, so labeling it does not draw new grades in; it changes only when runs are added
+  or `limit` is raised (`?limit=` on the API). A fixed, seeded sample keeps the agreement
+  estimate's sample from depending on the order a person labels in. The judge's own verdict is hidden until the human answers, so it cannot
   anchor the label. Agreement uses `calibrate_judge` per (rubric, version, judge model).
 - **Miner output (contract with WS13):** under `<output_dir>/mine/` (any depth), `clusters.jsonl`
   holds `FailureCluster` records and `proposals.jsonl` holds `ScenarioProposal` records, one JSON
@@ -42,13 +45,24 @@ and how a Python wheel ships a Node-built app.
   `decide`.
 - **Approval.** Approving (optionally with edited YAML) validates the scenario with
   `hecklr_core.load_model` (file and line in errors), checks its world is the project's world,
-  its personas exist in `personas/`, and its id is unused under `scenarios/`, then writes
-  `scenarios/mined/<id>.yaml` (never overwriting) and appends the decided proposal (reviewer,
+  its personas exist in the persona library `personas/` (the only place `resolve_suite` resolves
+  a scenario's own persona ids; a suite's `personas` glob replaces them rather than extending
+  it), and its id is unused in every file matched by `scenarios/**/*.yaml` or any suite's
+  `scenarios` glob (one duplicate id breaks `resolve_suite` for every suite seeing both files),
+  then writes `scenarios/mined/<id>.yaml` (never overwriting) and appends the decided proposal (reviewer,
   note, `decided_at`, the approved scenario) to the proposal's own `proposals.jsonl`. Rejecting
-  appends the decision only. A decided proposal cannot be decided again (`409`).
+  appends the decision only. A decided proposal cannot be decided again (`409`). When no
+  suite's `scenarios` glob covers the written file, the response carries a warning naming the
+  globs, since that scenario would otherwise never run.
 - **Who.** The labeler and reviewer name defaults to `--user` (else the OS user name); the UI
   lets a person change it. It is a label, not authentication: the server binds `127.0.0.1` by
   default and is a local single-user tool (spec non-goal: no hosted SaaS).
+- **Local-only guard.** No login, so the server answers only `Host: localhost`, `127.0.0.1` or
+  `[::1]` (plus `--host` when it names an interface) and refuses others with `400`
+  (`TrustedHostMiddleware`): a DNS-rebinding page cannot read results or append labels and
+  decisions. Cross-origin JSON POSTs are already stopped by the CORS preflight (no CORS headers
+  are sent) and non-JSON bodies fail validation. A wildcard bind (`0.0.0.0`, `::`) is a
+  deliberate choice to serve the network and accepts any host name.
 - **Assets.** Vite builds `ui/` into `packages/hecklr/src/hecklr/ui_api/static/` (git-ignored);
   hatch ships it as a wheel artifact, so `pip install "hecklr[ui]"` + `hecklr ui` needs no Node.
   `hecklr ui --dev` serves only the API and `npm run dev` proxies `/api` to it. Without built

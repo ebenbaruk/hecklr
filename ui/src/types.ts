@@ -368,6 +368,8 @@ export interface ProposalItem {
 export interface DecisionResult {
   proposal: ScenarioProposal;
   written: string | null;
+  /** E.g. that no configured suite's scenario glob covers the written file. */
+  warnings: string[];
 }
 
 export interface FailureCluster {

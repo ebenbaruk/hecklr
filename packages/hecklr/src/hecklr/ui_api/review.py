@@ -4,7 +4,9 @@ Contract with ``hecklr-mine`` (ADR 0016a): under ``<output_dir>/mine/``, at any 
 ``clusters.jsonl`` holds ``FailureCluster`` records, ``proposals.jsonl`` ``ScenarioProposal``
 records and ``conversations.jsonl`` (optional) scrubbed ``Conversation`` records, one JSON object a
 line, append-only; the newest record of an id wins. A decision is appended to the proposal's own
-file; an approved scenario is written to ``scenarios/mined/<id>.yaml``.
+file; an approved scenario is written to ``scenarios/mined/<id>.yaml``. Its id must be unused in
+every scenario file a suite can load (``scenarios/`` and each suite's ``scenarios`` glob), since
+one duplicate id breaks ``resolve_suite`` for every suite that sees both files.
 """
 
 import tempfile
@@ -55,6 +57,15 @@ class InvalidScenarioError(ValueError):
     def __init__(self, problems: list[str]) -> None:
         super().__init__("; ".join(problems))
         self.problems = problems
+
+
+@dataclass(frozen=True, slots=True)
+class Approval:
+    """An approved proposal, the scenario file written and what the reviewer should know."""
+
+    proposal: ScenarioProposal
+    written: Path
+    warnings: list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +139,7 @@ class MineFiles:
         note: str | None,
         now: datetime,
         yaml_text: str | None,
-    ) -> tuple[ScenarioProposal, Path]:
+    ) -> Approval:
         """Validate the (optionally edited) scenario, write its file and record the approval.
 
         Raises:
@@ -151,7 +162,7 @@ class MineFiles:
             with target.open("x", encoding="utf-8") as out:
                 out.write(text)
             _append(stored.file, decided)
-        return decided, target
+        return Approval(decided, target, self._unsuited_warnings(target))
 
     def _undecided(self, proposal_id: str) -> StoredProposal:
         stored = self.proposal(proposal_id)
@@ -181,13 +192,19 @@ class MineFiles:
         return scenario
 
     def _persona_ids(self) -> set[str]:
+        # Only the library: a scenario's own persona ids resolve there and nowhere else
+        # (``resolve_suite``); a suite's ``personas`` glob replaces them instead of extending it.
         return {
             load_model(path, Persona).id for path in self.project.root.glob(PERSONA_LIBRARY_GLOB)
         }
 
+    def _scenario_globs(self) -> list[str]:
+        suites = self.project.config.suites.values()
+        return sorted({SCENARIO_GLOB, *(suite.scenarios for suite in suites)})
+
     def _scenario_ids(self) -> set[str]:
         ids = set()
-        for path in self.project.root.glob(SCENARIO_GLOB):
+        for path in _files(self.project.root, self._scenario_globs()):
             try:
                 ids.add(load_model(path, Scenario).id)
             except ConfigError:
@@ -195,6 +212,22 @@ class MineFiles:
                 # refuse this approval; its id simply cannot clash.
                 continue
         return ids
+
+    def _unsuited_warnings(self, written: Path) -> list[str]:
+        """A warning when no configured suite would run the scenario just written."""
+        suites = self.project.config.suites
+        runs_it = [
+            name
+            for name, suite in suites.items()
+            if written.resolve() in _files(self.project.root, [suite.scenarios])
+        ]
+        if runs_it:
+            return []
+        globs = ", ".join(f"{name}: {suite.scenarios}" for name, suite in sorted(suites.items()))
+        return [
+            f"no suite runs {written.relative_to(self.project.root).as_posix()} "
+            f"(suite scenario globs: {globs}); add it to a suite's glob in hecklr.yaml"
+        ]
 
     def _records[M: BaseModel](self, name: str, model: type[M]) -> Iterator[tuple[Path, M]]:
         for path in sorted(self.directory.rglob(name)):
@@ -208,6 +241,11 @@ class MineFiles:
                         raise MineFileError(
                             f"{path}:{number}: not a {model.__name__}: {exc.errors()[0]['msg']}"
                         ) from exc
+
+
+def _files(root: Path, globs: list[str]) -> set[Path]:
+    """The files the globs match under ``root``, each once however many globs match it."""
+    return {path.resolve() for pattern in globs for path in root.glob(pattern) if path.is_file()}
 
 
 def _newest(records: Iterator[tuple[Path, FailureCluster]]) -> dict[str, FailureCluster]:

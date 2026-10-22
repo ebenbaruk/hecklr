@@ -259,10 +259,14 @@ def create_app(
         if body.decision == "reject":
             rejected = mine.reject(proposal_id, reviewer=body.reviewer, note=body.note, now=clock())
             return DecisionResult(proposal=rejected, written=None)
-        approved, path = mine.approve(
+        approval = mine.approve(
             proposal_id, reviewer=body.reviewer, note=body.note, now=clock(), yaml_text=body.yaml
         )
-        return DecisionResult(proposal=approved, written=str(path))
+        return DecisionResult(
+            proposal=approval.proposal,
+            written=str(approval.written),
+            warnings=approval.warnings,
+        )
 
     @app.get("/api/{rest:path}", include_in_schema=False)
     def unknown_api(rest: str) -> None:

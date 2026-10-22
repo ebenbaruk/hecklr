@@ -7,7 +7,7 @@ from hecklr.compose import load_run_project
 from hecklr_core import resolve_suite
 from hecklr_schemas import ProposalStatus, ScenarioProposal
 
-from .conftest import USER, Lab, Mined, write_mine
+from .conftest import USER, Lab, Mined, make_app, write_mine
 
 pytestmark = [pytest.mark.anyio, pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
 
@@ -16,6 +16,23 @@ async def _mined(client: httpx2.AsyncClient, lab: Lab) -> Mined:
     analysis = (await client.get(f"/api/runs/{lab.candidate}")).json()
     failed = [t["trial_id"] for t in analysis["trials"] if t["passed"] is False]
     return write_mine(lab, failed)
+
+
+CI_SUITE = 'ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }'
+
+
+def _set_suites(lab: Lab, *suites: str) -> None:
+    """Replace the starter's ``ci`` suite with ``suites`` (one-line YAML flow mappings)."""
+    config = lab.config.read_text(encoding="utf-8")
+    assert CI_SUITE in config
+    lab.config.write_text(config.replace(CI_SUITE, "\n  ".join(suites)), encoding="utf-8")
+
+
+def _client(lab: Lab) -> httpx2.AsyncClient:
+    """A client for ``lab`` as configured now (the ``client`` fixture loads it before the test)."""
+    return httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=make_app(lab)), base_url="http://127.0.0.1"
+    )
 
 
 def _records(mined: Mined) -> list[ScenarioProposal]:
@@ -257,3 +274,59 @@ async def test_a_corrupt_miner_file_is_a_server_error_naming_the_line(
 
     assert response.status_code == 500
     assert "proposals.jsonl:3: not a ScenarioProposal" in response.json()["detail"]
+
+
+async def test_us08_an_id_used_under_any_suite_glob_is_refused(lab: Lab) -> None:
+    # A suite outside scenarios/ (the acme reference project's `smoke` uses scripted/*.yaml):
+    # a mined duplicate of its id would break `resolve_suite` for any suite seeing both files.
+    _set_suites(lab, CI_SUITE, 'smoke: { scenarios: "scripted/*.yaml", trials: 1 }')
+    starter = lab.root / "scenarios" / "plan-question.yaml"
+    scripted = lab.root / "scripted" / "scripted-plan.yaml"
+    scripted.parent.mkdir()
+    scripted.write_text(
+        starter.read_text(encoding="utf-8").replace("id: plan-question", "id: scripted-plan"),
+        encoding="utf-8",
+    )
+    async with _client(lab) as client:
+        mined = await _mined(client, lab)
+        clashing = (await client.get("/api/proposals")).json()[0]["yaml"]
+        clashing = clashing.replace("id: mined-double-address", "id: scripted-plan")
+
+        response = await client.post(
+            f"/api/proposals/{mined.proposals[0].id}/decision",
+            json={"decision": "approve", "reviewer": USER, "yaml": clashing},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["problems"] == ["a scenario with id 'scripted-plan' already exists"]
+    assert not (lab.root / "scenarios" / "mined").exists()
+    assert len(_records(mined)) == 2
+
+
+async def test_us08_approval_warns_when_no_suite_runs_the_written_scenario(lab: Lab) -> None:
+    _set_suites(lab, 'ci: { scenarios: "scenarios/*.yaml", trials: 1 }')
+    async with _client(lab) as client:
+        mined = await _mined(client, lab)
+
+        response = await client.post(
+            f"/api/proposals/{mined.proposals[0].id}/decision",
+            json={"decision": "approve", "reviewer": USER},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["warnings"] == [
+        "no suite runs scenarios/mined/mined-double-address.yaml (suite scenario globs: "
+        "ci: scenarios/*.yaml); add it to a suite's glob in hecklr.yaml"
+    ]
+    assert (lab.root / "scenarios" / "mined" / "mined-double-address.yaml").is_file()
+
+
+async def test_approval_into_a_suite_has_no_warning(client: httpx2.AsyncClient, lab: Lab) -> None:
+    mined = await _mined(client, lab)
+
+    response = await client.post(
+        f"/api/proposals/{mined.proposals[0].id}/decision",
+        json={"decision": "approve", "reviewer": USER},
+    )
+
+    assert response.json()["warnings"] == []
