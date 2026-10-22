@@ -10,7 +10,8 @@ URL reached an email agent on that transport.
 - ``serve_mailbox(server, inbox)``: polls ``inbox`` over IMAP and replies over SMTP, like a
   helpdesk reading a shared mailbox (GreenMail in Docker in the tests).
 
-Both run on their own threads, as a real agent runs in its own process.
+Both run on their own threads, as a real agent runs in its own process. Run the webhook agent
+alone with ``python packages/hecklr/tests/fixtures/email_agent.py``.
 """
 
 import imaplib
@@ -126,3 +127,9 @@ def _unseen(server: MailServer, inbox: str, seen: set[bytes]) -> list[bytes]:
         return raws
     finally:
         imap.logout()
+
+
+if __name__ == "__main__":
+    with serve_webhook() as (url, _):
+        print(f"email webhook agent listening on {url}", flush=True)
+        threading.Event().wait()

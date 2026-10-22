@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from typing import Final
 
 import anyio
-import anyio.from_thread
 import httpx2
 from websockets.asyncio.server import ServerConnection, serve
 
