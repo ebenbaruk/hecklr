@@ -14,7 +14,7 @@ from hecklr.cli import app, configure_logging, main
 from hecklr.commands.stubs import PENDING_COMMANDS
 
 runner = CliRunner()
-IMPLEMENTED = {"init", "run", "replay", "doctor", "compare", "gate", "report", "calibrate"}
+IMPLEMENTED = {"init", "run", "replay", "doctor", "compare", "gate", "report", "calibrate", "mine"}
 
 
 def test_version_command_prints_package_version() -> None:
