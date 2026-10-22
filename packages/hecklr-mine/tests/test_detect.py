@@ -197,6 +197,10 @@ def test_ws13_judges_add_a_signal_when_they_fail_the_conversation() -> None:
     assert report.signals[0].detail == "judge:resolved: the visit was never moved"
     assert report.failed
     assert report.summary.startswith("Failure signals: judge.")
+    # A production conversation's world is unknown: the judge must not see an empty one as truth.
+    prompt = llm.calls[0].messages[0].content
+    assert "# World state" not in prompt
+    assert "# Transcript" in prompt
 
 
 def test_ws13_passing_and_erroring_judges_add_no_signal_but_errors_are_kept() -> None:

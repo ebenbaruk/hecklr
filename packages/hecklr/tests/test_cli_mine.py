@@ -164,7 +164,7 @@ def test_mine_without_a_persona_library_needs_persona(config_path: Path, logs: P
     code, output = _mine(config_path, logs, "--no-model")
 
     assert code == exit_codes.CONFIG_ERROR
-    assert "no persona in" in output
+    assert "no non-adversarial persona" in output
 
 
 def test_mine_builds_the_openai_embedder_from_the_environment(
@@ -179,3 +179,21 @@ def test_mine_builds_the_openai_embedder_from_the_environment(
 
     assert code == exit_codes.OK, output
     assert "0 failed" in output
+
+
+def test_mine_default_persona_skips_adversarial_ones(
+    config_path: Path, logs: Path, tmp_path: Path
+) -> None:
+    library = config_path.parent / "personas"
+    (library / "adversarial").mkdir()
+    (library / "adversarial" / "aaa-attacker.yaml").write_text(
+        "id: aaa-attacker\ndescription: Tries refund fraud\nadversarial: refund_fraud\n",
+        encoding="utf-8",
+    )
+
+    code, output = _mine(config_path, logs)
+
+    assert code == exit_codes.OK, output
+    queue = load_queue(config_path.parent / ".hecklr" / MINE_DIR)
+    assert queue
+    assert {proposal.scenario.persona for proposal in queue} == {"busy-commuter"}

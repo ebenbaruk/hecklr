@@ -97,7 +97,9 @@ def mine(
     ] = False,
     persona: Annotated[
         str | None,
-        typer.Option(help="Persona of the proposed scenarios [default: first in personas/]."),
+        typer.Option(
+            help="Persona of the proposed scenarios [default: first non-adversarial persona]."
+        ),
     ] = None,
     min_cluster_size: Annotated[
         int | None, typer.Option(min=2, help="Smallest cluster [default: 2.5% of failures].")
@@ -170,16 +172,24 @@ def mine(
 
 
 def _persona(project: Project, requested: str | None) -> str:
-    """``requested`` if the persona library has it, else the library's first persona."""
-    ids = [load_model(path, Persona).id for path in sorted(project.root.glob(PERSONA_LIBRARY_GLOB))]
+    """``requested`` if the persona library has it, else its first ordinary persona.
+
+    Mined scenarios replay real customers, so the default skips adversarial personas.
+    """
+    personas = [load_model(p, Persona) for p in sorted(project.root.glob(PERSONA_LIBRARY_GLOB))]
+    ids = [persona.id for persona in personas]
     if requested is not None and requested not in ids:
         raise fail(
             f"no persona {requested!r} in {project.root / 'personas'}; known: {ids}",
             exit_codes.CONFIG_ERROR,
         )
-    if not ids:
-        raise fail(f"no persona in {project.root / 'personas'}", exit_codes.CONFIG_ERROR)
-    return requested or ids[0]
+    ordinary = [persona.id for persona in personas if persona.adversarial is None]
+    if requested is None and not ordinary:
+        raise fail(
+            f"no non-adversarial persona in {project.root / 'personas'}; pass --persona",
+            exit_codes.CONFIG_ERROR,
+        )
+    return requested or ordinary[0]
 
 
 def _suite_scenarios(project: Project) -> list[Scenario]:

@@ -107,6 +107,7 @@ _MONTHS = (
 )
 _DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 _GREETINGS = ("Hi", "Hello", "Good morning", "Hey", "Hello there", "Good afternoon")
+_YES = ("Yes please.", "Yes, that works.", "Sounds good, go ahead.", "Perfect, book it.")
 _THANKS = (
     "Thanks, perfect.",
     "Great, thank you!",
@@ -389,10 +390,12 @@ def _reschedule(c: _Customer, rng: random.Random) -> Script:
             f"{rng.choice(_GREETINGS)}, can I move my {c.appliance} visit from {c.day} "
             f"to {c.other_day}?",
         ),
+        _say("agent", f"{c.other_day} at 9am is free. Shall I move your visit there?"),
+        _say("user", rng.choice(_YES)),
         _say(
             "agent",
-            f"Sure, I've moved your visit to {c.other_day} morning.",
-            _call("reschedule_appointment", day=c.other_day),
+            f"Done: your visit is now on {c.other_day} at 9am.",
+            _call("reschedule_appointment", day=c.other_day, time="09:00"),
         ),
         _say("user", rng.choice(_THANKS)),
     ]
@@ -418,8 +421,13 @@ def _new_booking(c: _Customer, rng: random.Random) -> Script:
         ),
         _say(
             "agent",
-            f"Booked for {c.day} at {c.addresses[0]}. A confirmation is on its way to {c.email}.",
-            _call("book_visit", address=c.addresses[0], day=c.day),
+            f"I can send a technician to {c.addresses[0]} on {c.day} at 10am. Shall I book it?",
+        ),
+        _say("user", rng.choice(_YES)),
+        _say(
+            "agent",
+            f"Booked for {c.day} at 10am. A confirmation is on its way to {c.email}.",
+            _call("book_visit", address=c.addresses[0], day=c.day, time="10:00"),
         ),
         _say("user", rng.choice(_THANKS)),
     ]
@@ -431,8 +439,14 @@ def _two_addresses_handled(c: _Customer, rng: random.Random) -> Script:
         _say("user", f"Bills go to {billing} but the {c.appliance} is at {site}."),
         _say(
             "agent",
-            f"Got it: the technician goes to {site} on {c.day} and the invoice to {billing}.",
-            _call("book_visit", address=site, billing=billing),
+            f"Understood: the technician would go to {site} and the invoice to {billing}. "
+            f"Shall I book {c.day} at 2pm?",
+        ),
+        _say("user", rng.choice(_YES)),
+        _say(
+            "agent",
+            f"Booked: {c.day} at 2pm at {site}; invoices go to {billing}.",
+            _call("book_visit", address=site, billing=billing, day=c.day, time="14:00"),
         ),
         _say("user", rng.choice(_THANKS)),
     ]

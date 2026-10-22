@@ -8,6 +8,7 @@ it the response cache key, is the same every time the same log is mined.
 
 import hashlib
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
@@ -146,6 +147,10 @@ async def judge_conversation(
     Raises:
         hecklr_grade.UnknownRubricError: A rubric name is not a built-in rubric.
     """
-    graders = [JudgeGrader(load_rubric(name)) for name in rubrics]
+    # The world behind a production conversation is unknown, not empty: showing the judge an
+    # empty "ground truth" would make every claimed change look false. Tool results stay in the
+    # transcript. (``include_world`` is part of the rubric version, so these grades never mix
+    # with trial grades.)
+    graders = [JudgeGrader(replace(load_rubric(name), include_world=False)) for name in rubrics]
     ctx = grade_context(conversation, llm, judge_model, seed=seed)
     return [await grader.grade(ctx) for grader in graders]
