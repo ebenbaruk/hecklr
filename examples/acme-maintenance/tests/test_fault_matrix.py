@@ -279,6 +279,10 @@ def test_the_budget_keeps_two_pools_under_one_cap() -> None:
 def test_the_run_id_comes_from_hecklr_runs_output() -> None:
     out = "Spent: $0.0000 of budget $0.10\nRun 01M5GDZ04C453482PASREZA5P9 (completed)\nResults: x\n"
     assert fm.recorded_run(out) == "01M5GDZ04C453482PASREZA5P9"
+    styled = (
+        "\x1b[1mRun\x1b[0m \x1b[36m01M5GDZ04C453482PASREZA5P9\x1b[0m (\x1b[32mcompleted\x1b[0m)\n"
+    )
+    assert fm.recorded_run(styled) == "01M5GDZ04C453482PASREZA5P9"
     with pytest.raises(fm.MatrixError, match="no run id"):
         fm.recorded_run("error: the run failed")
 
@@ -327,8 +331,12 @@ def test_sc8_free_tier_end_to_end(
     """The real thing on a slice of the matrix: agent over HTTP, hecklr run, gate, table."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     code = fm.main(["--tier", "free", "--out", str(tmp_path), "--variants", "clean-aa,F5"])
-    printed = capsys.readouterr().out
-    assert code == 0, printed
+    captured = capsys.readouterr()
+    printed = captured.out
+    logs = "\n".join(
+        f"== {log.name}\n{log.read_text()[-3000:]}" for log in sorted((tmp_path / "logs").glob("*"))
+    )
+    assert code == 0, f"{captured.err}\n{printed}\n{logs}"
     matrix = json.loads((tmp_path / "matrix.json").read_text())
     assert matrix["passed"] is True
     assert matrix["spent_usd"] == "0"
