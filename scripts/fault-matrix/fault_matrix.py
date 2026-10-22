@@ -32,9 +32,10 @@ run, the script projects the whole tier's cost and stops if it would exceed the 
 
 Resume: every accepted run (its agent health checked) is appended to ``<out>/runs.jsonl``. With
 ``--resume`` a later invocation on the same ``--out`` reuses a recorded run instead of paying for
-it again, when its tier, suite, seed, trials and the suite files it ran (a digest of the project
-copy) all match; its spend still counts against ``--budget-usd``. The agent's code is not in the
-digest: resume only across changes that do not alter what the agent does.
+it again, when its tier, suite, seed, trials, agent model and setup (a digest of the suite files
+and the source ``hecklr.yaml``) all match; its spend still counts against ``--budget-usd``. The
+agent's code is not in the digest: resume only across changes that do not alter what the agent
+does.
 """
 
 import argparse
@@ -42,6 +43,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -541,6 +543,8 @@ def prepare_project(out: Path, port: int, concurrency: int | None) -> Path:
     the repository. The agent itself always runs from the repository.
     """
     target = out / "project"
+    # A reused --out must not keep a scenario the repository has since renamed or removed.
+    shutil.rmtree(target, ignore_errors=True)
     for name in ("scenarios", "scripted", "personas", "worlds", "prompts", "tools"):
         _copy_tree(PROJECT / name, target / name)
     source = yaml.safe_load((PROJECT / "hecklr.yaml").read_text(encoding="utf-8"))
@@ -617,22 +621,31 @@ class RecordedRun(BaseModel):
     seed: int
     trials: int | None
     suite_digest: str
+    agent_model: str | None
     run_id: str
     hecklr_spent_usd: Decimal
     agent_spent_usd: Decimal
     failed_turns: dict[str, int]
 
 
-def suite_digest(project: Path) -> str:
-    """SHA-256 over the project copy's suite files (paths and bytes).
+def suite_digest(project: Path, config_source: Path | None = None) -> str:
+    """SHA-256 over the project copy's suite files and the source ``hecklr.yaml``.
 
-    ``hecklr.yaml`` is left out: it names this invocation's agent port.
+    The source config holds the suites, the default trials and seed, and the simulator and judge
+    models. The copy's derived ``hecklr.yaml`` is left out: it names this invocation's agent port
+    and result store.
     """
-    digest = hashlib.sha256()
+    source = config_source if config_source is not None else PROJECT / "hecklr.yaml"
+    digest = hashlib.sha256(source.read_bytes())
     for path in sorted(p for p in project.rglob("*") if p.is_file() and p.name != "hecklr.yaml"):
         digest.update(path.relative_to(project).as_posix().encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def agent_model(tier: Tier) -> str | None:
+    """The model the LLM brain runs on (``ACME_MODEL``); ``None`` for the rules brain."""
+    return os.environ.get("ACME_MODEL", "openai/gpt-6-luna") if tier.brain == "llm" else None
 
 
 def load_recorded(path: Path) -> list[RecordedRun]:
@@ -668,8 +681,16 @@ class Runner:
         matches = [
             r
             for r in load_recorded(self._recorded_path)
-            if (r.tier, r.suite, r.variant, r.seed, r.trials, r.suite_digest)
-            == (self.tier_name, self.tier.suite, variant, seed, self.trials, digest)
+            if (r.tier, r.suite, r.variant, r.seed, r.trials, r.suite_digest, r.agent_model)
+            == (
+                self.tier_name,
+                self.tier.suite,
+                variant,
+                seed,
+                self.trials,
+                digest,
+                agent_model(self.tier),
+            )
         ]
         return matches[-1] if matches else None
 
@@ -733,6 +754,7 @@ class Runner:
             seed=seed,
             trials=self.trials,
             suite_digest=digest,
+            agent_model=agent_model(self.tier),
             run_id=run_id,
             hecklr_spent_usd=spent,
             agent_spent_usd=health.spent_usd,
@@ -819,9 +841,7 @@ def run_matrix(runner: Runner, variants: Sequence[str]) -> Matrix:
         brain=runner.tier.brain,
         simulator_model=info.simulator_model if runner.tier.brain == "llm" else None,
         judge_model=info.judge_model if runner.tier.calls_models else None,
-        agent_model=os.environ.get("ACME_MODEL", "openai/gpt-6-luna")
-        if runner.tier.brain == "llm"
-        else None,
+        agent_model=agent_model(runner.tier),
         seed=runner.seed,
         baseline_run_id=baseline.run_id,
         baseline_hecklr_spent_usd=baseline.hecklr_spent_usd,

@@ -29,6 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT.parents[1] / "scripts" / "fault-matrix"))
 import fault_matrix as fm
 
 STATS = StatsConfig(bootstrap_resamples=500)
+AGENT = "openai/gpt-6-luna"
 
 
 def scenario(sid: str, *criteria: Mapping[str, object]) -> Scenario:
@@ -366,7 +367,7 @@ def test_the_free_tier_expects_only_deterministic_graders() -> None:
     )
 
 
-def recorded(variant: str, seed: int, digest: str) -> fm.RecordedRun:
+def recorded(variant: str, seed: int, digest: str, model: str | None = AGENT) -> fm.RecordedRun:
     return fm.RecordedRun(
         tier="b",
         suite="matrix-live",
@@ -374,6 +375,7 @@ def recorded(variant: str, seed: int, digest: str) -> fm.RecordedRun:
         seed=seed,
         trials=None,
         suite_digest=digest,
+        agent_model=model,
         run_id=f"run-{variant}-{seed}",
         hecklr_spent_usd=Decimal("0.3"),
         agent_spent_usd=Decimal("0.1"),
@@ -381,20 +383,29 @@ def recorded(variant: str, seed: int, digest: str) -> fm.RecordedRun:
     )
 
 
-def test_resume_reuses_only_a_run_of_the_same_variant_seed_and_suite_files(
-    tmp_path: Path,
-) -> None:
+def setup(tmp_path: Path) -> tuple[Path, Path]:
+    """A project copy with one scenario, and the source ``hecklr.yaml`` it was derived from."""
     project = tmp_path / "project"
     (project / "scenarios").mkdir(parents=True)
     (project / "scenarios" / "a.yaml").write_text("id: a\n")
     (project / "hecklr.yaml").write_text("port: 1\n")
-    digest = fm.suite_digest(project)
-    (project / "hecklr.yaml").write_text("port: 2\n")  # another invocation's port
-    assert fm.suite_digest(project) == digest
+    source = tmp_path / "hecklr.yaml"
+    source.write_text("suites: {s: {trials: 3}}\nmodels: {simulator: x/one}\n")
+    return project, source
+
+
+def test_resume_reuses_only_a_run_of_the_same_variant_seed_setup_and_agent_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ACME_MODEL", AGENT)
+    project, source = setup(tmp_path)
+    monkeypatch.setattr(fm, "PROJECT", tmp_path)  # the source hecklr.yaml is tmp_path's
+    digest = fm.suite_digest(project, source)
     lines = [
         recorded("clean", 7, digest),
-        recorded("clean-aa", 8, "another-suite"),
+        recorded("clean-aa", 8, "a-digest-of-another-setup"),
         recorded("F1", 99, digest),
+        recorded("F2", 9, digest, model="openai/another-model"),
     ]
     (tmp_path / "runs.jsonl").write_text("".join(r.model_dump_json() + "\n" for r in lines))
     budget = fm.Budget.split(Decimal(4), Decimal("0.7"))
@@ -415,10 +426,27 @@ def test_resume_reuses_only_a_run_of_the_same_variant_seed_and_suite_files(
     record = runner.run_variant("clean", 0)
 
     assert (record.run_id, budget.spent) == ("run-clean-7", Decimal("0.4"))
-    assert runner._recorded("clean-aa", 8, digest) is None  # the suite files changed
+    assert runner._recorded("clean-aa", 8, digest) is None  # recorded under another setup
     assert runner._recorded("F1", 9, digest) is None  # another seed
+    assert runner._recorded("F2", 9, digest) is None  # another agent model
+
+
+def test_the_setup_digest_covers_suite_files_and_the_source_config_not_the_port(
+    tmp_path: Path,
+) -> None:
+    project, source = setup(tmp_path)
+    digest = fm.suite_digest(project, source)
+
+    (project / "hecklr.yaml").write_text("port: 2\n")  # another invocation's port and store
+    assert fm.suite_digest(project, source) == digest
     (project / "scenarios" / "a.yaml").write_text("id: b\n")
-    assert fm.suite_digest(project) != digest
+    changed_scenario = fm.suite_digest(project, source)
+    assert changed_scenario != digest
+    source.write_text("suites: {s: {trials: 5}}\nmodels: {simulator: x/one}\n")
+    assert fm.suite_digest(project, source) != changed_scenario
+    changed_trials = fm.suite_digest(project, source)
+    source.write_text("suites: {s: {trials: 5}}\nmodels: {simulator: x/two}\n")
+    assert fm.suite_digest(project, source) != changed_trials
 
 
 # --- real processes --------------------------------------------------------------------------

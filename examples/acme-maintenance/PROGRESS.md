@@ -102,7 +102,7 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   over the output limit, the agent's own failure) from an outage (agent `failure_key`,
   `is_outage`). It gained `--resume` (`runs.jsonl`) and `--suite`. Tests:
   `test_a_provider_failure_is_counted_with_its_http_status`,
-  `test_resume_reuses_only_a_run_of_the_same_variant_seed_and_suite_files`,
+  `test_resume_reuses_only_a_run_of_the_same_variant_seed_setup_and_agent_model`,
   `test_a_tier_can_run_on_another_suite`, and the resume leg of `test_sc8_free_tier_end_to_end`.
 
 ## Next (WS-m1)
