@@ -1,0 +1,8 @@
+# Settings of the acme agent's email front end. The brain (prompt, tool catalog) is the chat
+# agent's, in examples/acme-maintenance; this file is only about mail. Fault variants F11 and F12
+# (examples/acme-faults) replace this file with one line changed.
+
+# Answer in the customer's thread: In-Reply-To names their email, References carries the chain.
+thread_replies: true
+# Give up on a world tool call after this many seconds and let the brain handle the timeout.
+tool_timeout_s: null
