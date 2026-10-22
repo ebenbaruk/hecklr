@@ -15,7 +15,7 @@ sample at 26.4 ms (`websocket-pcm-24k-burst`, main CI on d299274) and failed the
 voice contract, `examples/voice-loopback` and `hecklr`'s wired voice run each failed once and
 passed on rerun. Main went red twice and the email PR was reverted (#30, #52).
 
-The workarounds had already drifted: `timing_needs_idle_cpu` skipped one contract case under
+The workarounds had already drifted: `timing_needs_idle_cpu` skipped two contract cases under
 xdist; `test_cli_calibrate` accepted a failing verdict under xdist; `test_voice_calibration`
 asserted a 10x bound. Because CI only ran under xdist, the strict branches never ran in CI at all:
 SC4 was weaker in CI than the spec says.
@@ -49,7 +49,8 @@ Options considered:
   −242 to +405 ms, and a pipecat-smallwebrtc outlier of 423 ms against a 420 ms window. On a
   dedicated machine they pass serially (21/21 locally). CI sets `HECKLR_SHARED_CPU=1` for the
   step, which skips SC4 for these two cases only, as before this ADR (they were always skipped
-  in CI). They are asserted with the same command on an idle developer machine. The SC4 claim
+  in CI). They are asserted with the same command on an idle developer machine; a dedicated CI
+  runner for them is issue #59. The SC4 claim
   itself (spec: the loopback agent) stays enforced in CI over WebSocket, Twilio and Pipecat
   WebSocket, the networked loopback agent and `hecklr calibrate`.
 

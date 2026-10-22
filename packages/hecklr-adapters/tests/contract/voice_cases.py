@@ -80,7 +80,7 @@ class VoiceCase:
     moves by tens of milliseconds; a sample-preserving WebSocket keeps it fixed.
     """
     timing_needs_idle_cpu: bool = False
-    """This case's real-time checks outside SC4 are only meaningful on an otherwise idle machine.
+    """This case's real-time checks (SC4 included) are only meaningful on an otherwise idle CPU.
 
     WebRTC jitter buffers grow when the CPU is busy, and the reference bots share this process
     (and its GIL) with the harness: under a parallel test run their delay climbs by hundreds
@@ -100,7 +100,7 @@ class VoiceCase:
     def timing_is_meaningful(self) -> bool:
         """Whether this run can judge the case's timing: not a load-sensitive case under xdist or
         on a shared CPU (``HECKLR_SHARED_CPU``, set by CI; ADR 0010b)."""
-        busy = os.environ.get("PYTEST_XDIST_WORKER") or os.environ.get("HECKLR_SHARED_CPU")
+        busy = os.environ.get("PYTEST_XDIST_WORKER") or os.environ.get("HECKLR_SHARED_CPU") == "1"
         return not (self.timing_needs_idle_cpu and busy)
 
     def require_idle_cpu_for_timing(self) -> None:
