@@ -71,7 +71,11 @@ class ServerStats:
     replies: int = 0
     cuts: int = 0
     max_late_ms: float = 0.0
-    """Worst lateness of a reply's first packet against its planned time."""
+    """Worst lateness of a reply packet against the time it is due to play.
+
+    The first packet of a reply leaves at its planned time, the rest up to ``LEAD_MS`` ahead,
+    so only a stalled agent is late. What Hecklr must measure is what the agent actually did:
+    its injected timing plus this lateness (ADR 0010a)."""
 
 
 class LoopbackServer:
@@ -142,10 +146,11 @@ class LoopbackServer:
         for offset in range(0, len(audio), FRAME_SAMPLES):
             due_ms = reply.start_ms + offset * FRAME_MS / FRAME_SAMPLES
             await sleep_until(max(reply.start_ms, due_ms - LEAD_MS))
+            late_ms = now_ms() - due_ms
+            self.stats.max_late_ms = max(self.stats.max_late_ms, late_ms)
             if offset == 0:
-                reply.late_ms = now_ms() - reply.start_ms
+                reply.late_ms = late_ms
                 self.stats.replies += 1
-                self.stats.max_late_ms = max(self.stats.max_late_ms, reply.late_ms)
             chunk = audio[offset : offset + FRAME_SAMPLES]
             if reply.cut_ms is not None and reply.cut_ms < due_ms + FRAME_MS:
                 keep = max(0, round((reply.cut_ms - due_ms) * SAMPLE_RATE / 1000))

@@ -69,10 +69,15 @@ class ScriptedASR:
 
 
 class ToneTTS:
-    """``seconds`` of tone for any text."""
+    """A tone for any text: ``seconds`` long, or ``seconds_per_char`` per character.
 
-    def __init__(self, seconds: float = 1.0) -> None:
-        self._samples = int(seconds * SAMPLE_RATE)
+    Computed on the event loop, unlike the real providers: a test that runs agent and harness
+    in one process must not queue the agent's speech behind the caller's in the DSP pool.
+    """
+
+    def __init__(self, seconds: float = 1.0, *, seconds_per_char: float | None = None) -> None:
+        self._seconds = seconds
+        self._per_char = seconds_per_char
         self.said: list[str] = []
 
     @property
@@ -81,7 +86,8 @@ class ToneTTS:
 
     async def synthesize(self, request: SpeechRequest) -> Audio:
         self.said.append(request.text)
-        return (0.2 * np.sin(np.arange(self._samples) / 5)).astype(np.float32)
+        seconds = self._seconds if self._per_char is None else self._per_char * len(request.text)
+        return (0.2 * np.sin(np.arange(int(seconds * SAMPLE_RATE)) / 5)).astype(np.float32)
 
 
 @dataclass

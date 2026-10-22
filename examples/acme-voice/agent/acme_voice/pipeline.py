@@ -79,6 +79,21 @@ class SpeechStack:
     language: str = "en-US"
 
 
+async def finish[T](work: Awaitable[T]) -> T:
+    """Await ``work`` even if the call ends meanwhile.
+
+    The DSP pool runs speech models in worker processes and kills a worker whose job is
+    cancelled; the next job then starts a new worker and loads its model again, which put
+    4-6 s on another call's answer whenever a call hung up mid-transcription. Letting a hang-up
+    wait for the job (a few hundred milliseconds) keeps the loaded workers alive.
+    """
+    with anyio.CancelScope(shield=True):
+        result = await work
+    # Returned after the block: a CancelScope may swallow exceptions, so mypy would see a path
+    # that falls off the end of the function.
+    return result  # noqa: RET504 -- see above
+
+
 class Transcription:
     """A transcription running in the background, awaited when its turn is answered."""
 
@@ -90,7 +105,7 @@ class Transcription:
     async def run(self, asr: ASR, pcm: Pcm16, language: str) -> None:
         """Transcribe; a failure is kept and raised to whoever awaits the result."""
         try:
-            self._text = (await asr.transcribe(pcm, language=language)).text
+            self._text = (await finish(asr.transcribe(pcm, language=language))).text
         except Exception as exc:  # noqa: BLE001 -- re-raised by result(), never lost
             self._error = exc
         finally:
@@ -245,7 +260,8 @@ class VoiceCall:
         if turn.transcription is not None:
             raw = await turn.transcription.result()
         else:
-            raw = (await self._stack.asr.transcribe(turn.pcm, language=self._stack.language)).text
+            stack = self._stack
+            raw = (await finish(stack.asr.transcribe(turn.pcm, language=stack.language))).text
         heard_ms = self._clock()
         text = normalize_transcript(raw)
         if not text:
@@ -276,7 +292,7 @@ class VoiceCall:
         if self._config.tts_pre_delay_ms:
             await anyio.sleep(self._config.tts_pre_delay_ms / 1000)
         request = SpeechRequest(text=text, voice=self._stack.voice, language=self._stack.language)
-        pcm = to_pcm16(await self._stack.tts.synthesize(request))
+        pcm = to_pcm16(await finish(self._stack.tts.synthesize(request)))
         if self._superseded(floor):
             return
         await self._mouth.play(pcm)

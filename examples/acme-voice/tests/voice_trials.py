@@ -5,7 +5,9 @@ a localhost WebSocket (``pcm`` protocol), Hecklr's ``VoiceDriver`` calls it thro
 ``websocket`` adapter with the scenario's scripted caller, the agent's tools act on the trial's
 world in a real ``hecklr_world.Sandbox`` over HTTP, and ``hecklr_grade`` grades the events and
 the world. Callers speak ``synthetic`` speech here (no model download), so the agent hears the
-script through ``ScriptedASR``; everything after the ASR is the real agent.
+script through ``ScriptedASR`` and speaks a tone as long as its reply would be (``ToneTTS``:
+agent and harness share this process, and the agent's speech must not queue behind the
+caller's in the DSP pool); everything between ears and mouth is the real agent.
 """
 
 from collections.abc import AsyncIterator
@@ -28,7 +30,7 @@ from acme_voice import (
     running_server,
     voice_fault_overlay,
 )
-from voice_testing import ScriptedASR
+from voice_testing import ScriptedASR, ToneTTS
 
 from hecklr_adapters.voice import WebSocketVoiceAdapterConfig, WebSocketVoiceTarget
 from hecklr_core.yaml_files import load_model
@@ -50,7 +52,7 @@ from hecklr_schemas import (
     new_id,
 )
 from hecklr_sim import ScriptedSimulator
-from hecklr_voice import EnergyVad, FakeASR, SyntheticTTS, VoiceDriver
+from hecklr_voice import EnergyVad, FakeASR, VoiceDriver
 from hecklr_voice.testing import RecordingSink
 from hecklr_world import Sandbox, load_world
 
@@ -112,7 +114,8 @@ async def voice_agent(
 ) -> AsyncIterator[tuple[str, VoiceAgentServer]]:
     """The rules-brain voice agent hearing ``heard`` in order; yields its URL and server."""
     asr = ScriptedASR(heard, then="Sorry, please go on.")
-    stack = SpeechStack(asr=asr, tts=SyntheticTTS(), vad=EnergyVad, voice="agent")
+    tts = ToneTTS(seconds_per_char=0.06)  # about the pace of speech
+    stack = SpeechStack(asr=asr, tts=tts, vad=EnergyVad, voice="agent")
     agent = AcmeAgent(load_agent_files(), AgentSettings(brain="rules"))
     async with httpx2.AsyncClient(timeout=10.0) as client:
         server = VoiceAgentServer(
