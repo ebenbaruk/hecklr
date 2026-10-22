@@ -1,6 +1,6 @@
 # 0020a. Fault matrix: three tiers, judge-only twins and per-grader attribution
 
-Date: 2026-10-22 · Status: accepted (architect, 2026-10-22) · Workstream: WS-m1 (milestone M1)
+Date: 2026-10-22 · Status: accepted (orchestrator in the architect role, 2026-10-22, PR #72) · Workstream: WS-m1 (milestone M1)
 
 ## Context
 
@@ -93,5 +93,5 @@ Checked against SPEC.md, "Fault-injection matrix (SC8)" and "Graders":
 - "Caught" is stricter than SC8's wording (suite gate *and* every expected grader must regress),
   and the A/A rule matches SC8's "no regression verdict". Neither loosens a criterion.
 - The tiers add measurements; Tier B on real models remains the SC8 evidence. The free tier's
-  backstop graders (F3 `not_contains`) are diagnostics for nightly CI, not a substitute for the
+  backstop graders (F3 `not_contains`, F6 `tool`) are diagnostics for nightly CI, not a substitute for the
   spec's judges.

@@ -24,7 +24,7 @@ repos:
       - id: ruff-format
         name: ruff format
         # --force-exclude: pre-commit passes file names, which ruff otherwise formats even when
-        # pyproject excludes them (docs/SPEC.md must never be rewritten by tooling).
+        # pyproject excludes them (ruff must never rewrite docs/SPEC.md's code blocks).
         entry: uv run ruff format --force-exclude
         language: system
         # Markdown too: ruff formats Python code blocks in docs, and CI checks them.
