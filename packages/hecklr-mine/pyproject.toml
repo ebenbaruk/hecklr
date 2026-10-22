@@ -17,6 +17,7 @@ dependencies = [
     "anyio>=4.10",
     "openai>=3.35,<4",
     "structlog>=25.4",
+    "python-ulid>=3.0",
 ]
 
 [project.optional-dependencies]
