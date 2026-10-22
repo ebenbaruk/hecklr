@@ -119,6 +119,7 @@ markers = [
     "slow: takes more than a few seconds",
     "voice: needs the audio pipeline",
     "perf: performance benchmark (SC2, SC3)",
+    "sc4_timing: asserts SC4 wall-clock timing accuracy; skipped under xdist, run serially (ADR 0010b)",
 ]
 
 # --- coverage -----------------------------------------------------------------
