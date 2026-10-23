@@ -8,11 +8,12 @@ import pytest
 from pydantic import TypeAdapter
 
 from hecklr_core import RunResults
-from hecklr_report import Analysis, analyze
+from hecklr_report import EXIT_HARNESS_ERROR, Analysis, analyze, gate_exit_code
 from hecklr_report.analysis import COST_PER_TRIAL
 from hecklr_report.outcomes import criterion_label, snr_bucket, trial_verdict
 from hecklr_schemas import (
     Channel,
+    GateConfig,
     IntervalMethod,
     RunStatus,
     Scenario,
@@ -262,6 +263,52 @@ def test_broken_runs_and_empty_runs_are_problems(
     assert len(analysis.problems) == 4
     assert analysis.summaries == []
     assert analysis.scenarios[0].pass_rate is None
+
+
+def test_issue33_a_run_where_no_trial_got_through_is_a_problem(
+    kit: type[Kit], scenarios: dict[str, Scenario]
+) -> None:
+    candidate = kit.RunBuilder()
+    for scenario_id in ("s00", "s01"):
+        candidate.trial(scenario_id, status="agent_error", passed=False)
+    candidate.trial("s02", status="timeout", passed=False)
+    candidate.trial("s03", status="harness_error")
+
+    analysis = analyze(candidate.build(), None, kit.stats, scenarios)
+
+    assert analysis.problems == [
+        "no trial of the candidate run got through: 2 agent errors and 1 timeout, first "
+        "'agent returned HTTP 500'; is the agent up and its adapter configured right?"
+    ]
+    assert gate_exit_code(analysis, GateConfig()) == EXIT_HARNESS_ERROR
+
+
+def test_issue33_a_baseline_where_no_trial_got_through_is_a_problem(
+    kit: type[Kit], scenarios: dict[str, Scenario]
+) -> None:
+    baseline = kit.RunBuilder()
+    baseline.trial("s00", status="timeout", passed=False)
+    candidate = kit.RunBuilder()
+    candidate.trial("s00")
+
+    analysis = analyze(candidate.build(), baseline.build(), kit.stats, scenarios)
+
+    assert analysis.problems == [
+        "no trial of the baseline run got through: 1 timeout; is the agent up and its adapter "
+        "configured right?"
+    ]
+
+
+def test_issue33_one_trial_that_got_through_is_a_measurement(
+    kit: type[Kit], scenarios: dict[str, Scenario]
+) -> None:
+    candidate = kit.RunBuilder()
+    candidate.trial("s00", status="agent_error", passed=False)
+    candidate.trial("s01", passed=False)
+
+    analysis = analyze(candidate.build(), None, kit.stats, scenarios)
+
+    assert analysis.problems == []
 
 
 def test_contradiction_rate_has_a_wilson_interval(

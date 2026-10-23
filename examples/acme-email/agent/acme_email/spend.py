@@ -4,6 +4,11 @@ Hecklr meters its simulator and judges; the agent under test pays for its brain 
 live fault matrix needs both under one budget, so the agent logs what it has spent and refuses
 to call the model once ``ACME_LLM_BUDGET_USD`` is exceeded (its email then goes unanswered, which
 the run shows as timeouts: look for ``agent_llm_budget_exhausted`` in the log).
+
+The cap is soft: it is checked before each call, because a call's price is known only from its
+response. The call that crosses the cap is paid for, and so is each call already in flight when
+it is crossed (one per email being answered concurrently). Set the cap that much below a hard
+limit.
 """
 
 from decimal import Decimal

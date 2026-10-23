@@ -14,6 +14,8 @@ HARNESS_ERROR: Final = 3
 """The run as a whole failed: it crashed, or no trial could be run."""
 BUDGET: Final = 4
 """The run was refused (estimate over budget) or stopped (spend reached the budget)."""
+INTERRUPTED: Final = 130
+"""128 + SIGINT, the shell's code for a command stopped with Ctrl-C."""
 NOT_IMPLEMENTED: Final = 69
 """``EX_UNAVAILABLE``: a command or feature that is not built yet."""
 CONFIG_ERROR: Final = 78

@@ -47,19 +47,25 @@ EMBED_AUDIO_BUDGET_BYTES: Final = 8 * 1024 * 1024
 """Recordings are embedded, failed trials first, until this many bytes are spent; the rest are
 linked. A whole voice run embedded would make a report too large to open or upload."""
 
+MAX_EVENT_CHARS: Final = 10_000
+"""Characters of one event's text or JSON detail the trial viewer shows; the rest is cut with a
+marker, so an agent that floods its replies cannot make the report unusable (issue #34)."""
+
 WAVEFORM_BUCKETS: Final = 800
 """Peak values drawn per recording: enough for a wide screen, small enough to embed per trial."""
 
 
 @cache
 def _environment() -> Environment:
-    return Environment(
+    environment = Environment(
         loader=PackageLoader("hecklr_report", "templates"),
         autoescape=True,
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    environment.filters["clip"] = clip
+    return environment
 
 
 def render_html(
@@ -234,9 +240,18 @@ def _timeline_item(event: Event) -> TimelineItem:
         t_ms=event.t_ms,
         actor=event.actor,
         kind=event.kind,
-        text=text,
-        detail=detail,
+        text=clip(text),
+        detail=clip(detail) if detail is not None else None,
         note=note,
+    )
+
+
+def clip(text: str) -> str:
+    """``text`` cut to ``MAX_EVENT_CHARS`` with a marker saying how much was left out."""
+    if len(text) <= MAX_EVENT_CHARS:
+        return text
+    return (
+        f"{text[:MAX_EVENT_CHARS]}\u2026 [truncated, {len(text) - MAX_EVENT_CHARS} more characters]"
     )
 
 
