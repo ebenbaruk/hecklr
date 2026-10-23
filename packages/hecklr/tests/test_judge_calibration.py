@@ -1,5 +1,6 @@
 """``hecklr.judge_calibration``: labeled transcripts turned into trials the judges grade (SC7)."""
 
+import functools
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from hecklr.judge_calibration import (
     describe,
     grade_context,
     judge_set,
+    labeled_pairs,
     load_set,
     make_label,
     now,
@@ -328,6 +330,38 @@ def test_sc7_judge_set_grades_every_labeled_pair(tiny_set: CalibrationSet) -> No
     assert sorted(grade.grader for grade in grades) == ["judge:resolved", "judge:tone"]
     assert all(grade.status == "ok" and not grade.passed for grade in grades)
     assert {grade.trial_id for grade in grades} == {case_trial_id("chat-cancel")}
+
+
+def test_sc7_judge_set_judges_only_the_given_pairs(tiny_set: CalibrationSet) -> None:
+    judge = FakeLLM(
+        responder=lambda request: {"verdict": "pass", "rationale": "Yes.", "evidence": []}
+    )
+
+    grades = anyio.run(
+        functools.partial(judge_set, pairs={("chat-cancel", "tone")}), tiny_set, judge, "fake/j"
+    )
+
+    assert [grade.grader for grade in grades] == ["judge:tone"]
+    assert len(judge.calls) == 1
+
+
+def test_sc7_labeled_pairs_are_those_with_a_label_of_the_current_rubric_version(
+    tiny_set: CalibrationSet,
+) -> None:
+    (case,) = tiny_set.cases
+    when = datetime(2026, 10, 23, tzinfo=UTC)
+    tone = make_label(case, "tone", passed=True, labeler="human:ada", note=None, created_at=when)
+    resolved = make_label(
+        case, "resolved", passed=True, labeler="human:ada", note=None, created_at=when
+    )
+    stale = resolved.model_copy(update={"grader_version": "old"})
+
+    assert labeled_pairs(tiny_set, [tone, resolved]) == {
+        ("chat-cancel", "tone"),
+        ("chat-cancel", "resolved"),
+    }
+    assert labeled_pairs(tiny_set, [tone, stale]) == {("chat-cancel", "tone")}
+    assert labeled_pairs(tiny_set, []) == set()
 
 
 def test_sc7_describe_shows_the_transcript_and_what_changed(tiny_set: CalibrationSet) -> None:

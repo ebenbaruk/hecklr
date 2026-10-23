@@ -363,30 +363,57 @@ def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
     assert code == exit_codes.OK, output
     assert "3 of 3 labels are not from 'human:' labelers (claude-draft)" in output
 
-    code, output = _invoke_set(
-        config_path, _judge(_agrees), "--set", str(root), "--labeler", "human:"
-    )
+    judge = _judge(_agrees)
+    code, output = _invoke_set(config_path, judge, "--set", str(root), "--labeler", "human:")
 
-    assert code == exit_codes.CHECK_FAILED, output
-    assert "judge:tone: not calibrated, no label of its current rubric version" in output
-    assert "Judge agreement with human labels" not in output  # no empty table
+    # No human label: refused before a single (paid) judge call.
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "no label by human: is of a current rubric version" in output
+    assert judge.calls == []
 
 
-def test_sc7_calibrate_judges_set_fails_labels_of_an_old_rubric_version(
-    config_path: Path, tmp_path: Path
-) -> None:
-    root = _labeled_set(tmp_path / "set")
-    labels = root / "labels.jsonl"
+def _age_labels(labels: Path, grader: str) -> None:
+    """Pretend ``grader``'s rubric changed since it was labeled: its labels pin an old version."""
+    rows = [HumanLabel.model_validate_json(line) for line in labels.read_text().splitlines()]
     labels.write_text(
-        labels.read_text(encoding="utf-8").replace('"grader_version":"', '"grader_version":"old'),
+        "".join(
+            (
+                row.model_copy(update={"grader_version": "old"}) if row.grader == grader else row
+            ).model_dump_json()
+            + "\n"
+            for row in rows
+        ),
         encoding="utf-8",
     )
 
-    code, output = _invoke_set(config_path, _judge(_agrees), "--set", str(root))
+
+def test_sc7_calibrate_judges_set_fails_a_rubric_labeled_only_at_an_old_version(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+    _age_labels(root / "labels.jsonl", "judge:resolved")
+    judge = _judge(_agrees)
+
+    code, output = _invoke_set(config_path, judge, "--set", str(root))
 
     assert code == exit_codes.CHECK_FAILED, output
+    assert "Judging 2 labeled (conversation, rubric) pairs" in output
+    assert len(judge.calls) == 2  # the stale pair is not judged
     assert "judge:resolved: not calibrated, no label of its current rubric version" in output
     assert "calibration/judges/GUIDE.md" in output
+
+
+def test_sc7_calibrate_judges_set_with_only_old_labels_is_refused(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+    for grader in ("judge:resolved", "judge:tone"):
+        _age_labels(root / "labels.jsonl", grader)
+
+    code, output = _invoke_set(config_path, _judge(_agrees), "--set", str(root))
+
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "no label is of a current rubric version" in output
 
 
 def test_sc7_calibrate_judges_set_reports_a_judge_that_never_answers_usably(
@@ -418,23 +445,13 @@ def test_sc7_calibrate_judges_set_takes_an_explicit_labels_file(
     assert code == exit_codes.OK, output
 
 
-@pytest.mark.parametrize(
-    ("cases", "message"),
-    [
-        ("- {id: x}\n", "case 0"),
-        (
-            SET_CASES.replace('postcode: "75001"}', 'postcode: "99999"}'),
-            "verify_customer was refused",
-        ),
-    ],
-)
 def test_sc7_calibrate_judges_set_rejects_a_malformed_set(
-    config_path: Path, tmp_path: Path, cases: str, message: str
+    config_path: Path, tmp_path: Path
 ) -> None:
     root = tmp_path / "set"
     (root / "cases").mkdir(parents=True)
     (root / "world.yaml").write_text(SET_WORLD, encoding="utf-8")
-    (root / "cases" / "cases.yaml").write_text(cases, encoding="utf-8")
+    (root / "cases" / "cases.yaml").write_text("- {id: x}\n", encoding="utf-8")
     (root / "labels.jsonl").touch()
     (root / "set.yaml").write_text(
         "version: 1\nworld: world.yaml\ncases: cases/*.yaml\nlabels: labels.jsonl\n",
@@ -444,7 +461,22 @@ def test_sc7_calibrate_judges_set_rejects_a_malformed_set(
     code, output = _invoke_set(config_path, _judge(_agrees), "--set", str(root))
 
     assert code == exit_codes.CONFIG_ERROR, output
-    assert message in output
+    assert "case 0" in output
+
+
+def test_sc7_calibrate_judges_set_rejects_a_case_the_world_refuses(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+    cases = root / "cases" / "cases.yaml"
+    cases.write_text(
+        SET_CASES.replace('postcode: "75001"}', 'postcode: "99999"}'), encoding="utf-8"
+    )
+
+    code, output = _invoke_set(config_path, _judge(_agrees), "--set", str(root))
+
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "verify_customer was refused" in output
 
 
 def test_sc7_calibrate_judges_set_rejects_a_malformed_labels_file(
@@ -466,6 +498,18 @@ def test_sc7_calibrate_judges_set_and_run_are_exclusive(config_path: Path, tmp_p
 
     assert code == exit_codes.CONFIG_ERROR
     assert "--set judges its own transcripts; drop --run" in output
+
+
+@pytest.mark.parametrize("args", [["--set", "SET"], ["--labeler", "human:"]])
+def test_sc7_set_and_labeler_need_judges(
+    config_path: Path, tmp_path: Path, args: list[str]
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+
+    code, output = invoke(config_path, "--aa", *[str(root) if a == "SET" else a for a in args])
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert "--set and --labeler only apply to --judges" in output
 
 
 # --- the rest -----------------------------------------------------------------------------------

@@ -18,7 +18,7 @@ analyzed, 78 config.
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -113,6 +113,8 @@ def calibrate(
         raise fail(
             "choose a self-test: --aa, --judges or --voice-loopback", exit_codes.CONFIG_ERROR
         )
+    if not judges and (calibration_set is not None or labelers):
+        raise fail("--set and --labeler only apply to --judges", exit_codes.CONFIG_ERROR)
     if calibration_set is not None and judged_runs:
         raise fail("--set judges its own transcripts; drop --run", exit_codes.CONFIG_ERROR)
     passed = True
@@ -301,32 +303,40 @@ def _report_judge_set(
     labelers: Sequence[str],
     providers: Mapping[str, LLMProvider],
 ) -> bool:
-    """Judge every labeled (case, rubric) pair of the set at ``root``, then compare with labels.
+    """Judge the labeled pairs of the set at ``root``, then compare the verdicts with the labels.
 
-    Every rubric of the set must be calibrated: one without a usable label of its current
-    version, or whose judge answered nothing usable, fails the self-test.
+    Only pairs with a label of the chosen labelers and the rubric's current version are judged,
+    so no judge call is paid for nothing; with no such pair at all it is a config error. Every
+    rubric of the set must be calibrated: one without a usable label, or whose judge answered
+    nothing usable, fails the self-test.
     """
     try:
         calibration_set = judge_calibration.load_set(root)
         labels = _read_labels(labels_path or calibration_set.labels_path, labelers)
     except CalibrationSetError as exc:
         raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
+    pairs = judge_calibration.labeled_pairs(calibration_set, labels)
+    if not pairs:
+        raise fail(
+            f"no label{_by(labelers)} is of a current rubric version of {root}: nothing to "
+            "calibrate (review the set: calibration/judges/GUIDE.md)",
+            exit_codes.CONFIG_ERROR,
+        )
     judge_model = project.config.models.judge
-    pairs = sum(1 for _ in calibration_set.items())
     stdout.print(
-        f"Judging {pairs} labeled (conversation, rubric) pairs of {root} with {judge_model}.",
+        f"Judging {len(pairs)} labeled (conversation, rubric) pairs of {root} with {judge_model}.",
         soft_wrap=True,
     )
     with config_errors():
         try:
-            grades = anyio.run(_judge_set, project, calibration_set, providers)
+            grades = anyio.run(_judge_set, project, calibration_set, pairs, providers)
         except CalibrationSetError as exc:
             raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
     usable = [grade for grade in grades if grade.status == "ok"]
     calibrations = _calibrations(project, usable, labels)
     if calibrations:
         stdout.print(_judge_table(calibrations))
-    uncalibrated = _uncalibrated(grades, calibrations)
+    uncalibrated = _uncalibrated(calibration_set, pairs, grades, calibrations)
     for grader, problem in uncalibrated.items():
         stdout.print(f"[bold red]{grader}[/]: not calibrated, {problem}", soft_wrap=True)
     errors = Counter(grade.grader for grade in grades if grade.status == "error")
@@ -338,32 +348,46 @@ def _report_judge_set(
     return bool(calibrations) and not uncalibrated and all(c.trusted for c in calibrations)
 
 
+def _by(labelers: Sequence[str]) -> str:
+    return f" by {', '.join(labelers)}" if labelers else ""
+
+
 async def _judge_set(
-    project: Project, calibration_set: CalibrationSet, providers: Mapping[str, LLMProvider]
+    project: Project,
+    calibration_set: CalibrationSet,
+    pairs: Collection[tuple[str, str]],
+    providers: Mapping[str, LLMProvider],
 ) -> list[Grade]:
     config = project.config
     # Fail fast on a missing API key, before hundreds of judge calls each become an error.
     await check_model_providers(config.models, [config.models.judge], providers)
     async with open_llm(config, project.output_dir, providers=providers) as llm:
-        return await judge_calibration.judge_set(calibration_set, llm, config.models.judge)
+        return await judge_calibration.judge_set(
+            calibration_set, llm, config.models.judge, pairs=pairs
+        )
 
 
 def _uncalibrated(
-    grades: Sequence[Grade], calibrations: Sequence[JudgeCalibration]
+    calibration_set: CalibrationSet,
+    pairs: Collection[tuple[str, str]],
+    grades: Sequence[Grade],
+    calibrations: Sequence[JudgeCalibration],
 ) -> dict[str, str]:
-    """Why each judged rubric has no calibration, by grader name."""
+    """Why each rubric of the set has no calibration, by grader name."""
     calibrated = {c.grader for c in calibrations}
-    versions = {grade.grader: grade.grader_version for grade in grades}
-    usable = {grade.grader for grade in grades if grade.status == "ok"}
-    return {
-        grader: (
-            f"no label of its current rubric version {versions[grader]} (relabel the set: "
-            "calibration/judges/GUIDE.md)"
-            if grader in usable
-            else "every judge answer was unusable"
-        )
-        for grader in sorted(versions.keys() - calibrated)
-    }
+    labeled = {judge_calibration.grader_name(name) for _, name in pairs}
+    rubrics = {name for _, name in calibration_set.items()}
+    problems = {}
+    for name in sorted(rubrics):
+        grader = judge_calibration.grader_name(name)
+        if grader not in labeled:
+            problems[grader] = (
+                f"no label of its current rubric version {judge_calibration.rubric(name).version}"
+                " (relabel the set: calibration/judges/GUIDE.md)"
+            )
+        elif grader not in calibrated:
+            problems[grader] = "every judge answer was unusable"
+    return problems
 
 
 def _calibrations(
@@ -372,16 +396,13 @@ def _calibrations(
     """Agreement of every judge with the labels of its rubric version, where any label joins."""
     stats = project.config.stats
     seed = stats.seed if stats.seed is not None else project.config.seed
-    calibrations = []
-    for group in _judge_groups(grades, labels):
-        try:
-            calibrations.append(
-                calibrate_judge(group, labels, seed=seed, resamples=stats.bootstrap_resamples)
-            )
-        except ValueError:
-            # The rubric version was labeled, but on other trials than these grades judged.
-            continue
-    return calibrations
+    labeled = {(label.trial_id, label.grader, label.grader_version) for label in labels}
+    return [
+        calibrate_judge(group, labels, seed=seed, resamples=stats.bootstrap_resamples)
+        for group in _judge_groups(grades, labels)
+        # A rubric version can be labeled on other trials than these grades judged: no join.
+        if any((g.trial_id, g.grader, g.grader_version) in labeled for g in group)
+    ]
 
 
 def _warn_if_not_human(

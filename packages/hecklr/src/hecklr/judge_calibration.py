@@ -14,7 +14,7 @@ id, not the clock, so the judge prompts (and the response cache) are the same on
 
 import hashlib
 import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -68,6 +68,8 @@ from hecklr_world.tools import Toolbox
 
 CALIBRATED_RUBRICS: Final = (*BUILTIN_RUBRICS, *INTERNAL_RUBRICS, "no_policy_override")
 """Every rubric Hecklr ships: SC7 asks kappa >= 0.70 on each."""
+MIN_LABELS_PER_RUBRIC: Final = 40
+"""Labeled conversations per rubric the set must have, and SC7 evidence must rest on."""
 
 MANIFEST: Final = "set.yaml"
 DRAFT_LABELER: Final = "claude-draft"
@@ -332,6 +334,21 @@ def by_labeler(labels: Sequence[HumanLabel], prefixes: Sequence[str]) -> list[Hu
     return [label for label in labels if label.labeler.startswith(tuple(prefixes))]
 
 
+def labeled_pairs(
+    calibration_set: CalibrationSet, labels: Sequence[HumanLabel]
+) -> set[tuple[str, str]]:
+    """The (case id, rubric) pairs of the set with a label of the rubric's current version.
+
+    Only these pairs can be calibrated: a label of an older rubric version judged other words.
+    """
+    keys = {(label.trial_id, label.grader, label.grader_version) for label in labels}
+    return {
+        (case.id, name)
+        for case, name in calibration_set.items()
+        if (case_trial_id(case.id), grader_name(name), rubric(name).version) in keys
+    }
+
+
 def now() -> datetime:
     """The current time, timezone-aware (labels record when they were written)."""
     return datetime.now(UTC)
@@ -476,9 +493,13 @@ async def judge_set(
     llm: LLMProvider,
     judge_model: str,
     *,
+    pairs: Collection[tuple[str, str]] | None = None,
     concurrency: int = 8,
 ) -> list[Grade]:
-    """One grade per labeled (case, rubric) pair, judged ``concurrency`` at a time.
+    """One grade per (case, rubric) pair of the set, judged ``concurrency`` at a time.
+
+    ``pairs`` (case id, rubric) limits the judging to those pairs, e.g. the ones with a usable
+    label (``labeled_pairs``), so no judge call is paid for a pair that cannot be calibrated.
 
     Judge failures come back as ``error`` grades (they never count as agreement), never as a
     crash.
@@ -486,10 +507,17 @@ async def judge_set(
     Raises:
         CalibrationSetError: a case cannot be turned into a trial.
     """
-    graders = {name: JudgeGrader(rubric(name)) for name in CALIBRATED_RUBRICS}
+    todo = [
+        (case, name)
+        for case, name in calibration_set.items()
+        if pairs is None or (case.id, name) in pairs
+    ]
+    graders = {name: JudgeGrader(rubric(name)) for name in {name for _, name in todo}}
+    judged = {case.id for case, _ in todo}
     contexts = {
         case.id: grade_context(case, calibration_set.world, llm, judge_model)
         for case in calibration_set.cases
+        if case.id in judged
     }
     grades: list[Grade] = []
     limiter = anyio.CapacityLimiter(concurrency)
@@ -499,7 +527,7 @@ async def judge_set(
             grades.append(await graders[name].grade(contexts[case_id]))
 
     async with anyio.create_task_group() as group:
-        for case, name in calibration_set.items():
+        for case, name in todo:
             group.start_soon(judge, case.id, name)
     return grades
 
