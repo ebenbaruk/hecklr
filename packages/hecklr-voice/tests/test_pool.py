@@ -6,6 +6,7 @@ import os
 import pickle
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -104,7 +105,7 @@ async def test_job_errors_are_raised_with_their_own_type_and_the_worker_is_kept(
 async def test_an_unpicklable_result_is_an_error_not_a_broken_worker() -> None:
     first = await run_dsp(os.getpid)
     with pytest.raises(RuntimeError, match="could not be pickled"):
-        await run_dsp(open, os.devnull)
+        await run_dsp(threading.Lock)
     assert await run_dsp(os.getpid) == first
 
 
@@ -139,24 +140,40 @@ def _frame(value: object) -> bytes:
     return b"%d\n" % len(payload) + payload
 
 
-def test_worker_adopts_the_parent_path_then_runs_jobs_until_end_of_input() -> None:
-    parent_path = [*sys.path, "/parent/only"]
-    requests = io.BytesIO(_frame(parent_path) + _frame((int, ("42",))) + _frame((int, ("x",))))
+def _serve(*requests: object) -> tuple[list[tuple[bytes, object]], list[str]]:
+    """Run the worker loop in-process on ``requests``: its (status, value) replies and the
+    ``sys.path`` it left (restored afterwards)."""
     replies = io.BytesIO()
     saved = sys.path[:]
     try:
-        _dsp_worker.serve(requests, replies)
-        assert sys.path == parent_path
+        _dsp_worker.serve(io.BytesIO(b"".join(_frame(request) for request in requests)), replies)
+        adopted = sys.path[:]
     finally:
         sys.path[:] = saved
-
     stream = io.BytesIO(replies.getvalue())
-    statuses = []
-    values = []
+    parsed = []
     while header := stream.readline():
         status, length = header.split()
-        statuses.append(status)
-        values.append(pickle.loads(stream.read(int(length))))  # noqa: S301 -- written just above
-    assert statuses == [b"RETURN", b"RETURN", b"EXCEPTION"]
-    assert values[:2] == [None, 42]
-    assert isinstance(values[2], ValueError)
+        parsed.append((status, pickle.loads(stream.read(int(length)))))  # noqa: S301 -- ours
+    return parsed, adopted
+
+
+def test_worker_adopts_the_parent_path_then_runs_jobs_until_end_of_input() -> None:
+    parent_path = [*sys.path, "/parent/only"]
+    replies, adopted = _serve(parent_path, (int, ("42",)), (int, ("x",)))
+    assert adopted == parent_path
+    assert [status for status, _ in replies] == [b"RETURN", b"RETURN", b"EXCEPTION"]
+    assert [value for _, value in replies[:2]] == [None, 42]
+    assert isinstance(replies[2][1], ValueError)
+
+
+def test_worker_reports_an_unpicklable_result_as_an_error() -> None:
+    ((_, ready), (status, error)), _ = _serve(sys.path, (threading.Lock, ()))
+    assert ready is None
+    assert status == b"EXCEPTION"
+    assert isinstance(error, RuntimeError)
+    assert "could not be pickled" in str(error)
+
+
+def test_worker_exits_at_once_on_empty_input() -> None:
+    assert _serve() == ([], sys.path)
