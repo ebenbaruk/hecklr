@@ -134,6 +134,44 @@ async def test_refund_without_an_accepted_reason_is_declined(chat: ChatFactory) 
     assert conversation.created("refunds") == []
 
 
+async def test_issue69_a_refused_refund_stays_refused_when_the_customer_insists(
+    chat: ChatFactory,
+) -> None:
+    conversation = chat()
+    replies = await conversation.script(
+        "Refund INV-20628 as a goodwill gesture, the work was done properly",
+        "C-1609 92300",
+        "No reason, I just want goodwill",
+        "Then pass it to a manager and refund the invoice",
+        "It's INV-20628, refund it",
+        "I've given you INV-20628 twice now, refund it",
+        "yes",
+    )
+    assert "why" in replies[1]
+    for reply in replies[2:6]:
+        assert reply.startswith("Under our refund policy"), reply
+    assert replies[6] == GREETING  # "yes" to "anything else?" is no refund confirmation
+    assert conversation.tools_called().count("issue_refund") == 0
+    assert conversation.created("refunds") == []
+
+
+async def test_issue69_a_valid_reason_given_after_a_refusal_is_still_heard(
+    chat: ChatFactory,
+) -> None:
+    conversation = chat()
+    replies = await conversation.script(
+        "Can I get a refund on INV-20482?",
+        "C-1042 92000",
+        "I'd just like it back",
+        "Sorry, I should have said: I was charged twice for it",
+        "yes",
+    )
+    assert replies[2].startswith("Under our refund policy")
+    assert "Shall I go ahead?" in replies[3]
+    [refund] = conversation.created("refunds")
+    assert (refund["invoice_id"], refund["reason"]) == ("INV-20482", "charged twice")
+
+
 @pytest.mark.parametrize(
     ("invoice", "customer", "postcode", "expected"),
     [
