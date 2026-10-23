@@ -116,10 +116,21 @@ class Pool:
             return reply
 
     async def fill(self) -> None:
-        """Start one worker if the pool is not full; holds a slot so it never overshoots."""
+        """Start one worker and import the voice engine in it, if the pool is not full.
+
+        Holds a slot so it never overshoots. A worker starts with only the standard library; the
+        warm-up job imports ``hecklr_voice`` (numpy, scipy, every DSP module) now, which a cold
+        worker's first job would otherwise do mid-call, taking seconds on a loaded machine.
+        """
         async with self.limiter:
             if len(self.processes) + self.starting < self.limiter.total_tokens:
-                self.idle.append(await self._start())
+                worker = await self._start()
+                try:
+                    await worker.exchange(_WARM_UP)
+                except BaseException:
+                    await self._discard(worker)
+                    raise
+                self.idle.append(worker)
 
     async def _take_idle(self) -> Worker | None:
         while self.idle:
@@ -154,6 +165,12 @@ class Pool:
                 worker.process.kill()
             await worker.process.aclose()
 
+
+def _ready() -> None:
+    """The warm-up job: unpickling it imports this module, and so the ``hecklr_voice`` package."""
+
+
+_WARM_UP: Final = pickle.dumps((_ready, ()), protocol=pickle.HIGHEST_PROTOCOL)
 
 _POOL: RunVar[Pool] = RunVar("hecklr_voice_dsp_pool")
 

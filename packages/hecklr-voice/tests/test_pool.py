@@ -1,6 +1,7 @@
 """The DSP worker pool: workers that never run the parent's main file (#31) and are never
 retired for idling (#47), with anyio's process-pool semantics for errors and cancellation."""
 
+import importlib
 import io
 import os
 import pickle
@@ -11,7 +12,6 @@ import time
 from pathlib import Path
 
 import anyio
-import anyio.to_process
 import pytest
 
 from hecklr_voice import _dsp_worker, pool
@@ -24,11 +24,10 @@ def _worker_pids() -> set[int]:
     return {worker.process.pid for worker in pool.current_pool().idle}
 
 
-async def test_issue47_idle_workers_are_never_retired(monkeypatch: pytest.MonkeyPatch) -> None:
-    # anyio retires a worker idle for WORKER_MAX_IDLE_TIME when the next job is dispatched, and
-    # reuses idle workers last in, first out, so the warmed workers are the ones it retires and
-    # a peak of jobs then starts fresh workers that load their models mid-call.
-    monkeypatch.setattr(anyio.to_process, "WORKER_MAX_IDLE_TIME", 0.05)
+async def test_issue47_idle_workers_are_never_retired() -> None:
+    # anyio retired a worker idle for WORKER_MAX_IDLE_TIME (300 s) on the next dispatch, last in
+    # first out, so a peak of jobs after a quiet spell started fresh workers that loaded their
+    # models mid-call. Hecklr's pool has no idle limit: the warmed workers survive idle gaps.
     await warm_dsp_pool()
     warmed = _worker_pids()
     assert len(warmed) == dsp_workers()
@@ -40,6 +39,35 @@ async def test_issue47_idle_workers_are_never_retired(monkeypatch: pytest.Monkey
                 group.start_soon(run_dsp, time.sleep, 0.05)
 
     assert _worker_pids() == warmed
+
+
+PROBE = """
+import sys
+
+
+def loaded(name):
+    return name in sys.modules
+"""
+
+
+async def test_warm_workers_have_the_voice_engine_imported_before_any_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A cold worker's first job imports numpy, scipy and every DSP module: seconds on a loaded
+    # machine, which a warmed pool must not spend in the middle of a call.
+    (tmp_path / "hecklr_pool_probe.py").write_text(PROBE)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    probe = importlib.import_module("hecklr_pool_probe")
+    await warm_dsp_pool()
+    results: list[bool] = []
+
+    async def ask() -> None:
+        results.append(await run_dsp(probe.loaded, "hecklr_voice.impair"))
+
+    async with anyio.create_task_group() as group:
+        for _ in range(dsp_workers()):
+            group.start_soon(ask)
+    assert results == [True] * dsp_workers()
 
 
 async def test_warming_never_starts_more_workers_than_the_limit() -> None:
