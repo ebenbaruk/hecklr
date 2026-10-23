@@ -94,6 +94,7 @@ nav:
       - Red-team pack: guides/red-team.md
       - Miner: guides/miner.md
       - Fixer: guides/fixer.md
+      - Judge calibration: guides/judge-calibration.md
       - Local UI: guides/ui.md
   - Reference:
       - CLI: reference/cli.md
