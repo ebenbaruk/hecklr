@@ -106,13 +106,14 @@ def run(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
         stdout.print(row_table(result))
-        if excluded := result.counts.total - result.counts.analyzed:
-            # Usually a judge that could not answer (see the run's grades): the row is thinner
-            # than the suite, and readers should know before they compare it.
+        counts = result.counts
+        if counts.grade_errors or counts.total > counts.analyzed:
+            # Usually a judge that could not answer: the row's judge scores (and, when no other
+            # criterion failed, its verdicts) rest on fewer conversations than the suite has.
             stderr.print(
-                f"[bold yellow]warning:[/] {excluded} of {result.counts.total} conversations "
-                f"have no verdict ({result.counts.grade_errors} grade errors, "
-                f"{result.counts.harness_error} harness errors)",
+                f"[bold yellow]warning:[/] {counts.grade_errors} grade errors; "
+                f"{counts.total - counts.analyzed} of {counts.total} conversations have no "
+                f"verdict ({counts.harness_error} harness errors)",
                 soft_wrap=True,
             )
         stdout.print(f"Wrote {escape(str(path))}", soft_wrap=True)

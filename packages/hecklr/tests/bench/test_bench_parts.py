@@ -378,6 +378,27 @@ def test_reproduction_is_judged_by_overlapping_intervals() -> None:
     assert published.spend.total_usd == 3
 
 
+def test_sc4_timing_intervals_agree_within_the_harness_timing_accuracy() -> None:
+    published = _row({
+        "response_latency_p50": _estimate(4, 3, 5),
+        "barge_in_reaction_p95": _estimate(100, 95, 105),
+        "talk_over_s_per_min": _estimate(4, 3, 5),
+    })  # fmt: skip
+    reproduced = _row({
+        "response_latency_p50": _estimate(30, 28, 33),  # 23 ms apart: within 2 x 20 ms
+        "barge_in_reaction_p95": _estimate(160, 150, 170),  # 45 ms apart: a real change
+        "talk_over_s_per_min": _estimate(5.5, 5.2, 6),  # not a timing metric: no slack
+    })  # fmt: skip
+
+    checks = {c.metric: c.consistent for c in check_reproduction(published, reproduced)}
+
+    assert checks == {
+        "response_latency_p50": True,
+        "barge_in_reaction_p95": False,
+        "talk_over_s_per_min": False,
+    }
+
+
 # --- the site ----------------------------------------------------------------------------------
 
 

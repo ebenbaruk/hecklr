@@ -39,9 +39,11 @@ from hecklr_stats.intervals import derive_rng
 TASK_SUCCESS = "task_success"
 COST = "cost_per_conversation_usd"
 LATENCY_METRICS = tuple(quantile_metric(RESPONSE_LATENCY, q) for q in ("p50", "p95"))
+BARGE_IN_METRICS = tuple(quantile_metric(BARGE_IN_REACTION, q) for q in ("p50", "p95"))
+TIMING_METRICS = frozenset((*LATENCY_METRICS, *BARGE_IN_METRICS))
 VOICE_METRICS = (
     *LATENCY_METRICS,
-    *(quantile_metric(BARGE_IN_REACTION, q) for q in ("p50", "p95")),
+    *BARGE_IN_METRICS,
     FALSE_INTERRUPTIONS,
     DEAD_AIR,
     TALK_OVER,
@@ -182,23 +184,34 @@ class MetricCheck(FrozenModel):
     """The two intervals overlap: no evidence the stack measures differently now."""
 
 
+TIMING_TOLERANCE_MS = 20.0
+"""How far apart two timing intervals may sit and still agree: the harness's own timing accuracy
+(SC4). A row's bootstrap interval covers sampling noise within one run, not the few milliseconds
+a machine's scheduling moves between runs, which dominate an agent that answers in milliseconds."""
+
+
 def check_reproduction(published: StackResult, reproduced: StackResult) -> list[MetricCheck]:
     """Every metric both rows have, compared.
 
     A re-measurement is itself a sample, so its point estimate falls outside the published 95%
-    interval more often than 5% of the time even when nothing changed; overlapping intervals are
-    the reproduction criterion, and ``within`` is reported alongside.
+    interval more often than 5% of the time even when nothing changed; overlapping intervals
+    (timing intervals widened by ``TIMING_TOLERANCE_MS``) are the reproduction criterion, and
+    ``within`` is reported alongside.
     """
     checks = []
     for name in sorted(published.metrics.keys() & reproduced.metrics.keys()):
         old, new = published.metrics[name], reproduced.metrics[name]
+        slack = TIMING_TOLERANCE_MS if name in TIMING_METRICS else 0.0
         checks.append(
             MetricCheck(
                 metric=name,
                 published=old,
                 reproduced=new,
                 within=old.ci_low <= new.value <= old.ci_high,
-                consistent=old.ci_low <= new.ci_high and new.ci_low <= old.ci_high,
+                consistent=(
+                    old.ci_low - slack <= new.ci_high + slack
+                    and new.ci_low - slack <= old.ci_high + slack
+                ),
             )
         )
     return checks

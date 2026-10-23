@@ -37,7 +37,10 @@ reference agents of Waves 1-2 (acme chat and voice, the loopback agent) to build
   estimate falls outside the published interval far more often than 5% of the time even when
   nothing changed (about 17% for equal sample sizes). `reproduce` therefore requires each metric's
   new interval to overlap the published one (exit 1 otherwise) and also reports whether the new
-  point lies inside the published interval.
+  point lies inside the published interval. Timing intervals (latency, barge-in) are widened by
+  20 ms on each side first, the harness's own timing accuracy (SC4): a bootstrap interval covers
+  sampling noise within one run, not the milliseconds scheduling moves between runs, and an agent
+  answering in 3-5 ms otherwise fails to reproduce on an idle rerun (seen in the test suite).
 - **Cloud speech is metered by the agent at list price** (AssemblyAI streaming session time,
   OpenAI `gpt-4o-mini-tts` minutes of speech), since neither API returns a cost; the agent refuses
   new calls past its cap.
