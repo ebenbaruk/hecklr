@@ -72,6 +72,17 @@ The SC4 timing tests measure real time. Under parallel load (`-n auto`, or other
 machine) they are skipped or may fail; run them serially on an idle machine before calling a voice
 change done.
 
+### The merge gate
+
+GitHub Actions is off on the private repository ([ADR 0022a](docs/adr/0022a-local-ci-is-the-merge-gate.md)).
+Before a pull request is merged, run every CI workflow locally on the tree that will land (your
+branch with `origin/main` merged in) and paste `.ci-local/summary.txt` into a "Local CI" comment:
+
+```bash
+scripts/ci-local.sh            # everything in .github/workflows/, about 20 minutes
+scripts/ci-local.sh --quick    # lint, types, tests, e2e: for iterating, not for merging
+```
+
 ## Writing tests
 
 - Test first for behavior named in the spec's success criteria (SC1-SC10) or user stories

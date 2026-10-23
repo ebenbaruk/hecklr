@@ -1,6 +1,6 @@
 # 0021a. Local CI gate while GitHub Actions is unavailable
 
-Date: 2026-10-23 · Status: accepted · Role: integrator (Wave 4)
+Date: 2026-10-23 · Status: superseded by [0022a](0022a-local-ci-is-the-merge-gate.md) · Role: integrator (Wave 4)
 
 ## Context
 
