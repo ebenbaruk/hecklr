@@ -81,5 +81,5 @@ result = await fixer.run()
 ```
 
 `runner` is any `SuiteRunner` (the CLI's runs a suite in process like `hecklr run`); `launcher`
-any `AgentLauncher`. Tests use `FakeLLM` and fake runners (`tests/test_fixer.py`); the end-to-end
+any `AgentLauncher`. Tests use `FakeLLM` and fake runners (`tests/fixer/test_fixer.py`); the end-to-end
 test (`packages/hecklr/tests/test_cli_fix.py`) fixes F1 on the reference agent for free.
