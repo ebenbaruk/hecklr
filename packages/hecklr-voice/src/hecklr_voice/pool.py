@@ -105,7 +105,7 @@ class Pool:
     async def run(self, request: bytes) -> tuple[bool, bytes]:
         """Run one pickled job on an idle worker, or a new one if none is idle."""
         async with self.limiter:
-            worker = self._pop_idle() or await self._start()
+            worker = await self._take_idle() or await self._start()
             try:
                 reply = await worker.exchange(request)
             except BaseException:
@@ -121,12 +121,12 @@ class Pool:
             if len(self.processes) + self.starting < self.limiter.total_tokens:
                 self.idle.append(await self._start())
 
-    def _pop_idle(self) -> Worker | None:
+    async def _take_idle(self) -> Worker | None:
         while self.idle:
             worker = self.idle.pop()
             if worker.process.returncode is None:
                 return worker
-            self.processes.discard(worker.process)
+            await self._discard(worker)  # exited while idle (killed from outside)
         return None
 
     async def _start(self) -> Worker:
