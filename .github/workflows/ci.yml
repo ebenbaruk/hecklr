@@ -49,6 +49,11 @@ jobs:
           HECKLR_SHARED_CPU: "1"
         run: uv run pytest -m sc4_timing -p no:xdist --cov --cov-report=
 
+      # SC2 (200 scenarios x 3 trials < 10 min at concurrency 32) needs every core to itself;
+      # the parallel step below skips `perf` benchmarks (ADR 00hcb).
+      - name: Performance benchmarks (serial)
+        run: uv run pytest -m perf -p no:xdist --cov --cov-append --cov-report=
+
       - name: Unit tests with coverage
         run: >-
           uv run pytest -n auto
