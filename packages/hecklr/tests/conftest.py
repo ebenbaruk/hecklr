@@ -10,9 +10,11 @@ import importlib.util
 import random
 import sys
 from collections.abc import Callable, Iterator, Mapping
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import ModuleType
 
 import anyio
 import pytest
@@ -27,6 +29,7 @@ from hecklr_schemas import (
     Grade,
     GradeId,
     Run,
+    RunCounts,
     RunId,
     RunStatus,
     Trial,
@@ -79,17 +82,41 @@ def edit() -> Callable[[Path, str, str], None]:
     return replace
 
 
-@pytest.fixture
-def http_agent_url() -> Iterator[str]:
-    """The chat URL of ``fixtures/http_agent.py``, served on an ephemeral 127.0.0.1 port."""
-    path = Path(__file__).parent / "fixtures" / "http_agent.py"
-    spec = importlib.util.spec_from_file_location("hecklr_fixture_http_agent", path)
+def _fixture_module(name: str) -> ModuleType:
+    path = Path(__file__).parent / "fixtures" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"hecklr_fixture_{name}", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    with module.serve_in_thread() as url:
+    return module
+
+
+@pytest.fixture
+def http_agent_url() -> Iterator[str]:
+    """The chat URL of ``fixtures/http_agent.py``, served on an ephemeral 127.0.0.1 port."""
+    with _fixture_module("http_agent").serve_in_thread() as url:
         yield url
+
+
+@pytest.fixture
+def stub_agent(config_path: Path) -> Iterator[Callable[..., str]]:
+    """``stub_agent("failing")`` or ``stub_agent("flooding", reply_bytes)``: serve a broken agent
+    from ``fixtures/stub_agents.py`` and point the project's chat adapter at it; returns its URL.
+    """
+    module = _fixture_module("stub_agents")
+    with ExitStack() as stack:
+
+        def start(kind: str, *args: object) -> str:
+            url: str = stack.enter_context(module.serve(getattr(module, f"{kind}_agent")(*args)))
+            text = config_path.read_text(encoding="utf-8")
+            chat = '{"type": "python", "entrypoint": "hecklr_agent:reply"}'
+            assert chat in text
+            http = f'{{"type": "http", "url": "{url}", "response_path": "reply", "timeout_s": 10}}'
+            config_path.write_text(text.replace(chat, http), encoding="utf-8")
+            return url
+
+        yield start
 
 
 # --- synthetic stored runs ------------------------------------------------------------------
@@ -109,6 +136,7 @@ def store_run(
     status: RunStatus = RunStatus.COMPLETED,
     baseline_id: str | None = None,
     grader: str = "tool_called",
+    counts: RunCounts | None = None,
 ) -> Run:
     """Store a run whose scenario ``s`` passes each of ``trials`` trials with ``pass_rates[s]``.
 
@@ -126,6 +154,7 @@ def store_run(
         matrix=[],
         budget=Budget(usd=Decimal(5)),
         status=status,
+        counts=counts or RunCounts(),
     )
 
     async def write() -> None:

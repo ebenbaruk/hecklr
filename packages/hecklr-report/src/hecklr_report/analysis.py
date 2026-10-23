@@ -40,6 +40,9 @@ from hecklr_stats import JudgeCalibration, compare_runs, summarize_run, wilson_e
 COST_PER_TRIAL = "cost_usd_per_trial"
 """Mean simulator and judge spend per conversation, with a bootstrap interval."""
 
+_ERROR_CHARS = 200
+"""How much of a trial's error a problem quotes."""
+
 _BROKEN_RUN = (RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.PENDING, RunStatus.RUNNING)
 
 
@@ -128,16 +131,41 @@ def _problems(
         problems.append(f"candidate run {candidate.run.id} is {candidate.run.status.value}")
     if not cand.outcomes:
         problems.append("no trial of the candidate run could be analyzed")
+    if (blocked := nothing_got_through(candidate)) is not None:
+        problems.append(f"no trial of the candidate run got through: {blocked}")
     if baseline is None or base is None:
         return problems
     if baseline.run.status in _BROKEN_RUN:
         problems.append(f"baseline run {baseline.run.id} is {baseline.run.status.value}")
     if not base.outcomes:
         problems.append("no trial of the baseline run could be analyzed")
+    if (blocked := nothing_got_through(baseline)) is not None:
+        problems.append(f"no trial of the baseline run got through: {blocked}")
     shared = {o.scenario_id for o in cand.outcomes} & {o.scenario_id for o in base.outcomes}
     if cand.outcomes and base.outcomes and not shared:
         problems.append("the candidate and baseline runs share no analyzable scenario")
     return problems
+
+
+def nothing_got_through(results: RunResults) -> str | None:
+    """Why no conversation of the run got through, or ``None`` when one did (ADR 00hra).
+
+    When every conversation ended in an agent error or a timeout, the run measured a broken
+    setup (agent down, wrong URL, a reply it cannot parse), not the agent: it must not pass a
+    gate or become a baseline (issue #33). Harness errors are already excluded and reported.
+    """
+    statuses = Counter(trial.status for trial in results.trials)
+    errors, timeouts = statuses["agent_error"], statuses["timeout"]
+    if statuses["ok"] or not errors + timeouts:
+        return None
+    tally = [
+        f"{count} {name}{'s' if count > 1 else ''}"
+        for count, name in ((errors, "agent error"), (timeouts, "timeout"))
+        if count
+    ]
+    first = next((t.error for t in results.trials if t.status != "harness_error" and t.error), None)
+    cause = f", first {first[:_ERROR_CHARS]!r}" if first else ""
+    return f"{' and '.join(tally)}{cause}; is the agent up and its adapter configured right?"
 
 
 def _summaries(

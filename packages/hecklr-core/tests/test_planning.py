@@ -21,7 +21,15 @@ from hecklr_core import (
 from hecklr_core.loading import Project
 from hecklr_core.planning import CostEstimate
 from hecklr_llm import UnknownPriceError
-from hecklr_schemas import Budget, Channel, ModelPrice, RunStatus, Scenario, ScenarioLimits
+from hecklr_schemas import (
+    Budget,
+    Channel,
+    ModelPrice,
+    RunStatus,
+    Scenario,
+    ScenarioLimits,
+    TrialSpec,
+)
 
 SONNET = "anthropic/claude-sonnet-5-5"
 
@@ -162,6 +170,31 @@ def test_estimate_is_zero_for_scripted_scenarios_with_deterministic_graders(
     )
     assert estimate.simulator_usd == 0
     assert estimate.judge_usd > 0
+
+
+def test_issue36_a_mixed_suite_charges_the_simulator_per_guided_trial_only(
+    ci_suite: Suite,
+) -> None:
+    # Issue #67 (item 5): scripted and guided scenarios in one matrix.
+    free = [{"type": "contains", "text": "x"}]
+    scenarios = {
+        "scripted": _scenario(mode="scripted", user_turns=["hello"], success=free),
+        "guided": _scenario(success=free),
+    }
+    template = expand_matrix(ci_suite, run_seed=0)[0]
+    matrix = [
+        template.model_copy(update={"scenario_id": scenario_id, "index": index})
+        for scenario_id in ("scripted", "guided", "guided")
+        for index in range(2)
+    ]
+
+    def estimate(specs: list[TrialSpec]) -> CostEstimate:
+        return estimate_cost(specs, scenarios, simulator_model=SONNET, judge_model=SONNET)
+
+    one_guided = estimate(matrix[2:3]).simulator_usd
+    assert one_guided > 0
+    assert estimate(matrix).simulator_usd == 4 * one_guided
+    assert estimate(matrix[:2]).total_usd == 0
 
 
 def test_estimate_fails_closed_on_unknown_paid_model(ci_suite: Suite) -> None:

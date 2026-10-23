@@ -5,7 +5,10 @@ the recorded ``--baseline`` when there is one; the self-contained HTML report is
 run directory.
 """
 
-from collections.abc import Mapping, Sequence
+import asyncio
+import logging
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
@@ -30,8 +33,10 @@ from hecklr.compose import (
 from hecklr.errors import describe_error
 from hecklr.reports import FILE_NAMES, ReportFormat, write_report
 from hecklr.results import analyze_results, load_results
+from hecklr_adapters import DEFAULT_MAX_REPLY_BYTES
 from hecklr_core import BudgetEstimateError, RunResults
 from hecklr_report import Analysis, fmt, render_terminal
+from hecklr_report.analysis import nothing_got_through
 from hecklr_schemas import Channel, Grade, LLMProvider, RunStatus, Trial
 
 _STATUS_STYLE = {
@@ -78,6 +83,14 @@ def run(
         Path | None,
         typer.Option(help="Where runs and the response cache go (overrides output_dir)."),
     ] = None,
+    max_reply_bytes: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            help="Text one chat agent turn may carry; a longer reply is an agent error, of "
+            "which the transcript keeps the head.",
+        ),
+    ] = DEFAULT_MAX_REPLY_BYTES,
 ) -> None:
     """Run a suite against the agent and write results."""
     request = RunRequest(
@@ -90,6 +103,7 @@ def run(
         adaptive=adaptive,
         baseline_id=baseline,
         output_dir=output_dir,
+        max_reply_bytes=max_reply_bytes,
     )
     prepared, results = run_with_progress(request, overrides(ctx).llm_providers)
     _summarize(prepared, results)
@@ -170,7 +184,7 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
         progress.update(task, total=(progress.tasks[0].total or 0) + extra)
         stderr.print(f"Adaptive pass: {extra} more trials")
 
-    with progress:
+    with progress, _quiet_server_cancellations():
         try:
             return anyio.run(
                 partial(
@@ -181,9 +195,41 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
                     on_adaptive=on_adaptive,
                 )
             )
+        except KeyboardInterrupt:
+            # asyncio cancelled the run on SIGINT and the executor recorded it as cancelled.
+            stderr.print(f"Interrupted: run {prepared.plan.run.id} recorded as cancelled")
+            raise typer.Exit(code=exit_codes.INTERRUPTED) from None
         except Exception as exc:
             # The executor already recorded the run as failed; say why and stop.
             raise fail(f"the run failed: {describe_error(exc)}", exit_codes.HARNESS_ERROR) from exc
+
+
+class _DropCancellations(logging.Filter):
+    """Drops records about a task cancellation: its exception, or its formatted traceback."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info is not None:
+            return not isinstance(record.exc_info[1], asyncio.CancelledError)
+        # Starlette reports a failed lifespan to uvicorn as traceback text, which uvicorn logs as
+        # the message; its last line names the exception.
+        return not record.getMessage().rstrip().endswith("CancelledError")
+
+
+@contextmanager
+def _quiet_server_cancellations() -> Iterator[None]:
+    """Keep a cancelled embedded server from printing a traceback (issue #35).
+
+    On Ctrl-C asyncio cancels every task still running, including the world sandbox's uvicorn
+    lifespan task, which logs its ``CancelledError`` as an error on ``uvicorn.error``. A cancelled
+    server is not an error, and the run already says it was interrupted.
+    """
+    logger = logging.getLogger("uvicorn.error")
+    quiet = _DropCancellations()
+    logger.addFilter(quiet)
+    try:
+        yield
+    finally:
+        logger.removeFilter(quiet)
 
 
 def _summarize(prepared: PreparedRun, results: RunResults) -> None:
@@ -242,5 +288,9 @@ def _exit_code(results: RunResults) -> int:
             f"{escape(results.trials[0].error or 'unknown')}",
             soft_wrap=True,
         )
+        return exit_codes.HARNESS_ERROR
+    if (blocked := nothing_got_through(results)) is not None:
+        # A setup that never let one conversation through measured nothing (ADR 00hra).
+        stderr.print(f"[bold red]No trial got through:[/] {escape(blocked)}", soft_wrap=True)
         return exit_codes.HARNESS_ERROR
     return exit_codes.OK

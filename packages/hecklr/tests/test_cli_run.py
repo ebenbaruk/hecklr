@@ -1,6 +1,13 @@
 """``hecklr run`` through Typer's CliRunner, on starter projects and scripted models."""
 
+import asyncio
+import logging
+import os
 import re
+import signal
+import subprocess
+import sys
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -22,6 +29,7 @@ from hecklr_llm import FakeLLM, ProviderConfigError
 from hecklr_schemas import AgentRef, Budget, LLMRequest, Run, RunId, RunStatus, new_id
 
 Edit = Callable[[Path, str, str], None]
+StubAgent = Callable[..., str]
 
 # The world sandbox and the agents under test listen on 127.0.0.1 ephemeral ports.
 pytestmark = [pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
@@ -121,6 +129,45 @@ def test_budget_refusal_has_its_own_exit_code(config_path: Path, edit: Edit) -> 
     assert "exceeds the budget of $0.01" in output
 
 
+SCRIPTED = """\
+id: scripted-saturday
+title: Scripted Saturday question
+channels: [chat]
+persona: polite-regular
+world: acme-starter
+mode: scripted
+goal: Ask about Saturday visits.
+user_turns: ["Do you do maintenance visits on Saturdays?"]
+success:
+  - type: not_contains
+    text: traceback
+"""
+
+
+def test_issue36_budget_zero_runs_a_scripted_judge_free_suite_with_paid_models(
+    config_path: Path, edit: Edit
+) -> None:
+    for role in ("simulator: fake/customer", "judge: fake/judge"):
+        edit(config_path, role, f"{role.split(':')[0]}: anthropic/claude-sonnet-5-5")
+    edit(
+        config_path,
+        "suites:\n",
+        'suites:\n  smoke: { scenarios: "scripted/*.yaml", trials: 2, channels: [chat] }\n',
+    )
+    (config_path.parent / "scripted").mkdir()
+    (config_path.parent / "scripted" / "saturday.yaml").write_text(SCRIPTED, encoding="utf-8")
+
+    # No provider is injected: the suite calls no model, so it needs no key and costs nothing.
+    result = runner.invoke(
+        app, ["run", "--config", str(config_path), "--suite", "smoke", "--budget-usd", "0"]
+    )
+    output = click.unstyle(result.output)
+
+    assert result.exit_code == exit_codes.OK, output
+    assert "Suite smoke: 2 trials over 1 scenarios, estimated cost at most $0.00" in output
+    assert "Spent: $0.0000 of budget $0.00" in output
+
+
 def test_config_errors_exit_with_ex_config(config_path: Path) -> None:
     code, output = _run(config_path, "--suite", "nightly")
 
@@ -135,6 +182,111 @@ def test_every_trial_failing_to_run_is_a_harness_error(config_path: Path) -> Non
     assert code == exit_codes.HARNESS_ERROR
     assert "Every trial failed to run." in output
     assert "Cannot gate: no trial of the candidate run could be analyzed" in output
+
+
+def test_issue33_a_run_where_no_trial_got_through_exits_3_and_fails_a_first_gate(
+    config_path: Path, stub_agent: StubAgent
+) -> None:
+    stub_agent("failing")
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "No trial got through: 5 agent errors, first 'agent returned HTTP 500: boom'" in output
+    assert f"Run {_run_id(output)} (completed)" in output
+    gate = runner.invoke(app, ["gate", "--config", str(config_path), "--missing-baseline", "pass"])
+    gate_output = click.unstyle(gate.output)
+    assert gate.exit_code == exit_codes.HARNESS_ERROR, gate_output
+    assert "no trial of the candidate run got through" in gate_output
+
+
+def test_issue34_a_flooding_agent_keeps_the_store_and_the_report_small(
+    config_path: Path, stub_agent: StubAgent
+) -> None:
+    # The red team's repro: 20 MB per reply made a 2.9 GB store and a 3.0 GB report.
+    stub_agent("flooding", 20_000_000)
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "5 agent errors, first 'agent reply over 262144 bytes" in output
+    run_dir = config_path.parent / ".hecklr" / "runs" / _run_id(output)
+    stored = sum(path.stat().st_size for path in run_dir.iterdir())
+    assert stored < 8_000_000, sorted((p.name, p.stat().st_size) for p in run_dir.iterdir())
+    report = (run_dir / "report.html").read_text(encoding="utf-8")
+    assert len(report) < 500_000
+    assert "truncated, 252144 more characters" in report
+
+
+def test_issue34_max_reply_bytes_sets_the_cap(config_path: Path, stub_agent: StubAgent) -> None:
+    stub_agent("flooding", 2_000)
+
+    code, output = _run(config_path, "--trials", "1", "--max-reply-bytes", "1000")
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "agent reply over 1000 bytes" in output
+
+    code, output = _run(config_path, "--trials", "1", "--max-reply-bytes", "2000")
+    assert code == exit_codes.OK, output
+
+
+@pytest.mark.slow
+def test_issue35_ctrl_c_prints_one_line_and_exits_130(
+    config_path: Path, stub_agent: StubAgent
+) -> None:
+    stub_agent("slow", 2.0)
+    # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal.
+    command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
+    with subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
+        [*command, "-c", str(config_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        # CI forces colour on; the assertions read plain text.
+        env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
+    ) as process:
+        try:
+            assert process.stderr is not None
+            plan = click.unstyle(process.stderr.readline())
+            assert plan.startswith("Suite ci:"), plan
+            run_id = plan.split("; run ")[1].strip()
+            recorded = config_path.parent / ".hecklr" / "runs" / run_id / "run.json"
+            deadline = time.monotonic() + 30
+            while not recorded.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            time.sleep(0.5)  # trials are in flight: each agent reply takes 2 s
+            process.send_signal(signal.SIGINT)
+            _, rest = process.communicate(timeout=60)
+        finally:
+            if process.poll() is None:
+                process.kill()
+
+    assert process.returncode == exit_codes.INTERRUPTED, rest
+    assert click.unstyle(rest).strip() == f"Interrupted: run {run_id} recorded as cancelled"
+    store = ResultStore(config_path.parent / ".hecklr" / "runs")
+    (run,) = store.list_runs()
+    store.close()
+    assert (run.id, run.status) == (run_id, RunStatus.CANCELLED)
+
+
+def test_issue35_only_cancellations_of_the_embedded_server_are_silenced(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("uvicorn.error")
+    try:
+        raise asyncio.CancelledError
+    except asyncio.CancelledError as exc:
+        cancelled = exc
+    with caplog.at_level(logging.ERROR, logger="uvicorn.error"):
+        with hecklr.commands.run._quiet_server_cancellations():
+            logger.error("Exception in 'lifespan' protocol", exc_info=cancelled)
+            logger.error("Traceback ...\nasyncio.exceptions.CancelledError\n")
+            logger.error("Exception in ASGI application", exc_info=ValueError("tool bug"))
+        logger.error("after the run")
+
+    assert [r.getMessage() for r in caplog.records] == [
+        "Exception in ASGI application",
+        "after the run",
+    ]
 
 
 def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(
