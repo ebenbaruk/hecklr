@@ -1,5 +1,11 @@
 # Benchmark v1.0: measured rows (2026-10-23)
 
+> **Preliminary, not for publication.** These rows were measured on one shared laptop (Apple
+> silicon, 10 cores) whose load average reached about 250 during the measurement window (other
+> builds); each row records only its start and end 1-minute load, 4.1 to 20.7. Hecklr's customers
+> and judges were qwen3 4B on local Ollama, and the gpt-6-luna stack is missing (OpenAI credit
+> exhausted). Re-measure every row on an idle machine, with the luna stack, before quoting a number.
+
 Seven of the eight stacks were measured with `hecklr bench run` on one MacBook (Apple silicon,
 10 cores) shared with other builds; every row records the machine's 1-minute load average at its
 start and end. Numbers are value [95% interval]; latencies in ms. The leaderboard
