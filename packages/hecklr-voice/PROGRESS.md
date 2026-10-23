@@ -16,7 +16,8 @@ Decisions: `docs/adr/0009a-voice-engine-timing-and-dsp.md`.
   `test_render_clip_is_deterministic_in_its_seed`, `test_mulaw_matches_g711_reference_codes...`,
   `test_gilbert_elliott_matches_rate_and_mean_burst`, Opus round trip (AMR-NB commands verified
   in a `linuxserver/ffmpeg` container; the test skips where ffmpeg lacks the encoder, as on CI).
-- **DSP pool** (`pool`): anyio worker processes, half the cores, warmed before calls;
+- **DSP pool** (`pool`): worker processes (own pool since ADR 00hva), half the cores, warmed
+  before calls;
   `test_dsp_pool_never_blocks_the_event_loop` (loop thread CPU < 5 ms between 5 ms heartbeats
   while 8 noisy 5 s clips render).
 - **Inbound**: media clock, `CallRecorder` (caller, agent, stereo mix WAVs on the trial
@@ -38,8 +39,8 @@ Decisions: `docs/adr/0009a-voice-engine-timing-and-dsp.md`.
 - Issue #20 (WS-wire): `test_dsp_pool_never_blocks_the_event_loop` measures loop CPU per 1 ms
   beat (a 5 ms beat summed several ~1 ms IPC steps, up to 6.2 ms on a loaded machine), bound
   unchanged at 5 ms, plus a load-invariant check: loop CPU over two renders without the heartbeat
-  is under half of one render's CPU. Issue #31: DSP workers cannot start when the parent's main
-  module imports duckdb (fixed for the `hecklr` console script; the general fix is here).
+  is under half of one render's CPU. Issue #31: DSP workers could not start when the parent's main
+  module imported duckdb (fixed generally by the own pool, ADR 00hva).
 
 ## WS-asr (Wave 3): AssemblyAI ASR, OpenAI TTS
 
@@ -63,10 +64,37 @@ Done (decisions: ADR 0009b):
   OpenAI TTS: with streaming ASR (1 scenario, free-tier limit) and with batch ASR (2 scenarios),
   0 harness errors, every agent turn heard correctly, visit booked. The failing gates are the
   agent's (latency p95 4.2 s with Kokoro on CPU; its own whisper missed a postcode).
-- Issue #57: concurrent first download of one model in a process crashes (models.py, WS9).
+- Issue #57: concurrent first download of one model in a process crashed (fixed in hvoice).
 
 Open: a frame-fed ASR protocol would let streaming ASR hear the agent while it talks and remove
 the caller-side delay; ASR/TTS spend is documented, not metered against `budget.usd`.
+
+## hvoice (Wave 5): robustness, SC3 serial, WebRTC SC4 job
+
+Done (decisions: ADR 00hva, ADR 0010b follow-up):
+
+- #57, #81: `ensure_model_file` is safe under concurrent first downloads: a partial per call
+  (pid + uuid), a per-path lock in-process (one request for 16 concurrent callers), and a lost
+  rename with a complete target counts as success.
+  `test_issue57_concurrent_first_downloads_in_one_process_all_succeed` (16 tasks, local HTTP
+  server), `test_issue81_concurrent_first_downloads_across_processes_all_succeed` (4 processes x 4
+  threads), `test_issue81_a_lost_rename_race_counts_as_success_when_the_target_is_complete`.
+  The old code failed the first with 15 `FileNotFoundError`s.
+- #43: `CachedTTS` writes a partial per write.
+  `test_issue43_concurrent_synthesis_of_the_same_text_is_safe` (24 concurrent, identical audio).
+- #31, #47: own DSP pool (`pool`, `_dsp_worker`): workers never run the parent's main file and
+  are never retired for idling; anyio's protocol, errors, cancellation and shutdown otherwise.
+  `test_issue31_workers_start_when_the_entry_script_imports_duckdb` (unguarded entry script,
+  ran once), `test_issue47_idle_workers_are_never_retired` (`WORKER_MAX_IDLE_TIME = 0.05`: all
+  warmed pids survive; on anyio 0 of 5 survived), plus error/cancel/dead-worker tests in
+  `test_pool.py`.
+- #48: `whisper_transcribe` decodes without timestamp tokens.
+  `test_issue48_whisper_decodes_words_without_timestamps`;
+  `test_issue48_words_only_decode_is_fast_and_as_accurate_on_caller_turns` (local `base.en` from
+  the Hugging Face cache + macOS `say`, offline: 0.9-1.4 s CPU on 3.8-6.2 s lines, WER no worse
+  than the timestamped decode). The 6-9 s shape needs Kokoro audio, not on this machine: owed.
+- #55: SC3 is skipped under xdist and has its own serial CI step; #59:
+  `.github/workflows/voice-timing.yml` (first run owed until Actions billing is restored).
 
 ## Next
 
