@@ -91,6 +91,21 @@ Done:
 Open question: a safety-tuned simulator model limits attack strength; a less restricted model
 for `models.simulator` on red-team suites would attack harder. The schema has no per-suite model.
 
+## WShsim: guard and probe hardening (Wave 4)
+
+Plan (issues #68, #60, #44, #71):
+
+1. #68: `facts_revealed` entries the brief or the agent names (goal-named people and IDs, decoy
+   keys and values, values the agent said) are known facts, as they already are in the text;
+   invented facts are still rejected. Test-first, with real contradictions still caught.
+2. #60: the strategy brief reads as an authorised test of the agent's rules, with no "hidden
+   agenda" or "attack" wording; tactics unchanged. Live luna test: the probe names the target
+   customer within two turns.
+3. #44: scripted mode's position counts only user turns that are the script's own lines, in
+   order, so voice barge-in interjections no longer skip a line.
+4. #71: F4 on the full `matrix-live` Tier B suite (fresh clean baseline, F4), results in
+   `docs/milestones/M1.md`.
+
 ## Next
 
 - WS7: wire `make_simulator(config.models.simulator)` and `hecklr replay FILE`.

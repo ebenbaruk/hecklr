@@ -79,3 +79,9 @@ event sink and no clock.
   optional LLM audit covers that.
 - Progress judgement still depends on the model. Small local models are noisier, which the live
   tests check only as plumbing (ADR 0005).
+- Issue #68 (amended, Wave 4): a `facts_revealed` entry is known when it is a fact's or a decoy's
+  name, or a value (the whole entry, or the part after `name:`) that the brief (goal, facts,
+  decoys) or the agent names as a whole token. The text checks already accepted these values, so
+  a customer naming the other customer its goal tells it to name ("Martin Dubois", `C-2077`), or
+  repeating an address the agent leaked, no longer ends the trial as a harness error. Values
+  found nowhere in the brief or the agent's words are still rejected.
