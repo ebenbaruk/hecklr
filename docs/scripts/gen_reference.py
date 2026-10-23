@@ -26,7 +26,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from hecklr.config import ProjectConfig
-from hecklr_schemas import Persona, Scenario
+from hecklr_schemas import Persona, Scenario, World
 from hecklr_schemas.scenario import SuccessCriterion
 
 DOCS = Path(__file__).resolve().parents[1]
@@ -68,7 +68,7 @@ def cli_page() -> str:
 
 
 def config_page() -> str:
-    """Markdown for ``hecklr.yaml``, scenario files and persona files, field by field."""
+    """Markdown for ``hecklr.yaml`` and the scenario, persona and world files, field by field."""
     parts = [
         _GENERATED,
         "# Configuration reference\n\n",
@@ -80,6 +80,7 @@ def config_page() -> str:
         ("hecklr.yaml", ProjectConfig),
         ("Scenario files", Scenario),
         ("Persona files", Persona),
+        ("World files", World),
     ):
         parts.append(f"## {title}\n\n")
         for model in _models(root):

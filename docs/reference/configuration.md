@@ -397,6 +397,68 @@ Text-to-speech settings; output is cached by (text, voice, settings) hash.
 | `rate` | float | `1.0` |  |
 | `pitch_semitones` | float | `0.0` |  |
 
+## World files
+
+### World { #world }
+
+A world definition loaded fresh into an in-memory store for every trial.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `schema_version` | `1` | `1` |  |
+| `id` | str | required |  |
+| `description` | str \| null |  |  |
+| `collections` | dict[str, [CollectionDef](#collectiondef)] | required |  |
+| `tools` | list[[ToolDef](#tooldef)] |  |  |
+
+### CollectionDef { #collectiondef }
+
+One table of the world, e.g. `customers` or `appointments`.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `key` | str | `id` | Field whose value identifies a record; state expressions index collections by it. |
+| `description` | str \| null |  |  |
+| `record_schema` | dict[str, JsonValue] \| null |  | Optional JSON Schema every record must satisfy. |
+| `records` | list[dict[str, JsonValue]] |  | Inline seed data. |
+| `seed_file` | str \| null |  | Path (relative to the world file) to a JSON, YAML or CSV file with more seed records. |
+
+### ToolDef { #tooldef }
+
+A tool the agent can call, as exposed over MCP and the OpenAPI server.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | str | required |  |
+| `description` | str | required |  |
+| `params` | dict[str, JsonValue] | `{'type': 'object', 'properties': {}}` | JSON Schema of the tool arguments (an `object` schema). |
+| `op` | [CollectionOp](#collectionop) \| [PythonOp](#pythonop) | required |  |
+
+### CollectionOp { #collectionop }
+
+A tool implemented as one operation over a collection.
+
+- `get` / `delete`: the record whose key equals parameter `key_param`.
+- `list`: every record whose fields equal the supplied parameters (all records if none).
+- `find`: like `list` but returns the first match or a not-found error.
+- `create`: inserts the parameters as a new record (the key must be present or generated).
+- `update`: sets every parameter except `key_param` on the record named by `key_param`.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `kind` | `get` \| `list` \| `find` \| `create` \| `update` \| `delete` | required |  |
+| `collection` | str | required |  |
+| `key_param` | str \| null |  | Tool parameter carrying the record key; defaults to the collection's key field. |
+
+### PythonOp { #pythonop }
+
+A tool implemented by a Python function `(world, **params) -> result`.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `kind` | `python` | required |  |
+| `entrypoint` | str | required |  |
+
 ## Success criteria
 
 Each entry of a scenario's `success` list is one of these, chosen by its `type`.
