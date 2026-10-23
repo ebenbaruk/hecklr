@@ -2,15 +2,16 @@
 
 > **Preliminary, not for publication.** These rows were measured on one shared laptop (Apple
 > silicon, 10 cores) whose load average reached about 250 during the measurement window (other
-> builds); each row records only its start and end 1-minute load, 4.1 to 20.7. Hecklr's customers
-> and judges were qwen3 4B on local Ollama, and the gpt-6-luna stack is missing (OpenAI credit
-> exhausted). Re-measure every row on an idle machine, with the luna stack, before quoting a number.
+> builds); each row records only its start and end 1-minute load, 4.0 to 20.7. Hecklr's customers
+> and judges were qwen3 4B on local Ollama. The gpt-6-luna stack was measured later, on the same
+> shared laptop (load 6.4 → 4.0). Re-measure every row on an idle machine before quoting a number.
 
-Seven of the eight stacks were measured with `hecklr bench run` on one MacBook (Apple silicon,
+All eight stacks were measured with `hecklr bench run` on one MacBook (Apple silicon,
 10 cores) shared with other builds; every row records the machine's 1-minute load average at its
 start and end. Numbers are value [95% interval]; latencies in ms. The leaderboard
 (`hecklr bench site`) shows the same rows with their details. Hecklr's customers and judges ran
-on qwen3 4B on local Ollama (32k context); seed 20261023.
+on qwen3 4B on local Ollama (32k context); seed 20261023. `acme-chat-luna` was measured last, on
+main at `d669e36` (same suite digest `3ab42ad9…`), once OpenAI credit was restored.
 
 ## Chat (8 guided scenarios x 2 trials)
 
@@ -18,16 +19,23 @@ on qwen3 4B on local Ollama (32k context); seed 20261023.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `acme-chat-rules` | 78.6% [49.8, 99.8] | 87.5% [49.9, 99.9] | 50.0% [9.5, 90.5] | 31 [13, 347] | 1,873 [342, 3,440] | 12/16 | 20.6 → 6.1 |
 | `acme-chat-qwen3` | 56.2% [24.9, 87.4] | 87.5% [50.0, 100.0] | 100.0% [43.9, 100.0] | 5,032 [4,479, 6,581] | 24,920 [7,725, 27,444] | 16/16 | 5.2 → 6.7 |
+| `acme-chat-luna` | 93.8% [74.9, 99.9] | 87.5% [49.9, 99.9] | 100.0% [43.9, 100.0] | 3,875 [3,232, 4,492] | 11,361 [8,771, 15,700] | 16/16 | 6.4 → 4.0 |
 
-Both rows passed `handoff_appropriate` on the gas emergency (100% [20.7, 100], one scenario).
+All three rows passed `handoff_appropriate` on the gas emergency (100% [20.7, 100], one scenario).
 The rules row's 4 conversations without a verdict are judge calls that timed out while the
 machine's load was over 20 (Ollama shared with other jobs); its first-token p95 is the same load,
 not the agent (it answers in milliseconds). The 4B model completes fewer tasks than the keyword
 brain on these scenarios, and takes about 5 s to the first token on a laptop GPU.
 
-`acme-chat-luna` is not measured: the project's OpenAI credits ran out during its run (4 of 16
-conversations failed with `429 insufficient_quota`). That run is why the runner now refuses a row
-whose agent reports provider failures instead of publishing them as the stack's errors.
+`acme-chat-luna` (run `01M5MT8KG0J6GF579PE7ANC6TN`): 16 of 16 conversations analyzed, no agent
+error, timeout or harness error; neither the run output nor the agent log has a 429,
+`insufficient_quota` or credit error. It completes the most tasks, 93.8% [74.9, 99.9] (its
+interval overlaps both other rows'), and costs USD 0.0008 [0.0005, 0.0011] per conversation
+(agent only: Hecklr's models are local). Its first-token latency includes gpt-6-luna's default
+reasoning. The qwen3 customers' contradiction rate was 18.8% [6.6, 43.0] (regenerated drafts,
+not failed trials). An earlier attempt was stopped by exhausted credits (4 of 16 conversations
+failed with `429 insufficient_quota`); that run is why the runner now refuses a row whose agent
+reports provider failures instead of publishing them as the stack's errors.
 
 ## Voice (9 scripted calls x 2 trials, same rules brain everywhere)
 
@@ -85,6 +93,7 @@ published [180, 189], intervals overlapping).
 | --- | --- |
 | First `acme-chat-rules` run (luna customers and judges; superseded) | 0.0296 |
 | `acme-chat-luna` (stopped by exhausted credits; not published) | 0.0318 |
+| `acme-chat-luna` (published row, agent on gpt-6-luna; cap 0.27) | 0.0122 |
 | `pipecat-assemblyai` (AssemblyAI streaming, metered at list price) | 0.0437 |
 | Everything else (local models) | 0 |
-| **Total** | **0.105** of the 1.20 cap |
+| **Total** | **0.117** (0.105 of the 1.20 WS17 cap, then 0.0122 for the luna row) |

@@ -8,7 +8,7 @@ up and replay the same simulated customer.
 import hashlib
 import json
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -21,7 +21,10 @@ from hecklr_schemas import (
     AgentRef,
     Budget,
     Channel,
+    CustomCriterion,
+    InjectionResistedCriterion,
     JudgeCriterion,
+    LLMRequest,
     ModelPrice,
     Run,
     RunCounts,
@@ -30,22 +33,41 @@ from hecklr_schemas import (
     Scenario,
     SimulationMode,
     TrialSpec,
+    World,
     new_id,
 )
 
-# Token heuristics for the pre-run estimate. They describe a conversation that runs all the way
-# to ``limits.max_turns``, so the estimate is an upper bound for typical trials, and they are
-# deliberately generous: refusing a run that would have fit is cheaper than overspending.
+# Heuristics for the pre-run estimate. They describe the worst case of every model call the run
+# can make: a conversation that runs all the way to ``limits.max_turns`` and a judge that has to be
+# asked twice. Refusing a run that would have fit is cheaper than overspending (issue #76).
 SIM_BRIEF_TOKENS: Final = 800
 """Simulator system prompt: persona, goal, facts and rules."""
 TOKENS_PER_TURN: Final = 80
-"""Average size of one message of the dialogue, either party."""
+"""Average size of one message of the dialogue, either party, as the simulator reads it."""
 SIM_OUTPUT_TOKENS: Final = 80
 """One simulated customer message."""
-JUDGE_PROMPT_TOKENS: Final = 1500
-"""Rubric, scenario, world snapshot and tool results sent to a judge, besides the transcript."""
-JUDGE_OUTPUT_TOKENS: Final = 300
-"""Verdict, rationale and evidence ids."""
+
+JUDGE_INSTRUCTIONS_CHARS: Final = 4000
+"""Judge system prompt, rubric, answer schema, section headings and the retry instruction:
+hecklr-grade's longest rubric needs about 3,500 characters (checked against the real prompts by
+``examples/acme-maintenance/tests/test_cost_estimate.py``)."""
+TRANSCRIPT_CHARS_PER_TURN: Final = 1200
+"""One dialogue turn as a judge reads it: event id and time, the message, and the tool calls and
+tool results around it (up to about 1,000 characters on acme-maintenance)."""
+WORLD_GROWTH_CHARS_PER_TURN: Final = 400
+"""Records one turn's tool calls can add to the after-the-conversation world snapshot."""
+PROMPT_CHARS_PER_TOKEN: Final = 2
+"""Judge prompts are mostly JSON (world snapshots, tool results) and ULIDs, which tokenize far
+denser than English prose: the run of issue #76 billed about 2.6 characters per token on
+gpt-6-luna. Two keeps a margin over that."""
+JUDGE_OUTPUT_TOKENS: Final = LLMRequest.model_fields["max_tokens"].default
+"""A judge answer is cut off at the request's ``max_tokens`` (hecklr-grade leaves the default)."""
+JUDGE_ASKS_PER_VOTE: Final = 2
+"""An unusable answer is asked again once, with the first answer and the problem appended
+(``hecklr_grade.judge.JUDGE_RETRIES``)."""
+WORLD_BLIND_RUBRICS: Final = frozenset({"tone", "handoff_appropriate"})
+"""Built-in rubrics whose judge does not see the world snapshots. Every other judge, including
+any custom grader, is counted with both snapshots."""
 
 _SEED_BITS: Final = 63
 
@@ -131,18 +153,24 @@ def estimate_cost(
     *,
     simulator_model: str,
     judge_model: str,
+    world: World | None = None,
     prices: Mapping[str, ModelPrice] | None = None,
 ) -> CostEstimate:
-    """Estimate spend from each scenario's ``limits.max_turns`` (see the token heuristics above).
+    """Upper bound on the model spend of ``matrix`` (see the heuristics above).
 
     The simulator speaks every other turn and sees the whole dialogue so far each time; a
-    scripted customer reads its fixed ``user_turns`` and calls no model. Every judge criterion
-    reads the full transcript once per judge vote; deterministic criteria are free.
+    scripted customer reads its fixed ``user_turns`` and calls no model. Every criterion that
+    asks a model (``judge`` votes, ``injection_resisted``, ``custom`` graders) reads the full
+    transcript, and all but the world-blind rubrics also read ``world`` before and after the
+    conversation. Deterministic criteria are free.
 
     Raises:
         UnknownPriceError: a paid model has no known price.
+        ValueError: ``world`` still names a ``seed_file``, so its snapshots cannot be sized
+            (``hecklr_world.load_world`` inlines them).
     """
     table = {**PRICES, **(prices or {})}
+    world_chars = 0 if world is None else world_snapshot_chars(world)
     simulator = Decimal(0)
     judge = Decimal(0)
     for spec in matrix:
@@ -150,16 +178,69 @@ def estimate_cost(
         max_turns = scenario.limits.max_turns
         if scenario.mode is not SimulationMode.SCRIPTED:
             simulator += cost_usd(simulator_model, _simulator_usage(max_turns), table)
-        transcript_tokens = max_turns * TOKENS_PER_TURN
-        for criterion in scenario.success:
-            if isinstance(criterion, JudgeCriterion):
-                usage = LLMUsage(
-                    input_tokens=JUDGE_PROMPT_TOKENS + transcript_tokens,
-                    output_tokens=JUDGE_OUTPUT_TOKENS,
-                )
-                model = criterion.model or judge_model
-                judge += criterion.n_judges * cost_usd(model, usage, table)
+        for model, votes, sees_world in _model_calls(scenario, judge_model):
+            chars = _judge_prompt_chars(scenario, world_chars if sees_world else None)
+            judge += votes * cost_usd(model, _judge_vote_usage(chars), table)
     return CostEstimate(simulator_usd=simulator, judge_usd=judge, trials=len(matrix))
+
+
+def world_snapshot_chars(world: World) -> int:
+    """Length of one snapshot of ``world``'s seed state as a judge prompt renders it.
+
+    Raises:
+        ValueError: a collection still names a ``seed_file``.
+    """
+    unread = sorted(name for name, collection in world.collections.items() if collection.seed_file)
+    if unread:
+        raise ValueError(
+            f"cannot size the world for the cost estimate: collections {unread} still name a "
+            "seed_file; load the world with hecklr_world.load_world()"
+        )
+    snapshot = {
+        name: {str(record[collection.key]): record for record in collection.records}
+        for name, collection in world.collections.items()
+    }
+    # The same rendering as hecklr_grade.judge.render_prompt (sorted keys, indent 1).
+    return len(json.dumps(snapshot, sort_keys=True, indent=1))
+
+
+def _model_calls(scenario: Scenario, judge_model: str) -> Iterator[tuple[str, int, bool]]:
+    """``(model, votes, sees the world)`` of every criterion of ``scenario`` that asks a model."""
+    for criterion in scenario.success:
+        match criterion:
+            case JudgeCriterion(rubric=rubric, model=model, n_judges=votes):
+                yield model or judge_model, votes, rubric not in WORLD_BLIND_RUBRICS
+            case InjectionResistedCriterion():
+                yield judge_model, 1, False
+            case CustomCriterion():
+                # A custom grader may ask the judge model (the safety pack's do); count one
+                # call that sees everything.
+                yield judge_model, 1, True
+            case _:
+                pass
+
+
+def _judge_prompt_chars(scenario: Scenario, world_chars: int | None) -> int:
+    max_turns = scenario.limits.max_turns
+    chars = (
+        JUDGE_INSTRUCTIONS_CHARS
+        + len(scenario.goal)
+        + len(json.dumps(scenario.facts, sort_keys=True))
+        + max_turns * TRANSCRIPT_CHARS_PER_TURN
+    )
+    if world_chars is not None:
+        chars += 2 * world_chars + max_turns * WORLD_GROWTH_CHARS_PER_TURN
+    return chars
+
+
+def _judge_vote_usage(prompt_chars: int) -> LLMUsage:
+    """One vote asked ``JUDGE_ASKS_PER_VOTE`` times; a retry also resends the answer before it."""
+    asks = JUDGE_ASKS_PER_VOTE
+    return LLMUsage(
+        input_tokens=asks * math.ceil(prompt_chars / PROMPT_CHARS_PER_TOKEN)
+        + (asks - 1) * JUDGE_OUTPUT_TOKENS,
+        output_tokens=asks * JUDGE_OUTPUT_TOKENS,
+    )
 
 
 def _simulator_usage(max_turns: int) -> LLMUsage:
@@ -218,6 +299,7 @@ def plan_run(
         suite.scenarios,
         simulator_model=config.models.simulator,
         judge_model=config.models.judge,
+        world=suite.project.world,
         prices=config.models.prices,
     )
     check_estimate(estimate, budget)

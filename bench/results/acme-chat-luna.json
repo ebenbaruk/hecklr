@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "benchmark_version": "1.0",
+  "suite_digest": "3ab42ad9d89994cd8919da9f7b63836cbb36c0b21be52b0150007cda0c500528",
+  "stack": {
+    "id": "acme-chat-luna",
+    "name": "Acme chat, gpt-6-luna brain",
+    "track": "chat",
+    "description": "The acme-maintenance reference agent's LLM brain: a tool-calling loop on OpenAI's gpt-6-luna at its default settings (reasoning on), served over HTTP with server-sent events.",
+    "why": "A small hosted model as most teams would ship it: what a real LLM adds over the rules floor in task success and judge scores, and what it costs in time to first token and dollars.",
+    "components": {
+      "transport": "HTTP + SSE",
+      "brain": "openai/gpt-6-luna (tool-calling loop, default reasoning)"
+    },
+    "command": [
+      "{python}",
+      "{repo}/examples/acme-maintenance/agent/serve.py",
+      "--brain",
+      "llm",
+      "--model",
+      "openai/gpt-6-luna",
+      "--budget-usd",
+      "{agent_budget_usd}",
+      "--port",
+      "{port}"
+    ],
+    "env": {
+      "ACME_SEED": "{seed}"
+    },
+    "requires_env": [
+      "OPENAI_API_KEY"
+    ],
+    "ready": {
+      "http": "http://127.0.0.1:{port}/healthz",
+      "line": null,
+      "timeout_s": 120.0
+    },
+    "adapter": {
+      "type": "http",
+      "url": "http://127.0.0.1:{port}/chat/stream",
+      "stream": "sse",
+      "timeout_s": 300
+    },
+    "spend_url": "http://127.0.0.1:{port}/healthz",
+    "budget_usd": "0.12",
+    "agent_budget_usd": "0.15",
+    "reference": false
+  },
+  "run_id": "01M5MT8KG0J6GF579PE7ANC6TN",
+  "created_at": "2026-10-23T16:42:17.984576Z",
+  "seed": 20261023,
+  "trials_per_scenario": 2,
+  "scenarios": 8,
+  "models": {
+    "simulator": "ollama/hecklr-bench-qwen3-4b",
+    "judge": "ollama/hecklr-bench-qwen3-4b"
+  },
+  "environment": {
+    "hecklr": "0.1.0",
+    "python": "3.12.13",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "git_sha": "d669e3689a600f6b4b3af40b74ed986bece0eeae",
+    "packages": {
+      "pipecat-ai": "1.13.0",
+      "livekit": "1.1.21",
+      "faster-whisper": "1.2.1",
+      "kokoro-onnx": "0.6.1",
+      "onnxruntime": "1.24.4",
+      "aiortc": "1.15.0",
+      "websockets": "17.3"
+    },
+    "load_average": [
+      6.4,
+      4.01
+    ]
+  },
+  "counts": {
+    "total": 16,
+    "ok": 16,
+    "agent_error": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "undecided": 0,
+    "grade_errors": 0,
+    "analyzed": 16,
+    "contradiction_rate": {
+      "value": 0.1875,
+      "ci_low": 0.06591599071428142,
+      "ci_high": 0.4300888096197414,
+      "confidence": 0.95,
+      "n": 16,
+      "method": "wilson"
+    }
+  },
+  "metrics": {
+    "task_success": {
+      "value": 0.9375,
+      "ci_low": 0.74885625,
+      "ci_high": 0.99885625,
+      "confidence": 0.95,
+      "n": 8,
+      "method": "cluster_bootstrap"
+    },
+    "judge:handoff_appropriate": {
+      "value": 1.0,
+      "ci_low": 0.20654931437723745,
+      "ci_high": 1.0,
+      "confidence": 0.95,
+      "n": 1,
+      "method": "wilson"
+    },
+    "judge:no_hallucination": {
+      "value": 1.0,
+      "ci_low": 0.4385029682449546,
+      "ci_high": 1.0,
+      "confidence": 0.95,
+      "n": 3,
+      "method": "wilson"
+    },
+    "judge:resolved": {
+      "value": 0.875,
+      "ci_low": 0.4991875,
+      "ci_high": 0.9991875,
+      "confidence": 0.95,
+      "n": 4,
+      "method": "cluster_bootstrap"
+    },
+    "response_latency_p50": {
+      "value": 3875.0,
+      "ci_low": 3232.0,
+      "ci_high": 4492.0,
+      "confidence": 0.95,
+      "n": 16,
+      "method": "bootstrap"
+    },
+    "response_latency_p95": {
+      "value": 11361.0,
+      "ci_low": 8771.0,
+      "ci_high": 15700.0,
+      "confidence": 0.95,
+      "n": 16,
+      "method": "bootstrap"
+    },
+    "cost_per_conversation_usd": {
+      "value": 0.00075989875,
+      "ci_low": 0.000504846375,
+      "ci_high": 0.0010608286406249999,
+      "confidence": 0.95,
+      "n": 16,
+      "method": "bootstrap"
+    }
+  },
+  "spend": {
+    "hecklr_usd": "0.000000",
+    "agent_usd": "0.01215838"
+  },
+  "duration_s": 2067.1
+}

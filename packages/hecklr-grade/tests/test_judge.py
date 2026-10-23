@@ -23,7 +23,10 @@ from hecklr_llm import FakeLLM
 from hecklr_schemas import ErrorPayload, HandoffPayload, LLMRequest, LLMResponse, Message
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from conftest import AcmeData, ContextFactory, EventLog, SnapshotFactory
+    from hecklr_schemas import GradeContext
 
 pytestmark = pytest.mark.anyio
 
@@ -335,3 +338,24 @@ def test_rubric_version_covers_the_world_flag() -> None:
     base = Rubric(name="x", text="t", include_world=False)
     assert replace(base, include_world=True).version != base.version
     assert json.loads(verdict(True))["verdict"] == "pass"
+
+
+async def test_issue54_the_handoff_judge_is_told_an_escalation_tool_is_the_handoff_on_email(
+    email_ctx_for: Callable[..., GradeContext],
+) -> None:
+    llm = FakeLLM(script=[verdict(True)])
+    ctx = email_ctx_for({"type": "judge", "rubric": "handoff_appropriate"}, llm=llm)
+
+    grade = await JudgeGrader(load_rubric("handoff_appropriate")).grade(ctx)
+
+    assert grade.passed
+    [request] = llm.calls
+    prompt = request.messages[0].content
+    # The recorded email trial has the ticket and the reply, and no handoff event.
+    assert "agent called create_emergency_ticket" in prompt
+    assert "create_emergency_ticket returned" in prompt
+    assert "agent email, subject" in prompt
+    assert "handed off to" not in prompt
+    # The rubric tells the judge that this is what a handoff looks like where there is none.
+    assert "`create_emergency_ticket`" in prompt
+    assert "has no transfer and records no `handoff` event" in prompt

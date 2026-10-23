@@ -16,7 +16,8 @@ Owner: WS17. Spec: `docs/SPEC.md` -> SC10, US-12, WS17 row, "Voice simulation en
   process with scripted models; outage refusal, spend attribution, placeholders, process
   readiness, judge scores, reproduction criterion, the site, the Pipecat agent's meter.
   Coverage of the bench modules 95%.
-- **Stacks**: 8 defined; 7 measured (see RESULTS.md). New agents: `stacks/agents/pipecat_acme.py`
+- **Stacks**: 8 defined, 8 measured (see RESULTS.md; `acme-chat-luna` added 2026-10-23, run
+  `01M5MT8KG0J6GF579PE7ANC6TN`, USD 0.0122). New agents: `stacks/agents/pipecat_acme.py`
   (stock Pipecat 1.13 over SmallWebRTC) and `stacks/agents/livekit_acme.py` (acme cascade behind a
   local livekit-server in Docker).
 - **Site**: `site/src` (HTML/CSS/JS), built by `hecklr bench site` into `site/dist`, checked in
@@ -33,7 +34,5 @@ Owner: WS17. Spec: `docs/SPEC.md` -> SC10, US-12, WS17 row, "Voice simulation en
 
 ## Next / open
 
-- `acme-chat-luna` is defined but unmeasured until OpenAI credits are restored:
-  `uv run --env-file .env hecklr bench run --stack acme-chat-luna --budget-usd 0.30`.
 - Re-measure every row on an idle machine before quoting numbers publicly (rows record their load).
 - Issue #81: parallel first downloads of a voice model race in `hecklr-voice`.

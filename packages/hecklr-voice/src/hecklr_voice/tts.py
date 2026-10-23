@@ -8,6 +8,7 @@ then turns it into what the agent hears. Providers: ``synthetic`` (tests, CI, ca
 import hashlib
 import json
 import os
+import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -129,6 +130,11 @@ def _load(path: Path) -> Audio | None:
 
 def _store(path: Path, audio: Audio) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f"{path.stem}.{os.getpid()}.part.npy")
-    np.save(partial, audio, allow_pickle=False)
-    partial.replace(path)
+    # Unique per write: callers synthesizing the same text at once (two barge-ins with the same
+    # interjection) each publish a complete file; whichever rename lands last wins, unharmed.
+    partial = path.with_name(f"{path.stem}.{os.getpid()}.{uuid.uuid4().hex}.part.npy")
+    try:
+        np.save(partial, audio, allow_pickle=False)
+        partial.replace(path)
+    finally:
+        partial.unlink(missing_ok=True)

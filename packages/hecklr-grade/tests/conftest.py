@@ -1,9 +1,11 @@
 """Synthetic trials for grader tests: an event log builder and a ``GradeContext`` factory."""
 
 import copy
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -234,3 +236,34 @@ def acme() -> AcmeData:
 @pytest.fixture
 def snap() -> SnapshotFactory:
     return snapshot
+
+
+RECORDED_EMAIL_TRIAL = Path(__file__).parent / "fixtures" / "email-gas-smell-trial.json"
+"""A real offline trial of acme-email's ``email-emergency-1`` (rules brain, scripted customer):
+the agent opens an emergency ticket and says so by email; email has no ``handoff`` event."""
+
+
+def recorded_email_context(
+    criterion: dict[str, Any], *, llm: LLMProvider | None = None, judge_model: str = "fake/judge"
+) -> GradeContext:
+    """``RECORDED_EMAIL_TRIAL`` as a context for grading ``criterion``."""
+    recorded = json.loads(RECORDED_EMAIL_TRIAL.read_text("utf-8"))
+    parsed = CRITERION.validate_python(criterion)
+    scenario = Scenario.model_validate(recorded["scenario"]).model_copy(
+        update={"success": [parsed]}
+    )
+    return GradeContext(
+        trial=Trial.model_validate(recorded["trial"]),
+        events=[Event.model_validate(event) for event in recorded["events"]],
+        scenario=scenario,
+        persona=Persona.model_validate(recorded["persona"]),
+        criterion=parsed,
+        criterion_index=0,
+        llm=llm,
+        judge_model=judge_model,
+    )
+
+
+@pytest.fixture
+def email_ctx_for() -> Callable[..., GradeContext]:
+    return recorded_email_context

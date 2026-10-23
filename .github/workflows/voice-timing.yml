@@ -1,0 +1,61 @@
+name: Voice timing (SC3, SC4 incl. WebRTC)
+
+# SC4 for every voice case, including the two in-process WebRTC bots (livekit,
+# pipecat-smallwebrtc) that ci.yml skips on the shared runner with HECKLR_SHARED_CPU=1, and SC3
+# (50 calls, specified on 8 cores). Both measure the machine as well as Hecklr, so they need a
+# larger or dedicated runner with idle CPUs (ADR 0010b, issues #55, #59).
+#
+# Pick the runner per dispatch (`runner` input) or for the weekly run with the repository
+# variable VOICE_TIMING_RUNNER (e.g. a larger runner's label or a self-hosted label).
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label (a larger or dedicated runner; SC3 needs 8+ cores)
+        type: string
+        default: ubuntu-latest
+  schedule:
+    - cron: "17 4 * * 1"  # Mondays 04:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-timing-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_FROZEN: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  timing:
+    name: SC3 + SC4 voice timing (serial, idle runner)
+    runs-on: ${{ inputs.runner || vars.VOICE_TIMING_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Install workspace
+        run: uv sync --all-packages --all-extras
+
+      - name: Machine
+        run: |
+          nproc
+          uptime
+
+      # Without HECKLR_SHARED_CPU: the WebRTC cases assert SC4 here too (#59).
+      - name: SC4 voice timing (serial, every case)
+        run: uv run pytest -m sc4_timing -p no:xdist
+
+      - name: SC3 voice concurrency (serial)
+        run: uv run pytest packages/hecklr-voice -m perf -p no:xdist -s
+
+      - name: Load after the run
+        if: always()
+        run: uptime
