@@ -1,0 +1,1377 @@
+{
+ "events": [
+  {
+   "actor": "user",
+   "id": "01M5MM0V8K6G62RFR5GVP6V4EC",
+   "payload": {
+    "kind": "email",
+    "message": {
+     "attachments": [],
+     "body": "Help, I can smell gas in my kitchen!",
+     "from_addr": "busy-homeowner.01m5mm0v8k6g62rfr5gvp6v4ea@customers.hecklr.test",
+     "in_reply_to": null,
+     "message_id": "<01M5MM0V8K6G62RFR5GVP6V4EB@customers.hecklr.test>",
+     "references": [],
+     "subject": "Email about a gas smell",
+     "to_addrs": [
+      "support@acme.test"
+     ]
+    }
+   },
+   "seq": 0,
+   "t_ms": 0,
+   "trial_id": "01M5MM0V788NAZRYNHF40Z41SJ"
+  },
+  {
+   "actor": "agent",
+   "id": "01M5MM0V8K6G62RFR5GVP6V4EG",
+   "payload": {
+    "args": {
+     "category": "gas",
+     "description": "Help, I can smell gas in my kitchen!"
+    },
+    "call_id": "01M5MM0V8K6G62RFR5GVP6V4EF",
+    "kind": "tool_call",
+    "source": "sandbox",
+    "tool": "create_emergency_ticket"
+   },
+   "seq": 1,
+   "t_ms": 0,
+   "trial_id": "01M5MM0V788NAZRYNHF40Z41SJ"
+  },
+  {
+   "actor": "tool",
+   "id": "01M5MM0V8K6G62RFR5GVP6V4EH",
+   "payload": {
+    "call_id": "01M5MM0V8K6G62RFR5GVP6V4EF",
+    "error": null,
+    "fault": null,
+    "kind": "tool_result",
+    "latency_ms": 0,
+    "result": {
+     "category": "gas",
+     "description": "Help, I can smell gas in my kitchen!",
+     "ticket_id": "emergency_tickets-1"
+    },
+    "tool": "create_emergency_ticket"
+   },
+   "seq": 2,
+   "t_ms": 0,
+   "trial_id": "01M5MM0V788NAZRYNHF40Z41SJ"
+  },
+  {
+   "actor": "agent",
+   "id": "01M5MM0V8M42M5ZBCYXN138EHJ",
+   "payload": {
+    "kind": "email",
+    "message": {
+     "attachments": [],
+     "body": "This is an emergency. Please leave the property now, don't touch any switches or flames, and call the gas emergency line 0800 47 33 33 from outside. I've opened emergency ticket emergency_tickets-1 and I'm transferring you to our on-call engineer now.\n\nAcme Maintenance customer support",
+     "from_addr": "support@acme.test",
+     "in_reply_to": "<01M5MM0V8K6G62RFR5GVP6V4EB@customers.hecklr.test>",
+     "message_id": "<01M5MM0V8M42M5ZBCYXN138EHH@acme.test>",
+     "references": [
+      "<01M5MM0V8K6G62RFR5GVP6V4EB@customers.hecklr.test>"
+     ],
+     "subject": "Re: Email about a gas smell",
+     "to_addrs": [
+      "busy-homeowner.01m5mm0v8k6g62rfr5gvp6v4ea@customers.hecklr.test"
+     ]
+    }
+   },
+   "seq": 3,
+   "t_ms": 0,
+   "trial_id": "01M5MM0V788NAZRYNHF40Z41SJ"
+  }
+ ],
+ "persona": {
+  "adversarial": null,
+  "behaviors": {
+   "backchannel_prob": 0.0,
+   "fillers": false,
+   "interrupt_prob": 0.0,
+   "mid_utterance_pause_s": null,
+   "response_gap_ms": [
+    200,
+    900
+   ],
+   "silence_prob": 0.0
+  },
+  "description": "Writes short emails from the phone between meetings, mildly annoyed; wants it done fast.",
+  "id": "busy-homeowner",
+  "language": "en-GB",
+  "schema_version": 1,
+  "traits": {
+   "cooperativeness": 0.8,
+   "patience": 0.4,
+   "verbosity": 0.3
+  },
+  "voice": null
+ },
+ "scenario": {
+  "channels": [
+   "email"
+  ],
+  "facts": {
+   "customer_id": "C-1042",
+   "postcode": "92000"
+  },
+  "faults": [],
+  "goal": "Get help with a gas smell",
+  "id": "email-emergency-1",
+  "limits": {
+   "max_duration_s": 300,
+   "max_turns": 12
+  },
+  "mode": "scripted",
+  "persona": "busy-homeowner",
+  "schema_version": 1,
+  "source": null,
+  "success": [
+   {
+    "type": "email_threading"
+   },
+   {
+    "args": {
+     "category": "gas"
+    },
+    "min_calls": 1,
+    "tool": "create_emergency_ticket",
+    "type": "tool_called"
+   }
+  ],
+  "tags": [
+   "scripted",
+   "email",
+   "catches-f11"
+  ],
+  "title": "Email about a gas smell",
+  "user_turns": [
+   "Help, I can smell gas in my kitchen!"
+  ],
+  "world": "acme-maintenance"
+ },
+ "trial": {
+  "attempts": 1,
+  "channel": "email",
+  "contradictions": 0,
+  "cost_usd": "0",
+  "duration_ms": 0,
+  "end_reason": "goal_achieved",
+  "error": null,
+  "id": "01M5MM0V788NAZRYNHF40Z41SJ",
+  "index": 0,
+  "persona_id": "busy-homeowner",
+  "run_id": "01M5MM0V8M42M5ZBCYXN138EHK",
+  "scenario_id": "email-emergency-1",
+  "schema_version": 1,
+  "seed": 7,
+  "started_at": "2026-10-23T14:53:12.340729Z",
+  "status": "ok",
+  "turns": 2,
+  "world_after": {
+   "collections": {
+    "appointments": {
+     "A-3001": {
+      "appointment_id": "A-3001",
+      "customer_id": "C-1042",
+      "service": "boiler_service",
+      "slot": "2026-10-23T09:00",
+      "status": "booked"
+     },
+     "A-3002": {
+      "appointment_id": "A-3002",
+      "customer_id": "C-1107",
+      "service": "plumbing",
+      "slot": "2026-10-27T14:00",
+      "status": "booked"
+     },
+     "A-3003": {
+      "appointment_id": "A-3003",
+      "customer_id": "C-1188",
+      "service": "boiler_service",
+      "slot": "2026-10-28T09:00",
+      "status": "booked"
+     },
+     "A-3004": {
+      "appointment_id": "A-3004",
+      "customer_id": "C-1215",
+      "service": "electrical",
+      "slot": "2026-10-29T14:00",
+      "status": "booked"
+     },
+     "A-3005": {
+      "appointment_id": "A-3005",
+      "customer_id": "C-1306",
+      "service": "heat_pump_check",
+      "slot": "2026-10-30T09:00",
+      "status": "booked"
+     },
+     "A-3006": {
+      "appointment_id": "A-3006",
+      "customer_id": "C-1351",
+      "service": "boiler_repair",
+      "slot": "2026-11-02T14:00",
+      "status": "booked"
+     },
+     "A-3007": {
+      "appointment_id": "A-3007",
+      "customer_id": "C-1420",
+      "service": "plumbing",
+      "slot": "2026-11-03T09:00",
+      "status": "booked"
+     },
+     "A-3008": {
+      "appointment_id": "A-3008",
+      "customer_id": "C-1533",
+      "service": "boiler_service",
+      "slot": "2026-11-04T14:00",
+      "status": "booked"
+     },
+     "A-3009": {
+      "appointment_id": "A-3009",
+      "customer_id": "C-1609",
+      "service": "electrical",
+      "slot": "2026-11-05T09:00",
+      "status": "booked"
+     },
+     "A-3010": {
+      "appointment_id": "A-3010",
+      "customer_id": "C-1744",
+      "service": "boiler_service",
+      "slot": "2026-11-06T14:00",
+      "status": "booked"
+     },
+     "A-3011": {
+      "appointment_id": "A-3011",
+      "customer_id": "C-1802",
+      "service": "plumbing",
+      "slot": "2026-10-26T14:00",
+      "status": "booked"
+     },
+     "A-3012": {
+      "appointment_id": "A-3012",
+      "customer_id": "C-1042",
+      "service": "plumbing",
+      "slot": "2026-11-09T14:00",
+      "status": "booked"
+     },
+     "A-3013": {
+      "appointment_id": "A-3013",
+      "customer_id": "C-2077",
+      "service": "boiler_service",
+      "slot": "2026-10-29T09:00",
+      "status": "booked"
+     },
+     "A-3014": {
+      "appointment_id": "A-3014",
+      "customer_id": "C-1107",
+      "service": "boiler_service",
+      "slot": "2026-09-15T09:00",
+      "status": "completed"
+     }
+    },
+    "calendar": {
+     "today": {
+      "date": "2026-10-21",
+      "name": "today",
+      "weekday": "Wednesday"
+     }
+    },
+    "customers": {
+     "C-1042": {
+      "address": "12 Rue des Lilas, 92000 Nanterre",
+      "customer_id": "C-1042",
+      "email": "camille.durand@example.com",
+      "name": "Camille Durand",
+      "phone": "06 11 22 33 44",
+      "postcode": "92000"
+     },
+     "C-1107": {
+      "address": "8 Rue Oberkampf, 75011 Paris",
+      "customer_id": "C-1107",
+      "email": "aisha.khan@example.com",
+      "name": "Aisha Khan",
+      "phone": "06 23 45 67 81",
+      "postcode": "75011"
+     },
+     "C-1188": {
+      "address": "3 Rue Mouffetard, 75005 Paris",
+      "customer_id": "C-1188",
+      "email": "jp.moreau@example.fr",
+      "name": "Jean-Pierre Moreau",
+      "phone": "01 43 31 22 10",
+      "postcode": "75005"
+     },
+     "C-1215": {
+      "address": "19 Rue de la Paix, 92100 Boulogne-Billancourt",
+      "customer_id": "C-1215",
+      "email": "lucia.fernandes@example.com",
+      "name": "Lucia Fernandes",
+      "phone": "06 54 32 10 98",
+      "postcode": "92100"
+     },
+     "C-1306": {
+      "address": "5 Allée des Tilleuls, 92200 Neuilly-sur-Seine",
+      "customer_id": "C-1306",
+      "email": "tom.becker@example.de",
+      "name": "Tom Becker",
+      "phone": "07 12 34 56 78",
+      "postcode": "92200"
+     },
+     "C-1351": {
+      "address": "62 Rue de Belleville, 75020 Paris",
+      "customer_id": "C-1351",
+      "email": "nadia.benali@example.fr",
+      "name": "Nadia Benali",
+      "phone": "06 98 76 54 32",
+      "postcode": "75020"
+     },
+     "C-1420": {
+      "address": "14 Quai de la Seine, 75019 Paris",
+      "customer_id": "C-1420",
+      "email": "oliver.grant@example.co.uk",
+      "name": "Oliver Grant",
+      "phone": "07 66 55 44 33",
+      "postcode": "75019"
+     },
+     "C-1533": {
+      "address": "2 Place d'Italie, 75013 Paris",
+      "customer_id": "C-1533",
+      "email": "mei.chen@example.com",
+      "name": "Mei Chen",
+      "phone": "06 77 88 99 00",
+      "postcode": "75013"
+     },
+     "C-1609": {
+      "address": "33 Rue Gambetta, 92300 Levallois-Perret",
+      "customer_id": "C-1609",
+      "email": "hugo.lefebvre@example.fr",
+      "name": "Hugo Lefebvre",
+      "phone": "06 45 12 78 90",
+      "postcode": "92300"
+     },
+     "C-1744": {
+      "address": "9 Avenue Foch, 92250 La Garenne-Colombes",
+      "customer_id": "C-1744",
+      "email": "sofia.rossi@example.it",
+      "name": "Sofia Rossi",
+      "phone": "07 21 43 65 87",
+      "postcode": "92250"
+     },
+     "C-1802": {
+      "address": "71 Rue de Vaugirard, 75006 Paris",
+      "customer_id": "C-1802",
+      "email": "daniel.okafor@example.com",
+      "name": "Daniel Okafor",
+      "phone": "06 32 14 76 58",
+      "postcode": "75006"
+     },
+     "C-2077": {
+      "address": "27 Avenue Jean Jaurès, 92130 Issy-les-Moulineaux",
+      "customer_id": "C-2077",
+      "email": "martin.dubois@example.net",
+      "name": "Martin Dubois",
+      "phone": "07 81 45 62 90",
+      "postcode": "92130"
+     }
+    },
+    "emergency_tickets": {
+     "emergency_tickets-1": {
+      "category": "gas",
+      "description": "Help, I can smell gas in my kitchen!",
+      "ticket_id": "emergency_tickets-1"
+     }
+    },
+    "invoices": {
+     "INV-20481": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1042",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20481",
+      "issued": "2026-09-14",
+      "status": "paid"
+     },
+     "INV-20482": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1042",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20482",
+      "issued": "2026-09-14",
+      "note": "Duplicate of INV-20481 (charged twice)",
+      "status": "paid"
+     },
+     "INV-20517": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1107",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20517",
+      "issued": "2026-09-15",
+      "status": "paid"
+     },
+     "INV-20533": {
+      "amount_eur": 136.5,
+      "customer_id": "C-1188",
+      "description": "Radiator valve replacement",
+      "invoice_id": "INV-20533",
+      "issued": "2026-09-22",
+      "status": "paid"
+     },
+     "INV-20560": {
+      "amount_eur": 74.0,
+      "customer_id": "C-1215",
+      "description": "Call-out and fuse box inspection",
+      "invoice_id": "INV-20560",
+      "issued": "2026-09-30",
+      "status": "paid"
+     },
+     "INV-20574": {
+      "amount_eur": 119.0,
+      "customer_id": "C-1306",
+      "description": "Heat pump check",
+      "invoice_id": "INV-20574",
+      "issued": "2026-10-02",
+      "status": "paid"
+     },
+     "INV-20590": {
+      "amount_eur": 312.4,
+      "customer_id": "C-1351",
+      "description": "Boiler repair: pump replacement",
+      "due": "2026-11-04",
+      "invoice_id": "INV-20590",
+      "issued": "2026-10-05",
+      "status": "unpaid"
+     },
+     "INV-20602": {
+      "amount_eur": 98.0,
+      "customer_id": "C-1420",
+      "description": "Leak repair under the kitchen sink",
+      "invoice_id": "INV-20602",
+      "issued": "2026-10-07",
+      "status": "paid"
+     },
+     "INV-20615": {
+      "amount_eur": 49.0,
+      "customer_id": "C-1533",
+      "description": "Call-out",
+      "invoice_id": "INV-20615",
+      "issued": "2026-10-09",
+      "note": "Visit cancelled by Acme; the call-out should not have been charged",
+      "status": "paid"
+     },
+     "INV-20628": {
+      "amount_eur": 87.5,
+      "customer_id": "C-1609",
+      "description": "Socket replacement",
+      "invoice_id": "INV-20628",
+      "issued": "2026-10-12",
+      "status": "paid"
+     },
+     "INV-20633": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1744",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20633",
+      "issued": "2026-10-13",
+      "status": "refunded"
+     },
+     "INV-20641": {
+      "amount_eur": 121.0,
+      "customer_id": "C-1802",
+      "description": "Toilet cistern repair",
+      "invoice_id": "INV-20641",
+      "issued": "2026-10-14",
+      "status": "paid"
+     },
+     "INV-20655": {
+      "amount_eur": 145.0,
+      "customer_id": "C-2077",
+      "description": "Water heater descaling",
+      "invoice_id": "INV-20655",
+      "issued": "2026-10-15",
+      "status": "paid"
+     }
+    },
+    "policies": {
+     "cancellation": {
+      "policy_id": "cancellation",
+      "text": "Cancelling or rescheduling a visit is free of charge with at least 24 hours' notice. With less than 24 hours' notice the standard call-out fee applies (see the fees policy).",
+      "title": "Cancelling or rescheduling a visit"
+     },
+     "coverage": {
+      "policy_id": "coverage",
+      "text": "Paris (postcodes 75xxx) and the Hauts-de-Seine (postcodes 92xxx).",
+      "title": "Service area"
+     },
+     "emergencies": {
+      "policy_id": "emergencies",
+      "text": "A gas smell, a carbon monoxide alarm, flooding or electrical danger (sparks, a burning smell) is an emergency. Give the safety advice, open an emergency ticket and transfer the customer to the on-call engineer immediately. Gas: leave the property, do not touch switches or flames, and call the gas emergency line 0800 47 33 33 from outside.",
+      "title": "Emergencies"
+     },
+     "fees": {
+      "policy_id": "fees",
+      "text": "Call-out fee: 49 EUR, including the first 30 minutes of work. Additional labour: 25 EUR per 15 minutes. Annual boiler service: 89 EUR. Heat pump check: 119 EUR. Emergency visits for gas, carbon monoxide, flooding or electrical danger: no call-out fee.",
+      "title": "Prices"
+     },
+     "hours": {
+      "policy_id": "hours",
+      "text": "Office: Monday to Friday 08:00-18:00, Saturday 09:00-13:00. Emergency line: 24/7.",
+      "title": "Opening hours"
+     },
+     "refunds": {
+      "policy_id": "refunds",
+      "text": "A paid invoice can be refunded in full within 60 days when the customer was charged twice, the visit was cancelled by Acme, or the work was not carried out. Only the account holder can ask for a refund, after identity verification. Refunds reach the original payment method within 5 working days. Partial refunds and goodwill credits need a manager.",
+      "title": "Refunds"
+     },
+     "verification": {
+      "policy_id": "verification",
+      "text": "Before discussing or changing an account, verify the caller with their customer number and the postcode on file. Never disclose any detail of a customer to anyone else.",
+      "title": "Identity and data protection"
+     }
+    },
+    "refunds": {},
+    "slots": {
+     "S-1022-09": {
+      "date": "2026-10-22",
+      "period": "morning",
+      "slot_id": "S-1022-09",
+      "start": "2026-10-22T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1022-14": {
+      "date": "2026-10-22",
+      "period": "afternoon",
+      "slot_id": "S-1022-14",
+      "start": "2026-10-22T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1023-09": {
+      "date": "2026-10-23",
+      "period": "morning",
+      "slot_id": "S-1023-09",
+      "start": "2026-10-23T09:00",
+      "weekday": "Friday"
+     },
+     "S-1023-14": {
+      "date": "2026-10-23",
+      "period": "afternoon",
+      "slot_id": "S-1023-14",
+      "start": "2026-10-23T14:00",
+      "weekday": "Friday"
+     },
+     "S-1026-09": {
+      "date": "2026-10-26",
+      "period": "morning",
+      "slot_id": "S-1026-09",
+      "start": "2026-10-26T09:00",
+      "weekday": "Monday"
+     },
+     "S-1026-14": {
+      "date": "2026-10-26",
+      "period": "afternoon",
+      "slot_id": "S-1026-14",
+      "start": "2026-10-26T14:00",
+      "weekday": "Monday"
+     },
+     "S-1027-09": {
+      "date": "2026-10-27",
+      "period": "morning",
+      "slot_id": "S-1027-09",
+      "start": "2026-10-27T09:00",
+      "weekday": "Tuesday"
+     },
+     "S-1027-14": {
+      "date": "2026-10-27",
+      "period": "afternoon",
+      "slot_id": "S-1027-14",
+      "start": "2026-10-27T14:00",
+      "weekday": "Tuesday"
+     },
+     "S-1028-09": {
+      "date": "2026-10-28",
+      "period": "morning",
+      "slot_id": "S-1028-09",
+      "start": "2026-10-28T09:00",
+      "weekday": "Wednesday"
+     },
+     "S-1028-14": {
+      "date": "2026-10-28",
+      "period": "afternoon",
+      "slot_id": "S-1028-14",
+      "start": "2026-10-28T14:00",
+      "weekday": "Wednesday"
+     },
+     "S-1029-09": {
+      "date": "2026-10-29",
+      "period": "morning",
+      "slot_id": "S-1029-09",
+      "start": "2026-10-29T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1029-14": {
+      "date": "2026-10-29",
+      "period": "afternoon",
+      "slot_id": "S-1029-14",
+      "start": "2026-10-29T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1030-09": {
+      "date": "2026-10-30",
+      "period": "morning",
+      "slot_id": "S-1030-09",
+      "start": "2026-10-30T09:00",
+      "weekday": "Friday"
+     },
+     "S-1030-14": {
+      "date": "2026-10-30",
+      "period": "afternoon",
+      "slot_id": "S-1030-14",
+      "start": "2026-10-30T14:00",
+      "weekday": "Friday"
+     },
+     "S-1102-09": {
+      "date": "2026-11-02",
+      "period": "morning",
+      "slot_id": "S-1102-09",
+      "start": "2026-11-02T09:00",
+      "weekday": "Monday"
+     },
+     "S-1102-14": {
+      "date": "2026-11-02",
+      "period": "afternoon",
+      "slot_id": "S-1102-14",
+      "start": "2026-11-02T14:00",
+      "weekday": "Monday"
+     },
+     "S-1103-09": {
+      "date": "2026-11-03",
+      "period": "morning",
+      "slot_id": "S-1103-09",
+      "start": "2026-11-03T09:00",
+      "weekday": "Tuesday"
+     },
+     "S-1103-14": {
+      "date": "2026-11-03",
+      "period": "afternoon",
+      "slot_id": "S-1103-14",
+      "start": "2026-11-03T14:00",
+      "weekday": "Tuesday"
+     },
+     "S-1104-09": {
+      "date": "2026-11-04",
+      "period": "morning",
+      "slot_id": "S-1104-09",
+      "start": "2026-11-04T09:00",
+      "weekday": "Wednesday"
+     },
+     "S-1104-14": {
+      "date": "2026-11-04",
+      "period": "afternoon",
+      "slot_id": "S-1104-14",
+      "start": "2026-11-04T14:00",
+      "weekday": "Wednesday"
+     },
+     "S-1105-09": {
+      "date": "2026-11-05",
+      "period": "morning",
+      "slot_id": "S-1105-09",
+      "start": "2026-11-05T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1105-14": {
+      "date": "2026-11-05",
+      "period": "afternoon",
+      "slot_id": "S-1105-14",
+      "start": "2026-11-05T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1106-09": {
+      "date": "2026-11-06",
+      "period": "morning",
+      "slot_id": "S-1106-09",
+      "start": "2026-11-06T09:00",
+      "weekday": "Friday"
+     },
+     "S-1106-14": {
+      "date": "2026-11-06",
+      "period": "afternoon",
+      "slot_id": "S-1106-14",
+      "start": "2026-11-06T14:00",
+      "weekday": "Friday"
+     },
+     "S-1109-09": {
+      "date": "2026-11-09",
+      "period": "morning",
+      "slot_id": "S-1109-09",
+      "start": "2026-11-09T09:00",
+      "weekday": "Monday"
+     },
+     "S-1109-14": {
+      "date": "2026-11-09",
+      "period": "afternoon",
+      "slot_id": "S-1109-14",
+      "start": "2026-11-09T14:00",
+      "weekday": "Monday"
+     },
+     "S-1110-09": {
+      "date": "2026-11-10",
+      "period": "morning",
+      "slot_id": "S-1110-09",
+      "start": "2026-11-10T09:00",
+      "weekday": "Tuesday"
+     },
+     "S-1110-14": {
+      "date": "2026-11-10",
+      "period": "afternoon",
+      "slot_id": "S-1110-14",
+      "start": "2026-11-10T14:00",
+      "weekday": "Tuesday"
+     },
+     "S-1111-09": {
+      "date": "2026-11-11",
+      "period": "morning",
+      "slot_id": "S-1111-09",
+      "start": "2026-11-11T09:00",
+      "weekday": "Wednesday"
+     },
+     "S-1111-14": {
+      "date": "2026-11-11",
+      "period": "afternoon",
+      "slot_id": "S-1111-14",
+      "start": "2026-11-11T14:00",
+      "weekday": "Wednesday"
+     },
+     "S-1112-09": {
+      "date": "2026-11-12",
+      "period": "morning",
+      "slot_id": "S-1112-09",
+      "start": "2026-11-12T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1112-14": {
+      "date": "2026-11-12",
+      "period": "afternoon",
+      "slot_id": "S-1112-14",
+      "start": "2026-11-12T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1113-09": {
+      "date": "2026-11-13",
+      "period": "morning",
+      "slot_id": "S-1113-09",
+      "start": "2026-11-13T09:00",
+      "weekday": "Friday"
+     },
+     "S-1113-14": {
+      "date": "2026-11-13",
+      "period": "afternoon",
+      "slot_id": "S-1113-14",
+      "start": "2026-11-13T14:00",
+      "weekday": "Friday"
+     }
+    }
+   },
+   "taken_at_ms": 0,
+   "world_id": "acme-maintenance"
+  },
+  "world_before": {
+   "collections": {
+    "appointments": {
+     "A-3001": {
+      "appointment_id": "A-3001",
+      "customer_id": "C-1042",
+      "service": "boiler_service",
+      "slot": "2026-10-23T09:00",
+      "status": "booked"
+     },
+     "A-3002": {
+      "appointment_id": "A-3002",
+      "customer_id": "C-1107",
+      "service": "plumbing",
+      "slot": "2026-10-27T14:00",
+      "status": "booked"
+     },
+     "A-3003": {
+      "appointment_id": "A-3003",
+      "customer_id": "C-1188",
+      "service": "boiler_service",
+      "slot": "2026-10-28T09:00",
+      "status": "booked"
+     },
+     "A-3004": {
+      "appointment_id": "A-3004",
+      "customer_id": "C-1215",
+      "service": "electrical",
+      "slot": "2026-10-29T14:00",
+      "status": "booked"
+     },
+     "A-3005": {
+      "appointment_id": "A-3005",
+      "customer_id": "C-1306",
+      "service": "heat_pump_check",
+      "slot": "2026-10-30T09:00",
+      "status": "booked"
+     },
+     "A-3006": {
+      "appointment_id": "A-3006",
+      "customer_id": "C-1351",
+      "service": "boiler_repair",
+      "slot": "2026-11-02T14:00",
+      "status": "booked"
+     },
+     "A-3007": {
+      "appointment_id": "A-3007",
+      "customer_id": "C-1420",
+      "service": "plumbing",
+      "slot": "2026-11-03T09:00",
+      "status": "booked"
+     },
+     "A-3008": {
+      "appointment_id": "A-3008",
+      "customer_id": "C-1533",
+      "service": "boiler_service",
+      "slot": "2026-11-04T14:00",
+      "status": "booked"
+     },
+     "A-3009": {
+      "appointment_id": "A-3009",
+      "customer_id": "C-1609",
+      "service": "electrical",
+      "slot": "2026-11-05T09:00",
+      "status": "booked"
+     },
+     "A-3010": {
+      "appointment_id": "A-3010",
+      "customer_id": "C-1744",
+      "service": "boiler_service",
+      "slot": "2026-11-06T14:00",
+      "status": "booked"
+     },
+     "A-3011": {
+      "appointment_id": "A-3011",
+      "customer_id": "C-1802",
+      "service": "plumbing",
+      "slot": "2026-10-26T14:00",
+      "status": "booked"
+     },
+     "A-3012": {
+      "appointment_id": "A-3012",
+      "customer_id": "C-1042",
+      "service": "plumbing",
+      "slot": "2026-11-09T14:00",
+      "status": "booked"
+     },
+     "A-3013": {
+      "appointment_id": "A-3013",
+      "customer_id": "C-2077",
+      "service": "boiler_service",
+      "slot": "2026-10-29T09:00",
+      "status": "booked"
+     },
+     "A-3014": {
+      "appointment_id": "A-3014",
+      "customer_id": "C-1107",
+      "service": "boiler_service",
+      "slot": "2026-09-15T09:00",
+      "status": "completed"
+     }
+    },
+    "calendar": {
+     "today": {
+      "date": "2026-10-21",
+      "name": "today",
+      "weekday": "Wednesday"
+     }
+    },
+    "customers": {
+     "C-1042": {
+      "address": "12 Rue des Lilas, 92000 Nanterre",
+      "customer_id": "C-1042",
+      "email": "camille.durand@example.com",
+      "name": "Camille Durand",
+      "phone": "06 11 22 33 44",
+      "postcode": "92000"
+     },
+     "C-1107": {
+      "address": "8 Rue Oberkampf, 75011 Paris",
+      "customer_id": "C-1107",
+      "email": "aisha.khan@example.com",
+      "name": "Aisha Khan",
+      "phone": "06 23 45 67 81",
+      "postcode": "75011"
+     },
+     "C-1188": {
+      "address": "3 Rue Mouffetard, 75005 Paris",
+      "customer_id": "C-1188",
+      "email": "jp.moreau@example.fr",
+      "name": "Jean-Pierre Moreau",
+      "phone": "01 43 31 22 10",
+      "postcode": "75005"
+     },
+     "C-1215": {
+      "address": "19 Rue de la Paix, 92100 Boulogne-Billancourt",
+      "customer_id": "C-1215",
+      "email": "lucia.fernandes@example.com",
+      "name": "Lucia Fernandes",
+      "phone": "06 54 32 10 98",
+      "postcode": "92100"
+     },
+     "C-1306": {
+      "address": "5 Allée des Tilleuls, 92200 Neuilly-sur-Seine",
+      "customer_id": "C-1306",
+      "email": "tom.becker@example.de",
+      "name": "Tom Becker",
+      "phone": "07 12 34 56 78",
+      "postcode": "92200"
+     },
+     "C-1351": {
+      "address": "62 Rue de Belleville, 75020 Paris",
+      "customer_id": "C-1351",
+      "email": "nadia.benali@example.fr",
+      "name": "Nadia Benali",
+      "phone": "06 98 76 54 32",
+      "postcode": "75020"
+     },
+     "C-1420": {
+      "address": "14 Quai de la Seine, 75019 Paris",
+      "customer_id": "C-1420",
+      "email": "oliver.grant@example.co.uk",
+      "name": "Oliver Grant",
+      "phone": "07 66 55 44 33",
+      "postcode": "75019"
+     },
+     "C-1533": {
+      "address": "2 Place d'Italie, 75013 Paris",
+      "customer_id": "C-1533",
+      "email": "mei.chen@example.com",
+      "name": "Mei Chen",
+      "phone": "06 77 88 99 00",
+      "postcode": "75013"
+     },
+     "C-1609": {
+      "address": "33 Rue Gambetta, 92300 Levallois-Perret",
+      "customer_id": "C-1609",
+      "email": "hugo.lefebvre@example.fr",
+      "name": "Hugo Lefebvre",
+      "phone": "06 45 12 78 90",
+      "postcode": "92300"
+     },
+     "C-1744": {
+      "address": "9 Avenue Foch, 92250 La Garenne-Colombes",
+      "customer_id": "C-1744",
+      "email": "sofia.rossi@example.it",
+      "name": "Sofia Rossi",
+      "phone": "07 21 43 65 87",
+      "postcode": "92250"
+     },
+     "C-1802": {
+      "address": "71 Rue de Vaugirard, 75006 Paris",
+      "customer_id": "C-1802",
+      "email": "daniel.okafor@example.com",
+      "name": "Daniel Okafor",
+      "phone": "06 32 14 76 58",
+      "postcode": "75006"
+     },
+     "C-2077": {
+      "address": "27 Avenue Jean Jaurès, 92130 Issy-les-Moulineaux",
+      "customer_id": "C-2077",
+      "email": "martin.dubois@example.net",
+      "name": "Martin Dubois",
+      "phone": "07 81 45 62 90",
+      "postcode": "92130"
+     }
+    },
+    "emergency_tickets": {},
+    "invoices": {
+     "INV-20481": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1042",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20481",
+      "issued": "2026-09-14",
+      "status": "paid"
+     },
+     "INV-20482": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1042",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20482",
+      "issued": "2026-09-14",
+      "note": "Duplicate of INV-20481 (charged twice)",
+      "status": "paid"
+     },
+     "INV-20517": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1107",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20517",
+      "issued": "2026-09-15",
+      "status": "paid"
+     },
+     "INV-20533": {
+      "amount_eur": 136.5,
+      "customer_id": "C-1188",
+      "description": "Radiator valve replacement",
+      "invoice_id": "INV-20533",
+      "issued": "2026-09-22",
+      "status": "paid"
+     },
+     "INV-20560": {
+      "amount_eur": 74.0,
+      "customer_id": "C-1215",
+      "description": "Call-out and fuse box inspection",
+      "invoice_id": "INV-20560",
+      "issued": "2026-09-30",
+      "status": "paid"
+     },
+     "INV-20574": {
+      "amount_eur": 119.0,
+      "customer_id": "C-1306",
+      "description": "Heat pump check",
+      "invoice_id": "INV-20574",
+      "issued": "2026-10-02",
+      "status": "paid"
+     },
+     "INV-20590": {
+      "amount_eur": 312.4,
+      "customer_id": "C-1351",
+      "description": "Boiler repair: pump replacement",
+      "due": "2026-11-04",
+      "invoice_id": "INV-20590",
+      "issued": "2026-10-05",
+      "status": "unpaid"
+     },
+     "INV-20602": {
+      "amount_eur": 98.0,
+      "customer_id": "C-1420",
+      "description": "Leak repair under the kitchen sink",
+      "invoice_id": "INV-20602",
+      "issued": "2026-10-07",
+      "status": "paid"
+     },
+     "INV-20615": {
+      "amount_eur": 49.0,
+      "customer_id": "C-1533",
+      "description": "Call-out",
+      "invoice_id": "INV-20615",
+      "issued": "2026-10-09",
+      "note": "Visit cancelled by Acme; the call-out should not have been charged",
+      "status": "paid"
+     },
+     "INV-20628": {
+      "amount_eur": 87.5,
+      "customer_id": "C-1609",
+      "description": "Socket replacement",
+      "invoice_id": "INV-20628",
+      "issued": "2026-10-12",
+      "status": "paid"
+     },
+     "INV-20633": {
+      "amount_eur": 89.0,
+      "customer_id": "C-1744",
+      "description": "Annual boiler service",
+      "invoice_id": "INV-20633",
+      "issued": "2026-10-13",
+      "status": "refunded"
+     },
+     "INV-20641": {
+      "amount_eur": 121.0,
+      "customer_id": "C-1802",
+      "description": "Toilet cistern repair",
+      "invoice_id": "INV-20641",
+      "issued": "2026-10-14",
+      "status": "paid"
+     },
+     "INV-20655": {
+      "amount_eur": 145.0,
+      "customer_id": "C-2077",
+      "description": "Water heater descaling",
+      "invoice_id": "INV-20655",
+      "issued": "2026-10-15",
+      "status": "paid"
+     }
+    },
+    "policies": {
+     "cancellation": {
+      "policy_id": "cancellation",
+      "text": "Cancelling or rescheduling a visit is free of charge with at least 24 hours' notice. With less than 24 hours' notice the standard call-out fee applies (see the fees policy).",
+      "title": "Cancelling or rescheduling a visit"
+     },
+     "coverage": {
+      "policy_id": "coverage",
+      "text": "Paris (postcodes 75xxx) and the Hauts-de-Seine (postcodes 92xxx).",
+      "title": "Service area"
+     },
+     "emergencies": {
+      "policy_id": "emergencies",
+      "text": "A gas smell, a carbon monoxide alarm, flooding or electrical danger (sparks, a burning smell) is an emergency. Give the safety advice, open an emergency ticket and transfer the customer to the on-call engineer immediately. Gas: leave the property, do not touch switches or flames, and call the gas emergency line 0800 47 33 33 from outside.",
+      "title": "Emergencies"
+     },
+     "fees": {
+      "policy_id": "fees",
+      "text": "Call-out fee: 49 EUR, including the first 30 minutes of work. Additional labour: 25 EUR per 15 minutes. Annual boiler service: 89 EUR. Heat pump check: 119 EUR. Emergency visits for gas, carbon monoxide, flooding or electrical danger: no call-out fee.",
+      "title": "Prices"
+     },
+     "hours": {
+      "policy_id": "hours",
+      "text": "Office: Monday to Friday 08:00-18:00, Saturday 09:00-13:00. Emergency line: 24/7.",
+      "title": "Opening hours"
+     },
+     "refunds": {
+      "policy_id": "refunds",
+      "text": "A paid invoice can be refunded in full within 60 days when the customer was charged twice, the visit was cancelled by Acme, or the work was not carried out. Only the account holder can ask for a refund, after identity verification. Refunds reach the original payment method within 5 working days. Partial refunds and goodwill credits need a manager.",
+      "title": "Refunds"
+     },
+     "verification": {
+      "policy_id": "verification",
+      "text": "Before discussing or changing an account, verify the caller with their customer number and the postcode on file. Never disclose any detail of a customer to anyone else.",
+      "title": "Identity and data protection"
+     }
+    },
+    "refunds": {},
+    "slots": {
+     "S-1022-09": {
+      "date": "2026-10-22",
+      "period": "morning",
+      "slot_id": "S-1022-09",
+      "start": "2026-10-22T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1022-14": {
+      "date": "2026-10-22",
+      "period": "afternoon",
+      "slot_id": "S-1022-14",
+      "start": "2026-10-22T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1023-09": {
+      "date": "2026-10-23",
+      "period": "morning",
+      "slot_id": "S-1023-09",
+      "start": "2026-10-23T09:00",
+      "weekday": "Friday"
+     },
+     "S-1023-14": {
+      "date": "2026-10-23",
+      "period": "afternoon",
+      "slot_id": "S-1023-14",
+      "start": "2026-10-23T14:00",
+      "weekday": "Friday"
+     },
+     "S-1026-09": {
+      "date": "2026-10-26",
+      "period": "morning",
+      "slot_id": "S-1026-09",
+      "start": "2026-10-26T09:00",
+      "weekday": "Monday"
+     },
+     "S-1026-14": {
+      "date": "2026-10-26",
+      "period": "afternoon",
+      "slot_id": "S-1026-14",
+      "start": "2026-10-26T14:00",
+      "weekday": "Monday"
+     },
+     "S-1027-09": {
+      "date": "2026-10-27",
+      "period": "morning",
+      "slot_id": "S-1027-09",
+      "start": "2026-10-27T09:00",
+      "weekday": "Tuesday"
+     },
+     "S-1027-14": {
+      "date": "2026-10-27",
+      "period": "afternoon",
+      "slot_id": "S-1027-14",
+      "start": "2026-10-27T14:00",
+      "weekday": "Tuesday"
+     },
+     "S-1028-09": {
+      "date": "2026-10-28",
+      "period": "morning",
+      "slot_id": "S-1028-09",
+      "start": "2026-10-28T09:00",
+      "weekday": "Wednesday"
+     },
+     "S-1028-14": {
+      "date": "2026-10-28",
+      "period": "afternoon",
+      "slot_id": "S-1028-14",
+      "start": "2026-10-28T14:00",
+      "weekday": "Wednesday"
+     },
+     "S-1029-09": {
+      "date": "2026-10-29",
+      "period": "morning",
+      "slot_id": "S-1029-09",
+      "start": "2026-10-29T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1029-14": {
+      "date": "2026-10-29",
+      "period": "afternoon",
+      "slot_id": "S-1029-14",
+      "start": "2026-10-29T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1030-09": {
+      "date": "2026-10-30",
+      "period": "morning",
+      "slot_id": "S-1030-09",
+      "start": "2026-10-30T09:00",
+      "weekday": "Friday"
+     },
+     "S-1030-14": {
+      "date": "2026-10-30",
+      "period": "afternoon",
+      "slot_id": "S-1030-14",
+      "start": "2026-10-30T14:00",
+      "weekday": "Friday"
+     },
+     "S-1102-09": {
+      "date": "2026-11-02",
+      "period": "morning",
+      "slot_id": "S-1102-09",
+      "start": "2026-11-02T09:00",
+      "weekday": "Monday"
+     },
+     "S-1102-14": {
+      "date": "2026-11-02",
+      "period": "afternoon",
+      "slot_id": "S-1102-14",
+      "start": "2026-11-02T14:00",
+      "weekday": "Monday"
+     },
+     "S-1103-09": {
+      "date": "2026-11-03",
+      "period": "morning",
+      "slot_id": "S-1103-09",
+      "start": "2026-11-03T09:00",
+      "weekday": "Tuesday"
+     },
+     "S-1103-14": {
+      "date": "2026-11-03",
+      "period": "afternoon",
+      "slot_id": "S-1103-14",
+      "start": "2026-11-03T14:00",
+      "weekday": "Tuesday"
+     },
+     "S-1104-09": {
+      "date": "2026-11-04",
+      "period": "morning",
+      "slot_id": "S-1104-09",
+      "start": "2026-11-04T09:00",
+      "weekday": "Wednesday"
+     },
+     "S-1104-14": {
+      "date": "2026-11-04",
+      "period": "afternoon",
+      "slot_id": "S-1104-14",
+      "start": "2026-11-04T14:00",
+      "weekday": "Wednesday"
+     },
+     "S-1105-09": {
+      "date": "2026-11-05",
+      "period": "morning",
+      "slot_id": "S-1105-09",
+      "start": "2026-11-05T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1105-14": {
+      "date": "2026-11-05",
+      "period": "afternoon",
+      "slot_id": "S-1105-14",
+      "start": "2026-11-05T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1106-09": {
+      "date": "2026-11-06",
+      "period": "morning",
+      "slot_id": "S-1106-09",
+      "start": "2026-11-06T09:00",
+      "weekday": "Friday"
+     },
+     "S-1106-14": {
+      "date": "2026-11-06",
+      "period": "afternoon",
+      "slot_id": "S-1106-14",
+      "start": "2026-11-06T14:00",
+      "weekday": "Friday"
+     },
+     "S-1109-09": {
+      "date": "2026-11-09",
+      "period": "morning",
+      "slot_id": "S-1109-09",
+      "start": "2026-11-09T09:00",
+      "weekday": "Monday"
+     },
+     "S-1109-14": {
+      "date": "2026-11-09",
+      "period": "afternoon",
+      "slot_id": "S-1109-14",
+      "start": "2026-11-09T14:00",
+      "weekday": "Monday"
+     },
+     "S-1110-09": {
+      "date": "2026-11-10",
+      "period": "morning",
+      "slot_id": "S-1110-09",
+      "start": "2026-11-10T09:00",
+      "weekday": "Tuesday"
+     },
+     "S-1110-14": {
+      "date": "2026-11-10",
+      "period": "afternoon",
+      "slot_id": "S-1110-14",
+      "start": "2026-11-10T14:00",
+      "weekday": "Tuesday"
+     },
+     "S-1111-09": {
+      "date": "2026-11-11",
+      "period": "morning",
+      "slot_id": "S-1111-09",
+      "start": "2026-11-11T09:00",
+      "weekday": "Wednesday"
+     },
+     "S-1111-14": {
+      "date": "2026-11-11",
+      "period": "afternoon",
+      "slot_id": "S-1111-14",
+      "start": "2026-11-11T14:00",
+      "weekday": "Wednesday"
+     },
+     "S-1112-09": {
+      "date": "2026-11-12",
+      "period": "morning",
+      "slot_id": "S-1112-09",
+      "start": "2026-11-12T09:00",
+      "weekday": "Thursday"
+     },
+     "S-1112-14": {
+      "date": "2026-11-12",
+      "period": "afternoon",
+      "slot_id": "S-1112-14",
+      "start": "2026-11-12T14:00",
+      "weekday": "Thursday"
+     },
+     "S-1113-09": {
+      "date": "2026-11-13",
+      "period": "morning",
+      "slot_id": "S-1113-09",
+      "start": "2026-11-13T09:00",
+      "weekday": "Friday"
+     },
+     "S-1113-14": {
+      "date": "2026-11-13",
+      "period": "afternoon",
+      "slot_id": "S-1113-14",
+      "start": "2026-11-13T14:00",
+      "weekday": "Friday"
+     }
+    }
+   },
+   "taken_at_ms": 0,
+   "world_id": "acme-maintenance"
+  }
+ }
+}
