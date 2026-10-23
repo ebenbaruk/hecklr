@@ -72,13 +72,16 @@ diff, judge rationale, and for voice the audio with its waveform and turn marker
 
 ## Point it at your agent
 
+<!-- docs-test: agent-url -->
 ```bash
-hecklr init --agent-url http://localhost:8000/chat --force
+hecklr init --yes --agent-url http://localhost:8000/chat --force
+hecklr run
 ```
 
 `--agent-url` probes the endpoint: an OpenAI-compatible server (`/v1/models`) gets the
 `openai-compatible` adapter, anything else the `http` adapter, with the JSON field holding the
-reply detected from one test message. Every other transport (streaming SSE, WebSocket, in-process
+reply detected from one test message. Without `--yes`, `hecklr init` asks you to confirm the
+simulator and judge models it picked. Every other transport (streaming SSE, WebSocket, in-process
 Python, WebRTC, LiveKit, Pipecat, Twilio-style media streams, SMTP/IMAP, webhooks) is a few lines
 of `hecklr.yaml`: see [Connect your agent](adapters.md).
 
@@ -103,6 +106,7 @@ The repository ships `acme-maintenance`, the support agent of a fictional mainte
 with 64 guided scenarios, 33 scripted ones, and twelve seeded faults. Its deterministic rules
 brain and the scripted `smoke` suite cost nothing:
 
+<!-- docs-test: reference-agent -->
 ```bash
 uv run python examples/acme-maintenance/agent/serve.py --brain rules --port 8000
 # in a second terminal:
