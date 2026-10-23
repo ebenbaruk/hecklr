@@ -122,6 +122,45 @@ def test_budget_refusal_has_its_own_exit_code(config_path: Path, edit: Edit) -> 
     assert "exceeds the budget of $0.01" in output
 
 
+SCRIPTED = """\
+id: scripted-saturday
+title: Scripted Saturday question
+channels: [chat]
+persona: polite-regular
+world: acme-starter
+mode: scripted
+goal: Ask about Saturday visits.
+user_turns: ["Do you do maintenance visits on Saturdays?"]
+success:
+  - type: not_contains
+    text: traceback
+"""
+
+
+def test_issue36_budget_zero_runs_a_scripted_judge_free_suite_with_paid_models(
+    config_path: Path, edit: Edit
+) -> None:
+    for role in ("simulator: fake/customer", "judge: fake/judge"):
+        edit(config_path, role, f"{role.split(':')[0]}: anthropic/claude-sonnet-5-5")
+    edit(
+        config_path,
+        "suites:\n",
+        'suites:\n  smoke: { scenarios: "scripted/*.yaml", trials: 2, channels: [chat] }\n',
+    )
+    (config_path.parent / "scripted").mkdir()
+    (config_path.parent / "scripted" / "saturday.yaml").write_text(SCRIPTED, encoding="utf-8")
+
+    # No provider is injected: the suite calls no model, so it needs no key and costs nothing.
+    result = runner.invoke(
+        app, ["run", "--config", str(config_path), "--suite", "smoke", "--budget-usd", "0"]
+    )
+    output = click.unstyle(result.output)
+
+    assert result.exit_code == exit_codes.OK, output
+    assert "Suite smoke: 2 trials over 1 scenarios, estimated cost at most $0.00" in output
+    assert "Spent: $0.0000 of budget $0.00" in output
+
+
 def test_config_errors_exit_with_ex_config(config_path: Path) -> None:
     code, output = _run(config_path, "--suite", "nightly")
 
