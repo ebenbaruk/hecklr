@@ -44,7 +44,7 @@ at luna's price and density, with the budget set to the estimate: it must finish
 
 Harness-error retries are not charged: a retried trial replays its model calls from the response
 cache (keyed by model, prompt and seed). The simulator's estimate is unchanged; its draft
-regenerations (up to 2 per turn, on a contradiction) are tracked separately (follow-up issue).
+regenerations (up to 2 per turn, on a contradiction) are tracked separately (#85).
 
 ## Consequences
 
