@@ -30,6 +30,7 @@ from hecklr.compose import (
 from hecklr.errors import describe_error
 from hecklr.reports import FILE_NAMES, ReportFormat, write_report
 from hecklr.results import analyze_results, load_results
+from hecklr_adapters import DEFAULT_MAX_REPLY_BYTES
 from hecklr_core import BudgetEstimateError, RunResults
 from hecklr_report import Analysis, fmt, render_terminal
 from hecklr_report.analysis import nothing_got_through
@@ -79,6 +80,14 @@ def run(
         Path | None,
         typer.Option(help="Where runs and the response cache go (overrides output_dir)."),
     ] = None,
+    max_reply_bytes: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            help="Text one chat agent turn may carry; a longer reply is an agent error, of "
+            "which the transcript keeps the head.",
+        ),
+    ] = DEFAULT_MAX_REPLY_BYTES,
 ) -> None:
     """Run a suite against the agent and write results."""
     request = RunRequest(
@@ -91,6 +100,7 @@ def run(
         adaptive=adaptive,
         baseline_id=baseline,
         output_dir=output_dir,
+        max_reply_bytes=max_reply_bytes,
     )
     prepared, results = run_with_progress(request, overrides(ctx).llm_providers)
     _summarize(prepared, results)

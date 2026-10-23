@@ -154,6 +154,35 @@ def test_issue33_a_run_where_no_trial_got_through_exits_3_and_fails_a_first_gate
     assert "no trial of the candidate run got through" in gate_output
 
 
+def test_issue34_a_flooding_agent_keeps_the_store_and_the_report_small(
+    config_path: Path, stub_agent: StubAgent
+) -> None:
+    # The red team's repro: 20 MB per reply made a 2.9 GB store and a 3.0 GB report.
+    stub_agent("flooding", 20_000_000)
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "5 agent errors, first 'agent reply over 262144 bytes" in output
+    run_dir = config_path.parent / ".hecklr" / "runs" / _run_id(output)
+    stored = sum(path.stat().st_size for path in run_dir.iterdir())
+    assert stored < 8_000_000, sorted((p.name, p.stat().st_size) for p in run_dir.iterdir())
+    report = (run_dir / "report.html").read_text(encoding="utf-8")
+    assert len(report) < 500_000
+    assert "truncated, 252144 more characters" in report
+
+
+def test_issue34_max_reply_bytes_sets_the_cap(config_path: Path, stub_agent: StubAgent) -> None:
+    stub_agent("flooding", 2_000)
+
+    code, output = _run(config_path, "--trials", "1", "--max-reply-bytes", "1000")
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "agent reply over 1000 bytes" in output
+
+    code, output = _run(config_path, "--trials", "1", "--max-reply-bytes", "2000")
+    assert code == exit_codes.OK, output
+
+
 def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(
     config_path: Path, edit: Edit, monkeypatch: pytest.MonkeyPatch
 ) -> None:
