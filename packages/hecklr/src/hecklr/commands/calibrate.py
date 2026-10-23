@@ -324,7 +324,8 @@ def _report_judge_set(
             raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
     usable = [grade for grade in grades if grade.status == "ok"]
     calibrations = _calibrations(project, usable, labels)
-    stdout.print(_judge_table(calibrations))
+    if calibrations:
+        stdout.print(_judge_table(calibrations))
     uncalibrated = _uncalibrated(grades, calibrations)
     for grader, problem in uncalibrated.items():
         stdout.print(f"[bold red]{grader}[/]: not calibrated, {problem}", soft_wrap=True)

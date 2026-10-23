@@ -369,6 +369,7 @@ def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
 
     assert code == exit_codes.CHECK_FAILED, output
     assert "judge:tone: not calibrated, no label of its current rubric version" in output
+    assert "Judge agreement with human labels" not in output  # no empty table
 
 
 def test_sc7_calibrate_judges_set_fails_labels_of_an_old_rubric_version(
