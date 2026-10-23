@@ -1,6 +1,6 @@
 # 0015a. Fixer: agent reload contract, patch format and the two statistical passes
 
-Date: 2026-10-23 · Status: proposed · Workstream: WS15
+Date: 2026-10-23 · Status: accepted (architect review below, 2026-10-23) · Workstream: WS15
 
 ## Context
 
@@ -37,7 +37,8 @@ can never reach α = 0.05 (ADR 0005b), and most clusters are that small.
   and are outside the project. The user's files are never written; `--pr` commits in a temporary
   `git worktree` from `HEAD` and refuses when the editable files have uncommitted changes.
 - **Targets.** A mined cluster (`hecklr fix CLUSTER`) runs the scenarios proposed from it that are
-  not rejected (read from the ADR 0013a files, newest record wins). `--from-run RUN` builds a
+  not rejected, read through `hecklr_mine` (`load_clusters`, `load_queue`: the ADR 0013a files,
+  newest record wins), so the fixer never re-implements the miner's file layout. `--from-run RUN` builds a
   `FailureCluster` (`source: run`) from the run's scenarios with a failed trial, or with
   `--baseline RUN` those whose pass rate dropped, narrowed by `--tag` / `--scenario`. Either way the
   scenarios are written into the copy as the suite `hecklr-fix-targeted`. The generator sees the
@@ -81,3 +82,33 @@ can never reach α = 0.05 (ADR 0005b), and most clusters are that small.
 - Sessions are sequential: N candidates cost N + 1 targeted runs and up to N + 1 guard runs.
 - Copying the project per pass is cheap for an agent project but not for a monorepo root; then
   put `hecklr.yaml` next to the agent, not at the repository root.
+
+## Acceptance review
+
+Architect review (Wave 4 integration, 2026-10-23), checked against SPEC.md "Fixer
+(`hecklr-fix`)", "Comparing baseline and candidate", "Configuration (`hecklr.yaml`)" and US-10:
+
+- **Spec steps 1-5 are all met.** Input is one cluster plus `agent.editable`; N candidates
+  (default 5) from an LLM that sees failing transcripts, judge rationales and the current files;
+  a targeted pass that keeps only significant improvements; a guard pass that drops any
+  significant regression on any tag; the winning diff, its report and `--pr` via `gh`.
+- **Guardrails are stricter than the spec, not looser.** Editable entries that define the test
+  (config, world, any scenario or persona a suite can select) are refused even when listed;
+  rubrics and graders are outside the project; "no candidate beat baseline" is an outcome with
+  its own exit code; `--pr` opens a draft, so a human merges.
+- **Cell pairing is a sound deviation for this question.** The spec pairs by scenario because a
+  gate generalizes over scenarios. The fixer asks a narrower question ("does it fix *these*
+  scenarios, does it break *this* suite") on clusters too small for scenario pairing ever to
+  reach α (ADR 0005b). With one seed per session both arms share each cell's simulator seed, so
+  under "the patch changes nothing" the paired differences are exchangeable and the sign-flip
+  test is valid. The verdict rule, α, δ and BH are the spec's. The limitation (no claim about
+  unseen scenarios) is stated in Consequences, and the gate remains scenario-paired.
+- **"Full suite" read as `--guard-suite`, default `ci`.** The spec says the guard pass runs "the
+  full suite"; the gate's suite is the one a regression would fail in CI, so it is the right
+  default, and `--guard-suite nightly` runs a larger one. Accepted as an interpretation.
+- **Configuration.** The start command is needed because Hecklr does not build agents and the
+  agent reads its prompt at start-up. `AgentConfig` is frozen (`extra="forbid"`) and
+  `hecklr-schemas` is frozen after Wave 0, so `--agent-cmd` is the accepted mechanism for v1.
+  RFC 0015a's `agent.command` field is **deferred to v1.1**; no schema change is made now.
+
+Accepted. Follow-up for v1.1: RFC 0015a.

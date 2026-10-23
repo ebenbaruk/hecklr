@@ -1,6 +1,6 @@
 # RFC 0015a. `agent.command`: how to start the agent under test
 
-Date: 2026-10-23 · Status: proposed · Workstream: WS15
+Date: 2026-10-23 · Status: deferred to v1.1 (architect review below, 2026-10-23) · Workstream: WS15
 
 ## Problem
 
@@ -34,3 +34,15 @@ The placeholders and the process contract are ADR 0015a's.
 
 None: the field is optional and `schema_version` stays 1. Until it is accepted, `--agent-cmd` is
 the only way, and it keeps working afterwards.
+
+## Architect review
+
+2026-10-23, Wave 4 integration. The problem is real and the proposed field is the smallest
+change that solves it (optional, `schema_version` unchanged, `--agent-cmd` still wins). But
+`packages/hecklr-schemas` is frozen for v1, and the CLI flag already works end to end
+(`test_cli_fix.py`), so the cost of waiting is repetition, not a missing capability.
+
+Decision: **the `--agent-cmd` workaround is accepted for v1** (ADR 0015a, accepted). The
+`agent.command` field is **deferred to v1.1**, to land with the next schema revision. Nothing in
+`hecklr-schemas` changes now. When it lands: add the field as written above, make `hecklr fix`
+fall back to it when `--agent-cmd` is absent, and document it in the configuration reference.

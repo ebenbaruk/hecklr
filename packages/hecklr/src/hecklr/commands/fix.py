@@ -34,7 +34,6 @@ from hecklr.results import definitions, load_results, open_store, resolve_run
 from hecklr_core import Project, open_llm
 from hecklr_fix import (
     FIX_DIR,
-    MINE_DIR,
     AgentCommand,
     Fixer,
     FixError,
@@ -187,6 +186,8 @@ def _target(
     if cluster is not None:
         if baseline or tags or scenarios:
             raise FixError("--baseline, --tag and --scenario go with --from-run")
+        from hecklr_mine import MINE_DIR  # imported here: keeps scikit-learn out of start-up
+
         return load_mined_target(project.output_dir / MINE_DIR, cluster)
     assert from_run is not None  # noqa: S101 -- exactly one target, checked above
     with config_errors(), open_store(project) as store:

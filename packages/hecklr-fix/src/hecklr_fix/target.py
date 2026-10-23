@@ -2,9 +2,9 @@
 
 Two sources:
 
-- the miner's store (ADR 0013a): a ``FailureCluster`` from ``mine/<id>/clusters.jsonl`` and the
-  scenarios proposed from it (approved or still proposed; rejected ones are not the cluster's
-  behaviour as a person judged it);
+- the miner's store (ADR 0013a), read through ``hecklr_mine``: a ``FailureCluster`` of a mining
+  run and the scenarios proposed from it (approved or still proposed; rejected ones are not the
+  cluster's behaviour as a person judged it);
 - a failing run: the scenarios whose trials failed (``--from-run``), or, against a baseline run,
   the scenarios whose pass rate dropped (the "regression -> fix" flow), optionally narrowed by tag
   or scenario id. The cluster is built from those trials (``source: run``).
@@ -14,7 +14,6 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
 
 from hecklr_core import RunResults
 from hecklr_fix.errors import FixError
@@ -27,15 +26,9 @@ from hecklr_schemas import (
     Persona,
     ProposalStatus,
     Scenario,
-    ScenarioProposal,
     TrialId,
     new_id,
 )
-
-MINE_DIR: Final = "mine"
-"""Mining runs live in ``<output_dir>/mine/<mine id>/`` (ADR 0013a, ``hecklr_mine.MINE_DIR``)."""
-CLUSTERS_FILE: Final = "clusters.jsonl"
-PROPOSALS_FILE: Final = "proposals.jsonl"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,43 +48,30 @@ def load_mined_target(mine_root: Path, cluster_id: str) -> FixTarget:
     """The cluster ``cluster_id`` from ``<output_dir>/mine`` and its proposed scenarios.
 
     Raises:
-        FixError: no such cluster, or none of its proposals is still proposed or approved.
+        FixError: no such cluster, none of its proposals is still proposed or approved, or the
+            miner's store cannot be read.
     """
-    for clusters_file in sorted(mine_root.glob(f"*/{CLUSTERS_FILE}")):
-        for cluster in _read_lines(clusters_file, FailureCluster):
-            if cluster.id == cluster_id:
-                scenarios = _cluster_scenarios(clusters_file.parent / PROPOSALS_FILE, cluster_id)
-                if not scenarios:
-                    raise FixError(
-                        f"cluster {cluster_id} has no proposed or approved scenario to run; "
-                        "re-run hecklr mine with a model so it synthesizes one"
-                    )
-                return FixTarget(cluster=cluster, scenarios=tuple(scenarios))
-    raise FixError(f"no cluster {cluster_id} under {mine_root}")
+    # Imported here: hecklr_mine loads scikit-learn, which every other command would pay for at
+    # start-up (as in ``hecklr.commands.mine``).
+    from hecklr_mine import MineError, load_clusters, load_queue
 
-
-def _cluster_scenarios(proposals_file: Path, cluster_id: str) -> list[Scenario]:
-    if not proposals_file.is_file():
-        return []
-    latest: dict[str, ScenarioProposal] = {}
-    for proposal in _read_lines(proposals_file, ScenarioProposal):
-        latest[proposal.id] = proposal  # the newest record of a proposal wins (ADR 0013a)
-    return [
-        proposal.scenario
-        for _, proposal in sorted(latest.items())
-        if proposal.cluster_id == cluster_id and proposal.status is not ProposalStatus.REJECTED
-    ]
-
-
-def _read_lines[T: (FailureCluster, ScenarioProposal)](path: Path, model: type[T]) -> list[T]:
-    records = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if line.strip():
-            try:
-                records.append(model.model_validate_json(line))
-            except ValueError as exc:
-                raise FixError(f"{path}:{number}: not a valid {model.__name__}: {exc}") from exc
-    return records
+    try:
+        cluster = next((c for c in load_clusters(mine_root) if c.id == cluster_id), None)
+        if cluster is None:
+            raise FixError(f"no cluster {cluster_id} under {mine_root}")
+        scenarios = [
+            proposal.scenario
+            for proposal in load_queue(mine_root)  # the newest record of each proposal
+            if proposal.cluster_id == cluster_id and proposal.status is not ProposalStatus.REJECTED
+        ]
+    except MineError as exc:
+        raise FixError(str(exc)) from exc
+    if not scenarios:
+        raise FixError(
+            f"cluster {cluster_id} has no proposed or approved scenario to run; "
+            "re-run hecklr mine with a model so it synthesizes one"
+        )
+    return FixTarget(cluster=cluster, scenarios=tuple(scenarios))
 
 
 def target_from_run(

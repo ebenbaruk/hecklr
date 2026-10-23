@@ -137,5 +137,5 @@ def test_mined_cluster_errors_name_the_problem(tmp_path: Path) -> None:
     with pytest.raises(FixError, match="no proposed or approved scenario"):
         load_mined_target(tmp_path / "mine", cluster.id)
     (mine / "clusters.jsonl").write_text("{not json\n", "utf-8")
-    with pytest.raises(FixError, match=r"clusters\.jsonl:1: not a valid FailureCluster"):
+    with pytest.raises(FixError, match=r"clusters\.jsonl:1: not a valid cluster"):
         load_mined_target(tmp_path / "mine", cluster.id)

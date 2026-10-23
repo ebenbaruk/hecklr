@@ -12,10 +12,11 @@ from typer.testing import CliRunner
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
-from hecklr_core import load_model
+from hecklr_core import load_model, load_project
+from hecklr_fix import FixError, load_mined_target
 from hecklr_llm import FakeLLM, LLMRequest
-from hecklr_mine import MINE_DIR, generate_log_set, load_queue, read_summary
-from hecklr_schemas import FailureCluster, Scenario
+from hecklr_mine import MINE_DIR, decide, generate_log_set, load_queue, read_summary
+from hecklr_schemas import FailureCluster, ProposalStatus, Scenario
 
 runner = CliRunner()
 
@@ -85,6 +86,36 @@ def test_us08_mine_writes_clusters_and_queues_proposals(config_path: Path, logs:
     assert code == exit_codes.OK, output
     assert "duplicate" in output
     assert len(load_queue(mine_root)) == len(queue)
+
+
+def test_us10_hecklr_fix_targets_what_hecklr_mine_wrote(config_path: Path, logs: Path) -> None:
+    """``hecklr mine``'s real output (synthetic logs, offline embedder, FakeLLM) is what
+    ``hecklr fix CLUSTER`` loads: the cluster as mined, with its unrejected proposals."""
+    code, output = _mine(config_path, logs)
+    assert code == exit_codes.OK, output
+    project = load_project(config_path)
+    mine_root = project.output_dir / MINE_DIR
+    [run_dir] = [path for path in mine_root.iterdir() if path.is_dir()]
+    clusters = [
+        FailureCluster.model_validate_json(line)
+        for line in (run_dir / "clusters.jsonl").read_text().splitlines()
+    ]
+    queue = load_queue(mine_root)
+    proposed = [cluster for cluster in clusters if any(p.cluster_id == cluster.id for p in queue)]
+    assert proposed, output
+    rejected = next(p for p in queue if p.cluster_id == proposed[0].id)
+    decide(mine_root, rejected.id, ProposalStatus.REJECTED, reviewer="ops@acme")
+
+    for cluster in proposed:
+        expected = [p.scenario for p in queue if p.cluster_id == cluster.id and p.id != rejected.id]
+        if not expected:
+            with pytest.raises(FixError, match="no proposed or approved scenario"):
+                load_mined_target(mine_root, cluster.id)
+            continue
+        target = load_mined_target(mine_root, cluster.id)
+        assert target.cluster == cluster
+        assert list(target.scenarios) == expected
+        assert all(scenario.world == "acme-starter" for scenario in target.scenarios)
 
 
 def test_mine_without_a_model_clusters_offline(

@@ -3,7 +3,7 @@
 Typical use (what ``hecklr fix`` does)::
 
     editable = load_editable(project.config, project.config_path)
-    target = load_mined_target(output_dir / "mine", cluster_id)   # or target_from_run(...)
+    target = load_mined_target(output_dir / hecklr_mine.MINE_DIR, cluster_id)  # or from a run
     fixer = Fixer(config_path=..., editable=editable, target=target, settings=FixSettings(...),
                   llm=llm, runner=suite_runner, launcher=AgentCommand("{python} serve.py "
                   "--port {port}"), session_dir=output_dir / FIX_DIR / fix_id,
@@ -29,7 +29,7 @@ from hecklr_fix.patching import ProposedEdit, ProposedPatch, apply_edits, unifie
 from hecklr_fix.pr import PullRequest, open_pull_request
 from hecklr_fix.report import render_markdown
 from hecklr_fix.store import FIX_DIR, FixSummary, write_session
-from hecklr_fix.target import MINE_DIR, FixTarget, load_mined_target, target_from_run
+from hecklr_fix.target import FixTarget, load_mined_target, target_from_run
 from hecklr_fix.validation import SuiteRun, cell_outcomes, compare_cells, improved, regressions
 from hecklr_fix.workspace import TARGETED_SUITE, prepare_workspace
 
@@ -37,7 +37,6 @@ __version__ = "0.1.0"
 
 __all__ = [
     "FIX_DIR",
-    "MINE_DIR",
     "TARGETED_SUITE",
     "AgentCommand",
     "AgentLauncher",

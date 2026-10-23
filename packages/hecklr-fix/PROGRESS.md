@@ -1,7 +1,8 @@
 # hecklr-fix progress
 
 Owner: WS15. Spec: `docs/SPEC.md` → "Fixer (`hecklr-fix`)", US-10, WS15 row. Decisions: ADR
-0015a. Proposed schema change: RFC 0015a (`agent.command`).
+0015a (accepted). Schema change RFC 0015a (`agent.command`): deferred to v1.1; `--agent-cmd` is
+the v1 mechanism.
 
 ## Done
 
@@ -34,11 +35,17 @@ Owner: WS15. Spec: `docs/SPEC.md` → "Fixer (`hecklr-fix`)", US-10, WS15 row. D
   improves the targeted set by +100 pts yet is `rejected_guard` on `tag=catches-f5`
   (−100 pts, p < 0.001, q < 0.001, 18 cells) while the suite verdict alone was inconclusive.
 
+- Mined targets are read through `hecklr_mine` (`load_clusters`, `load_queue`) instead of a copy
+  of the miner's file layout; `hecklr-fix` depends on `hecklr-mine` (no cycle: the miner does not
+  import the fixer). Integration test on real `hecklr mine` output:
+  `packages/hecklr/tests/test_cli_mine.py::test_us10_hecklr_fix_targets_what_hecklr_mine_wrote`.
+
 ## Next
 
 - Detect an agent-side provider outage in a pass (agent errors from a 429 count as failures) and
   refuse the pass, like `scripts/fault-matrix`'s `check_health`.
-- RFC 0015a review; then read `agent.command` from `hecklr.yaml`.
+- v1.1: read `agent.command` from `hecklr.yaml` once RFC 0015a lands with the next schema
+  revision (deferred by the architect review, 2026-10-23).
 
 ## Open questions
 
