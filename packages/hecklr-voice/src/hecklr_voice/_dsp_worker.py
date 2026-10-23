@@ -1,4 +1,4 @@
-"""A DSP worker process: ``python -m hecklr_voice._dsp_worker``, driven by :mod:`hecklr_voice.pool`.
+"""A DSP worker process, run as ``python -u -P <this file>`` by :mod:`hecklr_voice.pool`.
 
 Protocol over stdin/stdout. Every request is a frame: its length and a newline, then a pickle.
 The first is the parent's ``sys.path``, then one ``(func, args)`` per job. Every reply is a line
@@ -7,6 +7,8 @@ worker exits at end of input.
 
 Unlike ``anyio.to_process`` workers it never runs the parent's main file, and its own module
 stays ``__main__``: libraries such as duckdb refuse to import in a process without one (#31).
+It imports nothing beyond the standard library, so it starts as fast as anyio's worker; jobs
+import their own modules when they are unpickled.
 """
 
 import os

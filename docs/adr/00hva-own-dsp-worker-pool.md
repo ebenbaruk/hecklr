@@ -31,10 +31,12 @@ Options considered:
 
 ## Decision
 
-`hecklr_voice.pool` launches `python -u -m hecklr_voice._dsp_worker` with anyio's
-`open_process`. The worker adopts the parent's `sys.path` (sent first), never runs the parent's
-main file, and keeps its own module as `__main__`. Requests and replies are length-framed pickles,
-like anyio's. Semantics kept from anyio: half-the-cores `CapacityLimiter`, most recently used
+`hecklr_voice.pool` launches `python -u -P .../hecklr_voice/_dsp_worker.py` with anyio's
+`open_process` (the file, not `-m`, so starting a worker imports only the standard library, as
+anyio's does; `-m` imported the whole package before the handshake and missed the 20 s start
+deadline at a load average of 120). The worker adopts the parent's `sys.path` (sent first), never
+runs the parent's main file, and keeps its own module as `__main__`. Requests and replies are
+length-framed pickles, like anyio's. Semantics kept from anyio: half-the-cores `CapacityLimiter`, most recently used
 worker first, a job's exception re-raised with its own type, a dead worker raises
 `BrokenWorkerProcess` and is replaced on the next job, cancelling a caller kills that worker, and
 the loop's shutdown kills every worker through the hook anyio uses for its own pool

@@ -27,6 +27,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Final, Unpack, cast
 
 import anyio
@@ -39,7 +40,15 @@ from anyio.abc import ByteReceiveStream, ByteSendStream, Process
 from anyio.lowlevel import RunVar
 from anyio.streams.buffered import BufferedByteReceiveStream
 
-_WORKER_COMMAND: Final = (sys.executable, "-u", "-m", "hecklr_voice._dsp_worker")
+_WORKER_COMMAND: Final = (
+    sys.executable,
+    "-u",
+    "-P",
+    str(Path(__file__).with_name("_dsp_worker.py")),
+)
+"""The worker file run directly, not with ``-m``: ``-m hecklr_voice._dsp_worker`` would import the
+whole package (numpy, scipy, ...) before the handshake, seconds on a loaded machine. ``-P`` keeps
+this directory off ``sys.path``, where its modules would shadow top-level names."""
 _START_TIMEOUT_S: Final = 20.0
 _HEADER_LIMIT: Final = 50
 _STREAM_ERRORS: Final = (
