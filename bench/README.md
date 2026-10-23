@@ -19,9 +19,9 @@ site/dist/              built by `hecklr bench site` (git-ignored, never deploye
 ```bash
 uv sync --all-packages --all-extras
 uv run hecklr bench list                                   # stacks, what they need, max cost
-uv run --env-file .env hecklr bench run --stack acme-voice-local --budget-usd 0.05
-uv run --env-file .env hecklr bench run --all --budget-usd 1.20
-uv run --env-file .env hecklr bench reproduce --stack acme-chat-rules
+uv run hecklr bench run --stack acme-voice-local
+uv run --env-file .env hecklr bench run --all --budget-usd 0.50   # cloud stacks need their keys
+uv run hecklr bench reproduce --stack acme-voice-local
 uv run hecklr bench site && open bench/site/dist/index.html
 ```
 
@@ -40,7 +40,7 @@ benchmark version or suite digest (exit 78).
 
 | Track | Scenarios | Callers | Graded by |
 | --- | --- | --- | --- |
-| `chat` | 8 acme tasks: book, reschedule, cancel, invoice, fee question, gas emergency, refund, a data prober | guided (gpt-6-luna), 2 trials each | tool calls, world state, safety graders, judges (`resolved`, `no_hallucination`, `handoff_appropriate`) |
+| `chat` | 8 acme tasks: book, reschedule, cancel, invoice, fee question, gas emergency, refund, a data prober | guided (qwen3 4B on local Ollama), 2 trials each | tool calls, world state, safety graders, judges (`resolved`, `no_hallucination`, `handoff_appropriate`) |
 | `voice` | 9 calls: 3 latency (steady caller), 3 barge-in (interrupts every reply), 3 hesitation (450-550 ms pauses) | scripted, Kokoro voices, 2 trials each | world state, tools not called after a retraction, `resolved` judge; Hecklr hears the agent with faster-whisper `base.en` |
 | `calibration` | 3 calls against an agent with known timing | scripted, 3 trials each | a timing criterion; the row is a ruler, not a contestant |
 
@@ -49,13 +49,19 @@ benchmark version or suite digest (exit 78).
 | Stack | Track | Made of | Why it is here |
 | --- | --- | --- | --- |
 | `acme-chat-rules` | chat | HTTP+SSE, keyword rules brain | the free, exactly repeatable floor |
-| `acme-chat-luna` | chat | HTTP+SSE, gpt-6-luna tool loop | a small hosted model as most teams ship it |
+| `acme-chat-luna` | chat | HTTP+SSE, gpt-6-luna tool loop | a small hosted model as most teams ship it (needs OpenAI credits) |
 | `acme-chat-qwen3` | chat | HTTP+SSE, qwen3 4B on local Ollama | the fully local option |
 | `acme-voice-local` | voice | PCM WebSocket, Silero, 800 ms endpointing, faster-whisper base.en, Kokoro | the hand-tuned local cascade (acme-voice reference) |
 | `acme-voice-livekit` | voice | the same cascade behind a local LiveKit SFU (WebRTC, Opus) | isolates what the transport adds |
 | `pipecat-local` | voice | stock Pipecat 1.13: SmallWebRTC, Silero + smart-turn v3, faster-whisper base.en, Kokoro | the common framework at its defaults, same models |
-| `pipecat-cloud` | voice | the same Pipecat pipeline with AssemblyAI streaming and OpenAI TTS | hosted speech: latency and cost |
+| `pipecat-assemblyai` | voice | the same Pipecat pipeline with AssemblyAI streaming ASR | one variable: streaming cloud ASR vs local batch ASR |
 | `loopback-reference` | calibration | answers 600 ms after the caller stops, stops 150 ms after a barge-in | the ruler for the voice rows |
+
+Hecklr's own models (guided customers, judges) are qwen3 4B on local Ollama with a 32k context,
+so every row reproduces without an API key; create the model once with
+`ollama create hecklr-bench-qwen3-4b -f bench/models/qwen3-4b-32k.Modelfile`. The `resolved`
+judge then shares weights with the `acme-chat-qwen3` agent, a self-preference to keep in mind
+when reading that row's judge score (its task success is graded by tools and world state).
 
 Every voice stack runs the same acme rules brain, so voice rows differ only by their speech
 stack. Each stack's file says what it is and why it is meaningful; the leaderboard shows both.
