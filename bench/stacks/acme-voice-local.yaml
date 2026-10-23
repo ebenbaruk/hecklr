@@ -18,6 +18,5 @@ command: ["{python}", "{repo}/examples/acme-voice/agent/serve.py", "--brain", "r
 env: { ACME_SEED: "{seed}" }
 ready: { line: "listening on ws://", timeout_s: 900 }
 adapter: { type: websocket, url: "ws://127.0.0.1:{port}/", protocol: pcm }
-# The resolved judge runs on gpt-6-luna.
-requires_env: [OPENAI_API_KEY]
-budget_usd: 0.03
+# The resolved judge runs on local Ollama (bench.yaml).
+budget_usd: 0

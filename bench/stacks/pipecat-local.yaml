@@ -12,7 +12,7 @@ why: >-
 components:
   transport: SmallWebRTC (WebRTC, Opus)
   vad: Silero + smart-turn v3 (Pipecat defaults)
-  asr: faster-whisper base.en (Pipecat WhisperSTTService, local)
+  asr: faster-whisper base.en (Pipecat SegmentedSTTService, local)
   brain: acme rules
   tts: Kokoro af_heart (Pipecat KokoroTTSService, local)
 command: ["{python}", "{repo}/bench/stacks/agents/pipecat_acme.py", "--stt", "whisper", "--tts", "kokoro", "--port", "{port}"]
@@ -20,6 +20,5 @@ env: { ACME_SEED: "{seed}" }
 ready: { http: "http://127.0.0.1:{port}/healthz", timeout_s: 900 }
 adapter: { type: pipecat, url: "http://127.0.0.1:{port}/api/offer" }
 spend_url: "http://127.0.0.1:{port}/healthz"
-# The resolved judge runs on gpt-6-luna.
-requires_env: [OPENAI_API_KEY]
-budget_usd: 0.03
+# The resolved judge runs on local Ollama (bench.yaml).
+budget_usd: 0

@@ -15,6 +15,5 @@ env: { ACME_SEED: "{seed}" }
 ready: { http: "http://127.0.0.1:{port}/healthz", timeout_s: 120 }
 adapter: { type: http, url: "http://127.0.0.1:{port}/chat/stream", stream: sse, timeout_s: 180 }
 spend_url: "http://127.0.0.1:{port}/healthz"
-# The guided customers and the judges run on gpt-6-luna.
-requires_env: [OPENAI_API_KEY]
-budget_usd: 0.12
+# The guided customers and the judges run on local Ollama (bench.yaml).
+budget_usd: 0

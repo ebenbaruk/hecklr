@@ -7,13 +7,15 @@ seed: 20261023
 suite: suite
 world: worlds/acme-maintenance.yaml
 models:
-  # Guided chat customers and every judge. Voice callers are scripted and call no model.
-  simulator: openai/gpt-6-luna
-  judge: openai/gpt-6-luna
+  # Guided chat customers and every judge. Voice callers are scripted and call no model. Local and
+  # free, so anyone can reproduce a row without an API key (ADR 0017a); the stack under test runs
+  # its own model. The model is qwen3:4b-instruct with a 32k context (bench/models/).
+  simulator: ollama/hecklr-bench-qwen3-4b
+  judge: ollama/hecklr-bench-qwen3-4b
 stats: { alpha: 0.05, min_effect: 0.03, bootstrap_resamples: 10000 }
 tracks:
-  # 8 guided customers (luna) over the chat reference tasks, graded by tool, state, safety and
-  # judge criteria.
+  # 8 guided customers (qwen3 4B, local) over the chat reference tasks, graded by tool, state,
+  # safety and judge criteria.
   chat:
     scenarios: "scenarios/chat/*.yaml"
     trials: 2

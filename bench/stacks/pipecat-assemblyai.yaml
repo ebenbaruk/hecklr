@@ -1,0 +1,27 @@
+id: pipecat-assemblyai
+name: Pipecat 1.13, AssemblyAI streaming ASR
+track: voice
+description: >-
+  The pipecat-local pipeline with one change: Pipecat's AssemblyAI Universal-Streaming service
+  (one streaming session per call, end of turn forced by Pipecat's VAD) instead of local
+  faster-whisper. TTS stays local Kokoro.
+why: >-
+  One variable against pipecat-local: does a streaming cloud recognizer, transcribing while the
+  caller speaks, shorten the response path compared with batch-decoding each utterance locally,
+  and what does it cost per call.
+components:
+  transport: SmallWebRTC (WebRTC, Opus)
+  vad: Silero + smart-turn v3 (Pipecat defaults)
+  asr: AssemblyAI universal-streaming (cloud)
+  brain: acme rules
+  tts: Kokoro af_heart (Pipecat KokoroTTSService, local)
+command: ["{python}", "{repo}/bench/stacks/agents/pipecat_acme.py", "--stt", "assemblyai", "--tts", "kokoro", "--budget-usd", "{agent_budget_usd}", "--port", "{port}"]
+env: { ACME_SEED: "{seed}" }
+ready: { http: "http://127.0.0.1:{port}/healthz", timeout_s: 900 }
+adapter: { type: pipecat, url: "http://127.0.0.1:{port}/api/offer" }
+spend_url: "http://127.0.0.1:{port}/healthz"
+requires_env: [ASSEMBLYAI_API_KEY]
+budget_usd: 0
+# Metered by the agent at list price (USD 0.15 per streaming hour: 18 calls of about a minute cost
+# under USD 0.05); past the cap it refuses new calls.
+agent_budget_usd: 0.10

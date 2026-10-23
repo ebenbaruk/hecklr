@@ -27,6 +27,5 @@ adapter:
   room_prefix: bench
   api_key_env: HECKLR_BENCH_LIVEKIT_KEY
   api_secret_env: HECKLR_BENCH_LIVEKIT_SECRET
-# The resolved judge runs on gpt-6-luna; the agent needs Docker.
-requires_env: [OPENAI_API_KEY]
-budget_usd: 0.03
+# The resolved judge runs on local Ollama; the agent needs Docker.
+budget_usd: 0
