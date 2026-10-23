@@ -22,6 +22,32 @@ Plan, one test-first commit per issue (test names cite the issue):
 - #67 acme-email budget validation and soft-cap docs, examples in `scripts/mypy-all.sh`,
   mixed scripted + guided estimate test.
 
+Done (all offline, $0 live spend):
+- #33: `test_issue33_a_run_where_no_trial_got_through_exits_3_and_fails_a_first_gate` (stub agent
+  answering HTTP 500), `test_issue33_*` in `hecklr-report/tests/test_analysis.py` (candidate,
+  baseline, one `ok` trial is a measurement), `test_issue33_the_baseline_alias_skips_a_run_where_
+  no_trial_got_through`. Real: acme `smoke` with nothing on the port now exits 3 ("33 agent
+  errors, first ... ConnectError") and `gate --missing-baseline pass` exits 3 (was 0 and 0).
+- #34: `hecklr-adapters/tests/test_reply_cap.py`, `test_issue34_a_flooding_agent_keeps_the_store_
+  and_the_report_small`, `test_issue34_max_reply_bytes_sets_the_cap`, `test_issue34_huge_text_is_
+  cut_with_a_marker`. Real: the issue's 20 MB agent on acme `smoke` (33 trials) now writes
+  results.duckdb 11.5 MB, report.html 0.77 MB, events.parquet 0.43 MB in 12 s (was 2.9 GB,
+  3.0 GB, 80 MB, 120 s).
+- #35: `test_issue35_ctrl_c_prints_one_line_and_exits_130` (real SIGINT to a subprocess),
+  `test_issue35_only_cancellations_of_the_embedded_server_are_silenced`; executor logs a
+  cancelled run at info (`test_cancelled_run_is_recorded`).
+- #36: already fixed by #51; pinned by `test_issue36_budget_zero_runs_a_scripted_judge_free_suite_
+  with_paid_models` and `test_issue36_a_mixed_suite_charges_the_simulator_per_guided_trial_only`.
+- #37: `test_issue37_a_mistyped_evidence_id_is_retried_once_with_the_problem`,
+  `test_issue37_a_retry_is_reproducible`; garbage/truncated tests now expect the retry.
+- #38: `test_issue38_a_huge_non_boolean_integer_is_a_state_error` (`12**121212`).
+- #63: `test_issue63_replay_skips_adversarial_personas_by_default`, `..._needs_a_persona`.
+- #67: `test_issue67_*` in `examples/acme-email/tests/test_cli.py`; zero-deadline fail-fast test;
+  `scripts/mypy-all.sh` checks `acme_agent`, `acme_email`, `acme_voice` (clean).
+
+Open: #37's "judge error rate per rubric in the run summary" is not built (the run summary
+already counts error grades and undecided trials); email bodies are not capped (ADR 00hra).
+
 ## WS-wire (Wave 2b): voice and email in `hecklr run` (ADR 0007e, ADR 0005c, RFC 0010a)
 
 Plan: (1) world URLs over every voice/email adapter; (2) issues #14 and #19; (3) compose voice
