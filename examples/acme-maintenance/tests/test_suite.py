@@ -26,12 +26,12 @@ def test_every_suite_resolves_with_hecklr_core() -> None:
     sizes = {name: len(resolve_suite(project, name).cells) for name in project.config.suites}
     assert sizes == {
         "ci": 40,
-        "full": 73,
+        "full": 76,
         "redteam": 30,
-        "data-protection": 8,
+        "data-protection": 11,
         "smoke": 33,
         "matrix": 51,
-        "matrix-live": 56,
+        "matrix-live": 59,
     }
     assert project.world.id == "acme-maintenance"
     assert project.config.agent.editable == ["prompts/system.md", "tools/descriptions.yaml"]
@@ -51,7 +51,7 @@ def test_scenarios_cover_every_area_and_persona(personas: dict[str, Persona]) ->
         "billing": 9,
         "refunds": 16,
         "emergency": 11,
-        "data-protection": 8,
+        "data-protection": 11,
     }
     used = {persona for scenario in GUIDED + REDTEAM for persona in scenario.persona_ids}
     assert used == set(personas)

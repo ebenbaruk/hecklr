@@ -12,7 +12,9 @@ The deterministic checks are cheap and run on every draft:
   is judged whole as an identifier instead.
 - **Invented identifier:** an ID-like token (``ORD-5581``, ``4412345678``) found nowhere in the
   facts, the goal, the attack strategy's decoys or what the agent said.
-- **Unknown fact:** ``facts_revealed`` names a fact the brief does not have.
+- **Unknown fact:** ``facts_revealed`` names a fact the brief does not have: an entry is known
+  when it is a fact's or a decoy's name, or a value the brief or the agent names as a whole token
+  (the other customer the goal tells the customer to name, a decoy, an address the agent leaked).
 - **Malformed decision:** ``speak`` with no text, ``end`` with no reason, or JSON spilled into
   the text (seen with small local models).
 
@@ -49,6 +51,8 @@ _FORMAT_LEAK = re.compile(
     r"[{}]|\b(?:end_reason|facts_revealed|agent_made_progress|goal_achieved|goal_abandoned)\b"
 )
 """Braces or answer-format field names in the text: the model spilled its JSON into the message."""
+_NAME_VALUE = re.compile(r"[:=]")
+"""Separates a ``facts_revealed`` entry written as ``name: value`` or ``name=value``."""
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 _NOT_DASH_JOINED_BEFORE = r"(?<![^\W_]-)"
 _NOT_DASH_JOINED_AFTER = r"(?!-[^\W_])"
@@ -67,11 +71,13 @@ class ConsistencyGuard:
     """Deterministic checks of drafted turns against one scenario's brief."""
 
     def __init__(self, scenario: Scenario, strategy: AttackStrategy | None = None) -> None:
-        decoys = strategy.decoys.values() if strategy is not None else ()
+        decoys = strategy.decoys if strategy is not None else {}
         self._values = {name: render_fact_value(value) for name, value in scenario.facts.items()}
-        self._fact_names = {name.casefold() for name in scenario.facts}
+        self._fact_names = {name.casefold() for name in [*scenario.facts, *decoys]}
         self._fact_values = {value.casefold() for value in _scalar_texts(scenario.facts)}
-        self._brief_text = " ".join([scenario.goal, *self._values.values(), *decoys]).casefold()
+        self._brief_text = " ".join(
+            [scenario.goal, *self._values.values(), *decoys.values()]
+        ).casefold()
         # Only scalar facts get a shape; a nested fact rendered as JSON is not an identifier.
         self._shapes = {
             name: shape
@@ -86,7 +92,7 @@ class ConsistencyGuard:
         issues = _structural_issues(decision)
         agent_text = " ".join(turn.text for turn in dialogue if turn.speaker == "agent").casefold()
         issues += self._value_issues(decision.text, agent_text)
-        issues += self._unknown_fact_issues(decision.facts_revealed)
+        issues += self._unknown_fact_issues(decision.facts_revealed, agent_text)
         return issues
 
     def _value_issues(self, text: str, agent_text: str) -> list[GuardIssue]:
@@ -130,17 +136,29 @@ class ConsistencyGuard:
             )
         return issues
 
-    def _unknown_fact_issues(self, revealed: Iterable[str]) -> list[GuardIssue]:
+    def _unknown_fact_issues(self, revealed: Iterable[str], agent_text: str) -> list[GuardIssue]:
         return [
             GuardIssue("unknown_fact", f"{entry!r} is not one of your facts; do not invent facts")
             for entry in revealed
-            if not self._is_known_fact(entry)
+            if not self._is_known_fact(entry, agent_text)
         ]
 
-    def _is_known_fact(self, entry: str) -> bool:
-        # Models report a fact by name, by value, or as "name: value"; all name the same fact.
-        name = re.split(r"[:=]", entry, maxsplit=1)[0].strip().casefold()
-        return name in self._fact_names or entry.strip().casefold() in self._fact_values
+    def _is_known_fact(self, entry: str, agent_text: str) -> bool:
+        # Models report a fact by name, by value, or as "name: value" (with a name of their own
+        # for someone else's detail, e.g. "brother's name: Martin Dubois"). What the brief or the
+        # agent names is not invented, matching what the text checks accept (issue #68).
+        name, *value = (part.strip().casefold() for part in _NAME_VALUE.split(entry, maxsplit=1))
+        if name in self._fact_names:
+            return True
+        return any(
+            self._is_named_value(said, agent_text) for said in (entry.strip().casefold(), *value)
+        )
+
+    def _is_named_value(self, said: str, agent_text: str) -> bool:
+        if said in self._fact_values:
+            return True
+        # One character names nothing; it would match every stray letter of the brief.
+        return len(said) >= 2 and (mentions(self._brief_text, said) or mentions(agent_text, said))
 
 
 def _structural_issues(decision: SimDecision) -> list[GuardIssue]:
