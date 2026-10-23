@@ -6,13 +6,15 @@
 For each pair it shows the rubric, the conversation exactly as the judge reads it, and what the
 conversation changed in the world, then asks for your verdict. Every answer is appended to
 ``labels.jsonl`` as a label by ``human:<name>``; nothing is ever rewritten, and your newest label
-of a pair is the one that counts. By default the review is blind (the AI draft is shown only after
-you answer); pairs you have already labeled for the current rubric version are skipped, so you can
-stop with ``q`` and resume later. Labeling rules: GUIDE.md next to this script.
+of a pair is the one that counts. By default the review is blind: the AI draft, and whether the
+pair is marked borderline, are shown only after you answer. Pairs you have already labeled for
+the current rubric version are skipped, so you can stop with ``q`` and resume later. Labeling
+rules: GUIDE.md next to this script.
 """
 
 import argparse
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -105,16 +107,17 @@ def review(
     recorded = 0
     for index, (case, rubric_name) in enumerate(todo, start=1):
         draft = _draft(labels, case, rubric_name)
+        hints = _Hints(draft, borderline=case.rubrics[rubric_name].borderline)
         _show(console, calibration_set, case, rubric_name, index, len(todo))
-        if show_draft and draft is not None:
-            _show_draft(console, draft)
+        if show_draft:
+            hints.show(console)
         answer = ask("Verdict", ANSWERS)
         if answer == "q":
             break
         if answer == "s":
             continue
-        if not show_draft and draft is not None:
-            _show_draft(console, draft)
+        if not show_draft:
+            hints.show(console)
         note = ask("One-line rationale (Enter to keep the draft's when you agree)", None).strip()
         passed = answer == "p"
         if not note and draft is not None and draft.passed == passed:
@@ -145,13 +148,16 @@ def _labeled_by(
 def _draft(
     labels: Sequence[HumanLabel], case: CalibrationCase, rubric_name: str
 ) -> HumanLabel | None:
+    """The AI draft of the pair for the current rubric version (an older one judged other words)."""
     trial_id = case_trial_id(case.id)
+    version = rubric(rubric_name).version
     drafts = [
         label
         for label in labels
         if label.labeler == DRAFT_LABELER
         and label.trial_id == trial_id
         and label.grader == grader_name(rubric_name)
+        and label.grader_version == version
     ]
     return max(drafts, key=lambda label: label.created_at, default=None)
 
@@ -164,15 +170,26 @@ def _show(
     index: int,
     total: int,
 ) -> None:
-    hard = " (marked borderline)" if case.rubrics[rubric_name].borderline else ""
-    console.rule(f"{index}/{total}  {case.id}  -  {rubric_name}{hard}")
+    console.rule(f"{index}/{total}  {case.id}  -  {rubric_name}")
     console.print(Panel(rubric(rubric_name).text, title=f"Rubric: {rubric_name}"))
     console.print(describe(case, calibration_set.world), markup=False, highlight=False)
 
 
-def _show_draft(console: Console, draft: HumanLabel) -> None:
-    verdict = "PASS" if draft.passed else "FAIL"
-    console.print(f"AI draft: {verdict}. {draft.note or ''}", markup=False, highlight=False)
+@dataclass(frozen=True, slots=True)
+class _Hints:
+    """What the set already says about a pair; a blind review shows it only after the answer."""
+
+    draft: HumanLabel | None
+    borderline: bool
+
+    def show(self, console: Console) -> None:
+        if self.borderline:
+            console.print("The set marks this pair as a hard, borderline case.")
+        if self.draft is not None:
+            verdict = "PASS" if self.draft.passed else "FAIL"
+            console.print(
+                f"AI draft: {verdict}. {self.draft.note or ''}", markup=False, highlight=False
+            )
 
 
 if __name__ == "__main__":

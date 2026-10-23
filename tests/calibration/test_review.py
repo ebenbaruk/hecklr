@@ -128,6 +128,20 @@ def test_sc7_review_can_show_the_draft_first(
     assert "AI draft:" in output
 
 
+def test_sc7_blind_review_does_not_say_which_pairs_are_borderline_before_the_answer(
+    review_script: ModuleType, set_copy: CalibrationSet
+) -> None:
+    pairs = sum(1 for _, name in set_copy.items() if name == "tone")
+    skip_all = ["s"] * pairs
+
+    _, blind = _run(review_script, set_copy, _answers(*skip_all))
+    _, open_review = _run(review_script, set_copy, _answers(*skip_all), show_draft=True)
+
+    assert "borderline" not in blind
+    assert "AI draft:" not in blind
+    assert "The set marks this pair as a hard, borderline case." in open_review
+
+
 def test_review_refuses_a_name_with_spaces(
     review_script: ModuleType, set_copy: CalibrationSet
 ) -> None:

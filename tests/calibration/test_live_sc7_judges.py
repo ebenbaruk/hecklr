@@ -3,12 +3,13 @@
 Paid: ``pytest -m live tests/calibration`` runs it only when ``OPENAI_API_KEY`` is set and
 ``HECKLR_TEST_BUDGET_USD`` covers the estimated cost (``test_sc7_live_run_cost_estimate``: 434
 calls, about 2.7M input tokens, about $0.33 on ``openai/gpt-6-luna``; calibration/judges/GUIDE.md).
-It counts
-labels of ``HECKLR_SC7_LABELERS`` (comma-separated prefixes, default ``human:``) and skips while no
-person has labeled the set: agreement with AI drafts is not SC7 evidence.
+It counts labels of ``HECKLR_SC7_LABELERS`` (comma-separated prefixes, default ``human:``) and
+skips until people have labeled at least 40 pairs of every rubric at its current version:
+agreement with AI drafts, or with a partial review, is not SC7 evidence.
 """
 
 import os
+from collections import Counter
 from collections.abc import Callable
 from decimal import Decimal
 
@@ -17,10 +18,12 @@ import pytest
 
 from hecklr.judge_calibration import (
     CALIBRATED_RUBRICS,
+    MIN_LABELS_PER_RUBRIC,
     CalibrationSet,
     by_labeler,
     grader_name,
     judge_set,
+    labeled_pairs,
     read_labels,
 )
 from hecklr_llm import FakeLLM, ProviderRouter, estimate_input_tokens, estimate_request_cost
@@ -71,16 +74,19 @@ def test_sc7_live_judges_agree_with_human_labels_on_every_rubric(
     if Decimal(os.environ.get("HECKLR_TEST_BUDGET_USD", "0")) < cost:
         pytest.skip(f"HECKLR_TEST_BUDGET_USD does not cover the estimated ${cost:.2f}")
     labels = by_labeler(read_labels(calibration_set.labels_path), LABELERS)
-    unlabeled = set(map(grader_name, CALIBRATED_RUBRICS)) - {label.grader for label in labels}
-    if unlabeled:
+    pairs = labeled_pairs(calibration_set, labels)
+    reviewed = Counter(name for _, name in pairs)
+    short = {n: reviewed[n] for n in CALIBRATED_RUBRICS if reviewed[n] < MIN_LABELS_PER_RUBRIC}
+    if short:
+        # Kappa on a handful of labels after a partial review would be noise, not SC7 evidence.
         pytest.skip(
-            f"no label by {LABELERS} yet for {sorted(unlabeled)}: review the set "
-            "(calibration/judges/GUIDE.md)"
+            f"fewer than {MIN_LABELS_PER_RUBRIC} pairs labeled by {LABELERS} at the current "
+            f"rubric version: {short}; review the set (calibration/judges/GUIDE.md)"
         )
 
     async def judge() -> list[Grade]:
         async with ProviderRouter() as router:
-            return await judge_set(calibration_set, router, MODEL)
+            return await judge_set(calibration_set, router, MODEL, pairs=pairs)
 
     grades = anyio.run(judge)
     spent = sum((grade.cost_usd for grade in grades), Decimal(0))

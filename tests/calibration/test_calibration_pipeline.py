@@ -19,7 +19,13 @@ import hecklr.commands._common
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
-from hecklr.judge_calibration import CALIBRATED_RUBRICS, CalibrationSet, grader_name, judge_set
+from hecklr.judge_calibration import (
+    CALIBRATED_RUBRICS,
+    DRAFT_LABELER,
+    CalibrationSet,
+    grader_name,
+    judge_set,
+)
 from hecklr.scaffold import AgentChoice, ModelChoice, write_project
 from hecklr_llm import FakeLLM
 from hecklr_schemas import Grade, HumanLabel
@@ -66,12 +72,12 @@ def _calibrate(
 
 def test_sc7_a_judge_agreeing_with_every_label_has_kappa_1_on_every_rubric(
     calibration_set: CalibrationSet,
-    draft_labels: list[HumanLabel],
+    current_labels: list[HumanLabel],
     scripted_judge: Callable[[Verdict], FakeLLM],
 ) -> None:
     judge = scripted_judge(perfect)
 
-    calibrations = _calibrate(calibration_set, judge, draft_labels)
+    calibrations = _calibrate(calibration_set, judge, current_labels)
 
     assert len(judge.calls) == sum(1 for _ in calibration_set.items())
     for name, calibration in calibrations.items():
@@ -83,10 +89,10 @@ def test_sc7_a_judge_agreeing_with_every_label_has_kappa_1_on_every_rubric(
 
 def test_sc7_a_coin_flip_judge_has_kappa_near_0_and_is_untrusted(
     calibration_set: CalibrationSet,
-    draft_labels: list[HumanLabel],
+    current_labels: list[HumanLabel],
     scripted_judge: Callable[[Verdict], FakeLLM],
 ) -> None:
-    calibrations = _calibrate(calibration_set, scripted_judge(coin_flip), draft_labels)
+    calibrations = _calibrate(calibration_set, scripted_judge(coin_flip), current_labels)
 
     kappas = {name: calibration.kappa.value for name, calibration in calibrations.items()}
     assert all(abs(kappa) < 0.35 for kappa in kappas.values()), kappas
@@ -96,7 +102,7 @@ def test_sc7_a_coin_flip_judge_has_kappa_near_0_and_is_untrusted(
 
 def test_sc7_a_judge_wrong_on_the_borderline_cases_gets_an_intermediate_kappa(
     calibration_set: CalibrationSet,
-    draft_labels: list[HumanLabel],
+    current_labels: list[HumanLabel],
     scripted_judge: Callable[[Verdict], FakeLLM],
 ) -> None:
     borderline = _borderline(calibration_set)
@@ -104,7 +110,7 @@ def test_sc7_a_judge_wrong_on_the_borderline_cases_gets_an_intermediate_kappa(
     def flipped(case_id: str, rubric: str, label: bool) -> bool:
         return label != ((case_id, rubric) in borderline)
 
-    calibrations = _calibrate(calibration_set, scripted_judge(flipped), draft_labels)
+    calibrations = _calibrate(calibration_set, scripted_judge(flipped), current_labels)
 
     for name, calibration in calibrations.items():
         kappa = calibration.kappa
@@ -138,6 +144,11 @@ def config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return config
 
 
+def _write_labels(path: Path, labels: list[HumanLabel]) -> Path:
+    path.write_text("".join(label.model_dump_json() + "\n" for label in labels), encoding="utf-8")
+    return path
+
+
 def _calibrate_cli(config: Path, judge: FakeLLM, *args: str) -> tuple[int, str]:
     result = CliRunner().invoke(
         app,
@@ -148,17 +159,24 @@ def _calibrate_cli(config: Path, judge: FakeLLM, *args: str) -> tuple[int, str]:
 
 
 def test_sc7_calibrate_judges_set_trusts_a_judge_that_agrees_with_the_labels(
-    config_path: Path, scripted_judge: Callable[[Verdict], FakeLLM]
+    config_path: Path,
+    tmp_path: Path,
+    current_labels: list[HumanLabel],
+    scripted_judge: Callable[[Verdict], FakeLLM],
 ) -> None:
-    code, output = _calibrate_cli(config_path, scripted_judge(perfect))
+    # The counting label of each pair only, so a pair a person relabeled is not counted twice.
+    labels = _write_labels(tmp_path / "labels.jsonl", current_labels)
+
+    code, output = _calibrate_cli(config_path, scripted_judge(perfect), "--labels", str(labels))
 
     assert code == exit_codes.OK, output
     for name in CALIBRATED_RUBRICS:
         assert f"{grader_name(name)} " in output
     assert output.count("1.00 [1.00, 1.00]") == len(CALIBRATED_RUBRICS)
     assert "NO (kappa < 0.70)" not in output
-    # The shipped labels are AI drafts: the command says they are not SC7 evidence.
-    assert "are not from 'human:' labelers (claude-draft)" in output
+    # While AI drafts are among the labels, the command says they are not SC7 evidence.
+    drafts = any(label.labeler == DRAFT_LABELER for label in current_labels)
+    assert ("are not from 'human:' labelers (claude-draft)" in output) == drafts
 
 
 def test_sc7_calibrate_judges_set_fails_a_coin_flip_judge(
@@ -170,13 +188,21 @@ def test_sc7_calibrate_judges_set_fails_a_coin_flip_judge(
     assert output.count("NO (kappa < 0.70)") == len(CALIBRATED_RUBRICS)
 
 
-def test_sc7_calibrate_judges_set_with_only_human_labels_reports_every_rubric_uncalibrated(
-    config_path: Path, scripted_judge: Callable[[Verdict], FakeLLM]
+def test_sc7_calibrate_judges_set_refuses_to_judge_when_no_human_labeled_it(
+    config_path: Path,
+    tmp_path: Path,
+    all_labels: list[HumanLabel],
+    scripted_judge: Callable[[Verdict], FakeLLM],
 ) -> None:
-    # No person has reviewed the shipped drafts yet: with --labeler human: nothing is calibrated.
-    code, output = _calibrate_cli(config_path, scripted_judge(perfect), "--labeler", "human:")
+    drafts = [label for label in all_labels if label.labeler == DRAFT_LABELER]
+    labels = _write_labels(tmp_path / "drafts.jsonl", drafts)
+    judge = scripted_judge(perfect)
 
-    assert code == exit_codes.CHECK_FAILED, output
-    assert output.count("not calibrated, no label of its current rubric version") == len(
-        CALIBRATED_RUBRICS
+    code, output = _calibrate_cli(
+        config_path, judge, "--labels", str(labels), "--labeler", "human:"
     )
+
+    # Nothing to compare with: refused before a single (paid) judge call.
+    assert code == exit_codes.CONFIG_ERROR, output
+    assert "no label by human: is of a current rubric version" in output
+    assert judge.calls == []

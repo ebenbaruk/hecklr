@@ -8,17 +8,18 @@ from hecklr.judge_calibration import (
     CALIBRATED_RUBRICS,
     DRAFT_LABELER,
     HUMAN_PREFIX,
+    MIN_LABELS_PER_RUBRIC,
     CalibrationSet,
     case_trial_id,
     grade_context,
     grader_name,
-    read_labels,
+    labeled_pairs,
+    make_label,
+    now,
     rubric,
 )
 from hecklr_schemas import Channel, HumanLabel
 
-MIN_LABELS_PER_RUBRIC = 40
-"""SC7 calibration needs at least 40 labeled conversations per rubric (task WShjudge)."""
 PASS_SHARE = (0.40, 0.60)
 """Balanced: neither verdict below 40% of a rubric's labels, so kappa is not dominated by one."""
 MIN_BORDERLINE_SHARE = 0.10
@@ -33,18 +34,18 @@ def _per_rubric(labels: list[HumanLabel]) -> dict[str, list[HumanLabel]]:
 
 
 def test_sc7_every_builtin_rubric_has_at_least_40_labeled_conversations(
-    draft_labels: list[HumanLabel],
+    current_labels: list[HumanLabel],
 ) -> None:
-    counts = {name: len(rows) for name, rows in _per_rubric(draft_labels).items()}
+    counts = {name: len(rows) for name, rows in _per_rubric(current_labels).items()}
 
     assert set(counts) == set(CALIBRATED_RUBRICS)
     assert all(n >= MIN_LABELS_PER_RUBRIC for n in counts.values()), counts
 
 
-def test_sc7_labels_are_balanced_between_pass_and_fail(draft_labels: list[HumanLabel]) -> None:
+def test_sc7_labels_are_balanced_between_pass_and_fail(current_labels: list[HumanLabel]) -> None:
     shares = {
         name: sum(label.passed for label in rows) / len(rows)
-        for name, rows in _per_rubric(draft_labels).items()
+        for name, rows in _per_rubric(current_labels).items()
     }
 
     assert all(PASS_SHARE[0] <= share <= PASS_SHARE[1] for share in shares.values()), shares
@@ -77,35 +78,73 @@ def test_sc7_every_case_replays_against_the_world(calibration_set: CalibrationSe
         assert any(event.actor == "agent" for event in ctx.events), case.id
 
 
-def test_sc7_each_labeled_pair_has_exactly_one_draft_label(
-    calibration_set: CalibrationSet, draft_labels: list[HumanLabel]
+def test_sc7_every_labeled_pair_has_a_label_of_its_current_rubric_version(
+    calibration_set: CalibrationSet, all_labels: list[HumanLabel]
 ) -> None:
-    expected = {
-        (case_trial_id(case.id), grader_name(name)) for case, name in calibration_set.items()
-    }
-    drafted = Counter((label.trial_id, label.grader) for label in draft_labels)
+    # A rubric edit (or one of the shared judge prompt or transcript format) changes its version.
+    # The old labels stay (append-only) but judged other words, so the pair must be labeled again.
+    current = labeled_pairs(calibration_set, all_labels)
+    changed = sorted(
+        {name for case, name in calibration_set.items() if (case.id, name) not in current}
+    )
 
-    assert set(drafted) == expected
-    assert set(drafted.values()) == {1}
+    assert not changed, "".join(
+        f"\nrubric {name} changed since it was labeled: re-review it with "
+        f"`uv run python calibration/judges/review.py --name <you> --rubric {name}` (GUIDE.md)"
+        for name in changed
+    )
 
 
-def test_sc7_labels_pin_the_current_rubric_versions(calibration_set: CalibrationSet) -> None:
-    # A rubric edit changes its version; labels of the old wording no longer count (re-review
-    # them with calibration/judges/review.py, see GUIDE.md).
-    versions = {grader_name(name): rubric(name).version for name in CALIBRATED_RUBRICS}
-    stale = [
-        (label.grader, label.labeler)
-        for label in read_labels(calibration_set.labels_path)
-        if label.grader_version != versions[label.grader]
+def _drafts_per_version(labels: list[HumanLabel]) -> set[int]:
+    return set(
+        Counter(
+            (label.trial_id, label.grader, label.grader_version)
+            for label in labels
+            if label.labeler == DRAFT_LABELER
+        ).values()
+    )
+
+
+def test_sc7_labels_belong_to_the_set_with_at_most_one_draft_per_rubric_version(
+    calibration_set: CalibrationSet, all_labels: list[HumanLabel]
+) -> None:
+    pairs = {(case_trial_id(case.id), grader_name(name)) for case, name in calibration_set.items()}
+
+    assert {(label.trial_id, label.grader) for label in all_labels} <= pairs
+    assert _drafts_per_version(all_labels) == {1}
+
+
+def test_sc7_after_a_rubric_change_appending_a_review_restores_the_invariants(
+    calibration_set: CalibrationSet, all_labels: list[HumanLabel]
+) -> None:
+    # The documented recovery (GUIDE.md): rows are never edited or deleted, a review appends.
+    aged = [
+        label.model_copy(update={"grader_version": "before-the-edit"})
+        if label.grader == "judge:tone"
+        else label
+        for label in all_labels
     ]
+    tone_pairs = [(case, name) for case, name in calibration_set.items() if name == "tone"]
+    assert {name for _, name in tone_pairs} - {
+        name for _, name in labeled_pairs(calibration_set, aged)
+    } == {"tone"}
 
-    assert not stale, f"labels of an outdated rubric version: {Counter(stale)}"
+    review = [
+        make_label(case, name, passed=True, labeler="human:ada", note=None, created_at=now())
+        for case, name in tone_pairs
+    ]
+    reviewed = aged + review
+
+    assert labeled_pairs(calibration_set, reviewed) == {
+        (case.id, name) for case, name in calibration_set.items()
+    }
+    assert _drafts_per_version(reviewed) == {1}
 
 
 def test_sc7_every_label_has_a_one_line_rationale_and_a_known_labeler(
-    calibration_set: CalibrationSet,
+    all_labels: list[HumanLabel],
 ) -> None:
-    for label in read_labels(calibration_set.labels_path):
+    for label in all_labels:
         assert label.labeler == DRAFT_LABELER or label.labeler.startswith(HUMAN_PREFIX)
         if label.labeler == DRAFT_LABELER:
             assert label.note, label
