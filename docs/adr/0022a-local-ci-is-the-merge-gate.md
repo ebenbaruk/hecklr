@@ -21,8 +21,9 @@ question returns at launch.
 - GitHub Actions is **disabled** on `ebenbaruk/hecklr` (repository setting), so no job starts
   and nothing is billed. The workflow files stay: they document the checks, they are the
   examples users copy for the Hecklr Action, and they run for free once the repository is public.
-- SC4 timing keeps ADR 0010b's rule: a timing case that fails under load is rerun alone on a
-  quieter machine, and both results are reported.
+- A timing-sensitive failure under load (SC4 timing, ADR 0010b, or a subprocess start-up
+  deadline) is rerun alone on a quieter machine, an issue is filed, and both results are
+  reported. Any other failing step blocks the merge.
 
 ## Consequences
 

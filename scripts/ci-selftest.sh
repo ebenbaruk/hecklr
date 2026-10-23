@@ -3,11 +3,13 @@
 # run -> latest-run -> gate steps on the reference agent (rules brain, scripted customers, no
 # model). A clean candidate must pass (0), seeded fault F3 must regress (1), and an agent that
 # cannot start must be a harness error (3) that records no run. The GitHub-only steps (cache,
-# artifact upload, PR comment) have no local equivalent.
+# artifact upload, PR comment) have no local equivalent. Two differences from a fresh job: it
+# reuses the current environment (the action syncs without extras), and earlier local runs stay
+# in examples/acme-maintenance/.hecklr (harmless: `latest-run --since` picks only this run's).
 # Usage: scripts/ci-selftest.sh <log-dir>
 set -u
-root=$(cd "$(dirname "$0")/.." && pwd)
-out=$1
+root=$(cd "$(dirname "$0")/.." && pwd) || exit 2
+out=$(cd "${1:?usage: ci-selftest.sh <log-dir>}" && pwd) || exit 2
 project=$root/examples/acme-maintenance
 cd "$project" || exit 2
 unset OPENAI_API_KEY
@@ -22,6 +24,7 @@ trap cleanup EXIT
 # action <config> <suite> <baseline-run-or-empty>: prints "<gate exit> <candidate run id>"
 action() {
   local config=$1 suite=$2 baseline=$3 ids since run_exit candidate code
+  rm -rf hecklr-report hecklr-gate.md # as action.yml does before each run
   since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   sleep 1
   local args=(run --config "$config" --suite "$suite")
