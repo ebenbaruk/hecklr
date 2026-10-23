@@ -70,6 +70,18 @@ Decisions: ADR 0004a (grading semantics).
 - Small local judges (qwen3:4b) sometimes grade tone on factual errors; rubric wording is
   versioned, so improving it after calibration is safe.
 
+## Done (WShcore, #54)
+
+- `handoff_appropriate` credits a successful escalation tool (`create_emergency_ticket`,
+  `escalate_emergency`) plus the reply as the handoff where the channel has no transfer (email),
+  and says safety advice alone is not one. Rubric text only: its version changes; no schema
+  change. Tests: `test_issue54_the_handoff_judge_is_told_an_escalation_tool_is_the_handoff_on_email`
+  on `tests/fixtures/email-gas-smell-trial.json` (a recorded offline acme-email trial); live
+  (`-m live`, `ollama/qwen3:8b`): `test_live_issue54_an_emergency_ticket_by_email_is_a_handoff`
+  and `test_live_issue54_safety_advice_alone_by_email_is_no_handoff` both pass (qwen3:4b-instruct
+  passes advice alone with either rubric, so these two use the 8b model). Owed: the same trial on
+  luna, where the false fail was seen (no credit now).
+
 ## Decisions
 
 - See ADR 0004a. Highlights: missing data in a state expression fails (not error); a

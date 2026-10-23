@@ -200,6 +200,17 @@ Done:
   DSP-worker start failure the console script had; the general fix belongs in `hecklr-voice`'s
   pool (issue #31).
 
+## Done (WShcore, #74)
+
+- `hecklr init` probes Ollama at `OLLAMA_BASE_URL` without its `/v1` (`probe.local_ollama_url`),
+  like `doctor` and the provider layer. Tests: `test_issue74_ollama_is_looked_for_at_ollama_base_url`
+  (5 cases), `test_issue74_init_probes_ollama_where_ollama_base_url_points`; the SC1 docs test now
+  sets `OLLAMA_BASE_URL=http://127.0.0.1:9` instead of the proxy variables and passes on a machine
+  running Ollama. Exercised: `hecklr init --yes` picks `ollama/qwen3:4b-instruct` with the local
+  Ollama, and `fake/` models with `OLLAMA_BASE_URL=http://127.0.0.1:9/v1`.
+- Open: `hecklr doctor`'s "models available" check still probes the default URL (doctor.py, not
+  owned by WShcore; follow-up issue).
+
 ## Decisions
 
 - ADR 0007e: voice/email drivers, provider defaults and checks, recordings, world URLs on
