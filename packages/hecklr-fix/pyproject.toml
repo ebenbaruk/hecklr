@@ -11,7 +11,6 @@ dependencies = [
     "hecklr-llm",
     "hecklr-core",
     "hecklr-grade",
-    "hecklr-mine",
     "hecklr-report",
     "hecklr-sim",
     "hecklr-stats",

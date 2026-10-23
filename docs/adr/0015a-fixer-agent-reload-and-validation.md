@@ -37,8 +37,10 @@ can never reach α = 0.05 (ADR 0005b), and most clusters are that small.
   and are outside the project. The user's files are never written; `--pr` commits in a temporary
   `git worktree` from `HEAD` and refuses when the editable files have uncommitted changes.
 - **Targets.** A mined cluster (`hecklr fix CLUSTER`) runs the scenarios proposed from it that are
-  not rejected, read through `hecklr_mine` (`load_clusters`, `load_queue`: the ADR 0013a files,
-  newest record wins), so the fixer never re-implements the miner's file layout. `--from-run RUN` builds a
+  not rejected. `hecklr fix` reads them with `hecklr_mine` (`load_clusters`, `load_queue`: the
+  ADR 0013a files, newest record wins, every mining run) and hands them to
+  `hecklr_fix.mined_target`, so the fixer never re-implements the miner's file layout and
+  `hecklr-fix` does not depend on the miner, which stays an optional extra (`hecklr[mine]`). `--from-run RUN` builds a
   `FailureCluster` (`source: run`) from the run's scenarios with a failed trial, or with
   `--baseline RUN` those whose pass rate dropped, narrowed by `--tag` / `--scenario`. Either way the
   scenarios are written into the copy as the suite `hecklr-fix-targeted`. The generator sees the
@@ -95,7 +97,8 @@ Architect review (Wave 4 integration, 2026-10-23), checked against SPEC.md "Fixe
 - **Guardrails are stricter than the spec, not looser.** Editable entries that define the test
   (config, world, any scenario or persona a suite can select) are refused even when listed;
   rubrics and graders are outside the project; "no candidate beat baseline" is an outcome with
-  its own exit code; `--pr` opens a draft, so a human merges.
+  its own exit code; `--pr` only opens a pull request (a draft with `--draft`)
+  and Hecklr never merges, so a human always does.
 - **Cell pairing is a sound deviation for this question.** The spec pairs by scenario because a
   gate generalizes over scenarios. The fixer asks a narrower question ("does it fix *these*
   scenarios, does it break *this* suite") on clusters too small for scenario pairing ever to

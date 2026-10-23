@@ -1,10 +1,9 @@
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 
 from hecklr_fix.errors import FixError
-from hecklr_fix.target import load_mined_target, target_from_run
+from hecklr_fix.target import mined_target, target_from_run
 from hecklr_schemas import (
     Channel,
     ClusterId,
@@ -102,40 +101,29 @@ def _proposal(cluster: FailureCluster, scenario_id: str, **decision: object) -> 
     )
 
 
-def test_a_mined_cluster_runs_its_proposed_and_approved_scenarios(tmp_path: Path) -> None:
+def test_a_mined_cluster_runs_its_proposed_and_approved_scenarios() -> None:
     cluster, other = _cluster(), _cluster()
-    kept = _proposal(cluster, "mined-a")
-    rejected = _proposal(cluster, "mined-b")
     decided = {"reviewer": "eli", "decided_at": NOW}
-    mine = tmp_path / "mine" / new_id()
-    mine.mkdir(parents=True)
-    (mine / "clusters.jsonl").write_text(
-        f"{other.model_dump_json()}\n\n{cluster.model_dump_json()}\n", "utf-8"
-    )
-    records = [
-        kept,
-        rejected,
-        _proposal(other, "other"),
-        kept.model_copy(update={"status": ProposalStatus.APPROVED, **decided}),
-        rejected.model_copy(update={"status": ProposalStatus.REJECTED, **decided}),
-    ]
-    (mine / "proposals.jsonl").write_text("".join(r.model_dump_json() + "\n" for r in records))
+    kept = _proposal(cluster, "mined-a")
+    kept = kept.model_copy(update={"status": ProposalStatus.APPROVED, **decided})
+    rejected = _proposal(cluster, "mined-b")
+    rejected = rejected.model_copy(update={"status": ProposalStatus.REJECTED, **decided})
+    proposed = _proposal(cluster, "mined-c")
 
-    target = load_mined_target(tmp_path / "mine", cluster.id)
+    target = mined_target(
+        [other, cluster], [kept, rejected, _proposal(other, "other"), proposed], cluster.id
+    )
 
     assert target.cluster == cluster
-    assert [s.id for s in target.scenarios] == ["mined-a"]
+    assert [s.id for s in target.scenarios] == ["mined-a", "mined-c"]
 
 
-def test_mined_cluster_errors_name_the_problem(tmp_path: Path) -> None:
+def test_mined_cluster_errors_name_the_problem() -> None:
     cluster = _cluster()
-    mine = tmp_path / "mine" / new_id()
-    mine.mkdir(parents=True)
     with pytest.raises(FixError, match="no cluster"):
-        load_mined_target(tmp_path / "mine", cluster.id)
-    (mine / "clusters.jsonl").write_text(cluster.model_dump_json() + "\n", "utf-8")
+        mined_target([], [], cluster.id)
+    rejected = _proposal(cluster, "mined-a").model_copy(
+        update={"status": ProposalStatus.REJECTED, "reviewer": "eli", "decided_at": NOW}
+    )
     with pytest.raises(FixError, match="no proposed or approved scenario"):
-        load_mined_target(tmp_path / "mine", cluster.id)
-    (mine / "clusters.jsonl").write_text("{not json\n", "utf-8")
-    with pytest.raises(FixError, match=r"clusters\.jsonl:1: not a valid cluster"):
-        load_mined_target(tmp_path / "mine", cluster.id)
+        mined_target([cluster], [rejected], cluster.id)

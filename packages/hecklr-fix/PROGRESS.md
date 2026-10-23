@@ -35,9 +35,11 @@ the v1 mechanism.
   improves the targeted set by +100 pts yet is `rejected_guard` on `tag=catches-f5`
   (−100 pts, p < 0.001, q < 0.001, 18 cells) while the suite verdict alone was inconclusive.
 
-- Mined targets are read through `hecklr_mine` (`load_clusters`, `load_queue`) instead of a copy
-  of the miner's file layout; `hecklr-fix` depends on `hecklr-mine` (no cycle: the miner does not
-  import the fixer). Integration test on real `hecklr mine` output:
+- Mined targets: `hecklr fix CLUSTER` reads the store with `hecklr_mine` (`load_clusters`,
+  `load_queue`) and passes it to `hecklr_fix.mined_target`, instead of a copy of the miner's file
+  layout. `hecklr-fix` does not depend on `hecklr-mine` (kept behind `hecklr[mine]`, spec "small
+  default install"); without it the command exits 78 naming the extra. Integration test on real
+  `hecklr mine` output:
   `packages/hecklr/tests/test_cli_mine.py::test_us10_hecklr_fix_targets_what_hecklr_mine_wrote`.
 
 ## Next

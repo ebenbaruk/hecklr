@@ -2,6 +2,7 @@
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +13,9 @@ from typer.testing import CliRunner
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
+from hecklr.commands.fix import load_mined_target
 from hecklr_core import load_model, load_project
-from hecklr_fix import FixError, load_mined_target
+from hecklr_fix import FixError
 from hecklr_llm import FakeLLM, LLMRequest
 from hecklr_mine import MINE_DIR, decide, generate_log_set, load_queue, read_summary
 from hecklr_schemas import FailureCluster, ProposalStatus, Scenario
@@ -89,12 +91,12 @@ def test_us08_mine_writes_clusters_and_queues_proposals(config_path: Path, logs:
 
 
 def test_us10_hecklr_fix_targets_what_hecklr_mine_wrote(config_path: Path, logs: Path) -> None:
-    """``hecklr mine``'s real output (synthetic logs, offline embedder, FakeLLM) is what
+    """``hecklr mine``'s real output (synthetic logs, hashing embedder, FakeLLM) is what
     ``hecklr fix CLUSTER`` loads: the cluster as mined, with its unrejected proposals."""
     code, output = _mine(config_path, logs)
     assert code == exit_codes.OK, output
-    project = load_project(config_path)
-    mine_root = project.output_dir / MINE_DIR
+    output_dir = load_project(config_path).output_dir
+    mine_root = output_dir / MINE_DIR
     [run_dir] = [path for path in mine_root.iterdir() if path.is_dir()]
     clusters = [
         FailureCluster.model_validate_json(line)
@@ -102,20 +104,39 @@ def test_us10_hecklr_fix_targets_what_hecklr_mine_wrote(config_path: Path, logs:
     ]
     queue = load_queue(mine_root)
     proposed = [cluster for cluster in clusters if any(p.cluster_id == cluster.id for p in queue)]
-    assert proposed, output
+    assert len(proposed) >= 2, output
     rejected = next(p for p in queue if p.cluster_id == proposed[0].id)
     decide(mine_root, rejected.id, ProposalStatus.REJECTED, reviewer="ops@acme")
 
+    targets, refused = 0, 0
     for cluster in proposed:
         expected = [p.scenario for p in queue if p.cluster_id == cluster.id and p.id != rejected.id]
-        if not expected:
+        if expected:
+            target = load_mined_target(output_dir, cluster.id)
+            assert target.cluster == cluster
+            assert list(target.scenarios) == expected
+            assert all(scenario.world == "acme-starter" for scenario in target.scenarios)
+            targets += 1
+        else:
             with pytest.raises(FixError, match="no proposed or approved scenario"):
-                load_mined_target(mine_root, cluster.id)
-            continue
-        target = load_mined_target(mine_root, cluster.id)
-        assert target.cluster == cluster
-        assert list(target.scenarios) == expected
-        assert all(scenario.world == "acme-starter" for scenario in target.scenarios)
+                load_mined_target(output_dir, cluster.id)
+            refused += 1
+    # Both outcomes ran on real output: a cluster to fix, and one whose only proposal a reviewer
+    # rejected.
+    assert targets >= 1
+    assert refused >= 1
+
+    (run_dir / "clusters.jsonl").write_text("{not json\n", "utf-8")
+    with pytest.raises(FixError, match=r"clusters\.jsonl:1: not a valid cluster"):
+        load_mined_target(output_dir, proposed[1].id)
+
+
+def test_hecklr_fix_cluster_without_the_miner_names_the_extra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "hecklr_mine", None)  # what an install without [mine] sees
+    with pytest.raises(FixError, match=r"pip install 'hecklr\[mine\]'"):
+        load_mined_target(tmp_path, "01K0000000000000000000000Z")
 
 
 def test_mine_without_a_model_clusters_offline(

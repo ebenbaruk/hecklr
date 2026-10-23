@@ -44,7 +44,7 @@ from hecklr_fix import (
     PassRequest,
     SuiteRun,
     load_editable,
-    load_mined_target,
+    mined_target,
     open_pull_request,
     render_markdown,
     target_from_run,
@@ -173,6 +173,30 @@ def _required_agent_cmd(agent_cmd: str) -> str:
     return agent_cmd
 
 
+def load_mined_target(output_dir: Path, cluster_id: str) -> FixTarget:
+    """``hecklr fix CLUSTER``'s target, read from the miner's store under ``output_dir``.
+
+    Raises:
+        FixError: the miner is not installed, its store cannot be read, or the cluster has
+            nothing to run.
+    """
+    try:
+        # Imported here: the miner is an optional extra, and it loads scikit-learn, which every
+        # other command would pay for at start-up (as in ``hecklr.commands.mine``).
+        import hecklr_mine
+    except ImportError as exc:
+        raise FixError(
+            "hecklr fix CLUSTER reads the miner's clusters: pip install 'hecklr[mine]'"
+        ) from exc
+    mine_root = output_dir / hecklr_mine.MINE_DIR
+    try:
+        clusters = hecklr_mine.load_clusters(mine_root)
+        proposals = hecklr_mine.load_queue(mine_root)
+    except hecklr_mine.MineError as exc:
+        raise FixError(str(exc)) from exc
+    return mined_target(clusters, proposals, cluster_id)
+
+
 def _target(
     project: Project,
     cluster: str | None,
@@ -186,9 +210,7 @@ def _target(
     if cluster is not None:
         if baseline or tags or scenarios:
             raise FixError("--baseline, --tag and --scenario go with --from-run")
-        from hecklr_mine import MINE_DIR  # imported here: keeps scikit-learn out of start-up
-
-        return load_mined_target(project.output_dir / MINE_DIR, cluster)
+        return load_mined_target(project.output_dir, cluster)
     assert from_run is not None  # noqa: S101 -- exactly one target, checked above
     with config_errors(), open_store(project) as store:
         run = resolve_run(store, from_run)

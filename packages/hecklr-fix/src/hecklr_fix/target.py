@@ -2,9 +2,9 @@
 
 Two sources:
 
-- the miner's store (ADR 0013a), read through ``hecklr_mine``: a ``FailureCluster`` of a mining
-  run and the scenarios proposed from it (approved or still proposed; rejected ones are not the
-  cluster's behaviour as a person judged it);
+- the miner's store (ADR 0013a), as ``hecklr_mine`` reads it: a ``FailureCluster`` and the
+  scenarios proposed from it (approved or still proposed; rejected ones are not the cluster's
+  behaviour as a person judged it);
 - a failing run: the scenarios whose trials failed (``--from-run``), or, against a baseline run,
   the scenarios whose pass rate dropped (the "regression -> fix" flow), optionally narrowed by tag
   or scenario id. The cluster is built from those trials (``source: run``).
@@ -13,7 +13,6 @@ Two sources:
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 from hecklr_core import RunResults
 from hecklr_fix.errors import FixError
@@ -26,6 +25,7 @@ from hecklr_schemas import (
     Persona,
     ProposalStatus,
     Scenario,
+    ScenarioProposal,
     TrialId,
     new_id,
 )
@@ -44,28 +44,26 @@ class FixTarget:
     ``None``."""
 
 
-def load_mined_target(mine_root: Path, cluster_id: str) -> FixTarget:
-    """The cluster ``cluster_id`` from ``<output_dir>/mine`` and its proposed scenarios.
+def mined_target(
+    clusters: Sequence[FailureCluster], proposals: Sequence[ScenarioProposal], cluster_id: str
+) -> FixTarget:
+    """The cluster ``cluster_id`` and the scenarios proposed from it that are not rejected.
+
+    ``clusters`` and ``proposals`` are what the miner's store holds (``hecklr_mine.load_clusters``
+    and ``hecklr_mine.load_queue``: the newest record of each proposal). The fixer takes them as
+    values so that ``hecklr-fix`` does not depend on the miner, an optional extra.
 
     Raises:
-        FixError: no such cluster, none of its proposals is still proposed or approved, or the
-            miner's store cannot be read.
+        FixError: no such cluster, or none of its proposals is still proposed or approved.
     """
-    # Imported here: hecklr_mine loads scikit-learn, which every other command would pay for at
-    # start-up (as in ``hecklr.commands.mine``).
-    from hecklr_mine import MineError, load_clusters, load_queue
-
-    try:
-        cluster = next((c for c in load_clusters(mine_root) if c.id == cluster_id), None)
-        if cluster is None:
-            raise FixError(f"no cluster {cluster_id} under {mine_root}")
-        scenarios = [
-            proposal.scenario
-            for proposal in load_queue(mine_root)  # the newest record of each proposal
-            if proposal.cluster_id == cluster_id and proposal.status is not ProposalStatus.REJECTED
-        ]
-    except MineError as exc:
-        raise FixError(str(exc)) from exc
+    cluster = next((c for c in clusters if c.id == cluster_id), None)
+    if cluster is None:
+        raise FixError(f"no cluster {cluster_id} in the miner's store")
+    scenarios = [
+        proposal.scenario
+        for proposal in proposals
+        if proposal.cluster_id == cluster_id and proposal.status is not ProposalStatus.REJECTED
+    ]
     if not scenarios:
         raise FixError(
             f"cluster {cluster_id} has no proposed or approved scenario to run; "
