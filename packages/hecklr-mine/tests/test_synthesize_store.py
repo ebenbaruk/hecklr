@@ -7,11 +7,20 @@ import pytest
 
 from hecklr_core import load_model
 from hecklr_llm import FakeLLM
-from hecklr_mine import HashingEmbedder, MineError, decide, load_queue, queued_scenarios
+from hecklr_mine import (
+    HashingEmbedder,
+    MineError,
+    decide,
+    load_clusters,
+    load_queue,
+    queued_scenarios,
+)
 from hecklr_mine.cluster import ClusterLabel, make_cluster
 from hecklr_mine.store import (
+    CLUSTERS_FILE,
     PROPOSALS_FILE,
     append_proposals,
+    read_clusters,
     read_proposals,
 )
 from hecklr_mine.synthesize import (
@@ -171,3 +180,23 @@ def test_ws13_a_corrupt_queue_line_is_reported(tmp_path: Path) -> None:
     path.write_text("{}\n", encoding="utf-8")
     with pytest.raises(MineError, match=r"proposals\.jsonl:1"):
         read_proposals(path)
+
+
+def test_ws13_clusters_are_read_from_every_run_oldest_first(tmp_path: Path) -> None:
+    mine_root = tmp_path / "mine"
+    first, second, third = _cluster("a"), _cluster("b"), _cluster("c")
+    (mine_root / "02RUN").mkdir(parents=True)
+    (mine_root / "01RUN").mkdir(parents=True)
+    (mine_root / "02RUN" / CLUSTERS_FILE).write_text(third.model_dump_json() + "\n", "utf-8")
+    (mine_root / "01RUN" / CLUSTERS_FILE).write_text(
+        f"{first.model_dump_json()}\n\n{second.model_dump_json()}\n", "utf-8"
+    )
+    assert load_clusters(mine_root) == [first, second, third]
+    assert load_clusters(tmp_path / "nothing-mined") == []
+
+
+def test_ws13_a_corrupt_cluster_line_is_reported(tmp_path: Path) -> None:
+    path = tmp_path / CLUSTERS_FILE
+    path.write_text("{not json\n", encoding="utf-8")
+    with pytest.raises(MineError, match=r"clusters\.jsonl:1: not a valid cluster"):
+        read_clusters(path)

@@ -24,7 +24,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from hecklr_mine.errors import MineError
 from hecklr_mine.pipeline import MineResult
-from hecklr_schemas import ProposalStatus, Scenario, ScenarioProposal
+from hecklr_schemas import FailureCluster, ProposalStatus, Scenario, ScenarioProposal
 from hecklr_sim import scenario_to_yaml
 
 MINE_DIR: Final = "mine"
@@ -230,6 +230,31 @@ def _find(mine_root: Path, proposal_id: str) -> tuple[Path, ScenarioProposal]:
         if records:
             return path, records[-1]
     raise MineError(f"no proposal {proposal_id} under {mine_root}")
+
+
+def read_clusters(path: Path) -> list[FailureCluster]:
+    """Every cluster of one run's ``clusters.jsonl``, in file order.
+
+    Raises:
+        MineError: A line is not a valid cluster.
+    """
+    records = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if line.strip():
+            try:
+                records.append(FailureCluster.model_validate_json(line))
+            except ValueError as exc:
+                raise MineError(f"{path}:{number}: not a valid cluster: {exc}") from exc
+    return records
+
+
+def load_clusters(mine_root: Path) -> list[FailureCluster]:
+    """Every run's clusters under ``<output_dir>/mine``, oldest run first."""
+    return [
+        cluster
+        for path in sorted(mine_root.glob(f"*/{CLUSTERS_FILE}"))
+        for cluster in read_clusters(path)
+    ]
 
 
 def read_summary(directory: Path) -> MineSummary:
