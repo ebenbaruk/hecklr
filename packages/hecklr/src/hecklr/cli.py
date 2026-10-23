@@ -17,6 +17,7 @@ from hecklr.commands import github, stubs
 from hecklr.commands.calibrate import calibrate
 from hecklr.commands.compare import compare
 from hecklr.commands.doctor import doctor
+from hecklr.commands.fix import fix
 from hecklr.commands.gate import gate
 from hecklr.commands.init import init
 from hecklr.commands.mine import mine
@@ -80,6 +81,7 @@ app.command(help="Build HTML, Markdown, JSON or JUnit output for a run.")(report
 app.command(help="Self-tests: A/A false-positive rate, judge agreement, voice loopback.")(calibrate)
 app.command(help="Convert real transcripts into replay scenarios.")(replay)
 app.command(help="Mine production logs into failure clusters and proposed scenarios.")(mine)
+app.command(help="Generate prompt patches for a failure cluster and keep only validated ones.")(fix)
 app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
 app.command(help="Start the local web UI.")(ui)
 stubs.register(app)

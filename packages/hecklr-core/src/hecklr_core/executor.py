@@ -249,7 +249,9 @@ class RunExecutor:
                 )
                 with anyio.CancelScope(shield=True):
                     await self._store.write_run(self._final(running, status, budget, tally))
-                _log.error("run.end", status=status.value, error=repr(exc))
+                # A cancellation (Ctrl-C, a caller's deadline) is the user's decision, not an error.
+                log = _log.info if status is RunStatus.CANCELLED else _log.error
+                log("run.end", status=status.value, error=repr(exc))
                 raise
             status = RunStatus.BUDGET_EXCEEDED if budget.exceeded else RunStatus.COMPLETED
             final = self._final(running, status, budget, tally)

@@ -20,7 +20,9 @@ event sink and no clock.
   `complete_structured`. All fields are required because small models fill required fields
   reliably.
 - **Modes.** `scripted` → `ScriptedSimulator`, which never calls a model; its script position is
-  the number of customer messages in the dialogue, so it holds no state. Running out of script
+  the number of its lines the dialogue's customer turns already said, in order (amended for
+  issue #44: a voice barge-in interjection is a customer turn but not a line), so it holds no
+  state. Running out of script
   ends with `goal_achieved`: graders, not the end reason, decide success. `guided` and `replay` →
   `GuidedSimulator`. A persona with `adversarial` set follows its strategy in any non-scripted
   mode, so red-team personas can be crossed with ordinary scenarios; `adversarial` mode without a
@@ -79,3 +81,9 @@ event sink and no clock.
   optional LLM audit covers that.
 - Progress judgement still depends on the model. Small local models are noisier, which the live
   tests check only as plumbing (ADR 0005).
+- Issue #68 (amended, Wave 4): a `facts_revealed` entry is known when it is a fact's or a decoy's
+  name, or a value (the whole entry, or the part after `name:`) that the brief (goal, facts,
+  decoys) or the agent names as a whole token. The text checks already accepted these values, so
+  a customer naming the other customer its goal tells it to name ("Martin Dubois", `C-2077`), or
+  repeating an address the agent leaked, no longer ends the trial as a harness error. Values
+  found nowhere in the brief or the agent's words are still rejected.

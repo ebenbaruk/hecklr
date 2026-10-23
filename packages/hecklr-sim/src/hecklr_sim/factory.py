@@ -11,7 +11,7 @@ from hecklr_schemas import (
     SimulatorFactory,
     TrialBrief,
 )
-from hecklr_sim.guided import GuidedSimulator, SimulatorSettings
+from hecklr_sim.guided import DEFAULT_MAX_TOKENS, GuidedSimulator, SimulatorSettings
 from hecklr_sim.scripted import ScriptedSimulator
 from hecklr_sim.strategies import BUILTIN_STRATEGIES, AttackStrategy, resolve_strategy
 
@@ -22,7 +22,7 @@ def make_simulator(
     max_regenerations: int = 2,
     llm_consistency_check: bool = False,
     temperature: float | None = None,
-    max_tokens: int = 512,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     strategies: Mapping[str, AttackStrategy] = BUILTIN_STRATEGIES,
     clock_factory: Callable[[], Clock] = MonotonicClock,
 ) -> SimulatorFactory:

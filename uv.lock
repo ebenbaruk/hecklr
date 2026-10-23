@@ -1524,14 +1524,30 @@ name = "hecklr-fix"
 version = "0.1.0"
 source = { editable = "packages/hecklr-fix" }
 dependencies = [
+    { name = "anyio" },
+    { name = "hecklr-core" },
+    { name = "hecklr-grade" },
     { name = "hecklr-llm" },
+    { name = "hecklr-report" },
     { name = "hecklr-schemas" },
+    { name = "hecklr-sim" },
+    { name = "hecklr-stats" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.10" },
+    { name = "hecklr-core", editable = "packages/hecklr-core" },
+    { name = "hecklr-grade", editable = "packages/hecklr-grade" },
     { name = "hecklr-llm", editable = "packages/hecklr-llm" },
+    { name = "hecklr-report", editable = "packages/hecklr-report" },
     { name = "hecklr-schemas", editable = "packages/hecklr-schemas" },
+    { name = "hecklr-sim", editable = "packages/hecklr-sim" },
+    { name = "hecklr-stats", editable = "packages/hecklr-stats" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

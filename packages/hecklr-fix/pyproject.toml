@@ -9,6 +9,14 @@ authors = [{ name = "Eli Benbaruk" }]
 dependencies = [
     "hecklr-schemas",
     "hecklr-llm",
+    "hecklr-core",
+    "hecklr-grade",
+    "hecklr-report",
+    "hecklr-sim",
+    "hecklr-stats",
+    "anyio>=4.10",
+    "pydantic>=2.11",
+    "pyyaml>=6.0",
 ]
 
 [build-system]

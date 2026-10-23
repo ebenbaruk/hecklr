@@ -28,7 +28,7 @@ from hecklr.channels import (
 )
 from hecklr.config import load_project_config
 from hecklr.testing import scripted_models
-from hecklr_adapters import make_chat_target
+from hecklr_adapters import DEFAULT_MAX_REPLY_BYTES, cap_reply_size, make_chat_target
 from hecklr_channels import ChatDriver
 from hecklr_core import (
     RUNS_DIR,
@@ -103,6 +103,8 @@ class RunRequest:
     output_dir: Path | None = None
     """Where runs and the response cache go; ``hecklr.yaml``'s ``output_dir`` if ``None``."""
     agent_version: str | None = None
+    max_reply_bytes: int = DEFAULT_MAX_REPLY_BYTES
+    """Text one chat agent turn may carry; past it the turn is an agent error (ADR 00hra)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +167,13 @@ def prepare_run(request: RunRequest) -> PreparedRun:
     )
     channels = {channel for cell in suite.cells for channel in cell.channels}
     run_dir = project.output_dir / RUNS_DIR / plan.run.id
-    built = build_drivers(project, channels, personas=suite.personas.values(), run_dir=run_dir)
+    built = build_drivers(
+        project,
+        channels,
+        personas=suite.personas.values(),
+        run_dir=run_dir,
+        max_reply_bytes=request.max_reply_bytes,
+    )
     adaptive = suite.settings.adaptive if request.adaptive is None else request.adaptive
     return PreparedRun(
         plan=plan,
@@ -209,19 +217,26 @@ def make_trial_grader(scenarios: Mapping[str, Scenario]) -> TrialGrader:
 
 
 def build_drivers(
-    project: Project, channels: set[Channel], *, personas: Iterable[Persona], run_dir: Path
+    project: Project,
+    channels: set[Channel],
+    *,
+    personas: Iterable[Persona],
+    run_dir: Path,
+    max_reply_bytes: int = DEFAULT_MAX_REPLY_BYTES,
 ) -> dict[Channel, BuiltDriver]:
     """One driver per channel the run uses, each bound to the agent's adapter for it.
 
     ``personas`` are checked for what the voice channel needs; voice recordings go under
-    ``run_dir``. ``resolve_suite`` already refused a channel without an adapter.
+    ``run_dir``; a chat reply over ``max_reply_bytes`` fails its turn. ``resolve_suite`` already
+    refused a channel without an adapter.
     """
     adapters = project.config.agent.adapters
     drivers: dict[Channel, BuiltDriver] = {}
     if Channel.CHAT in channels and adapters.chat is not None:
         if isinstance(adapters.chat, PythonAdapterConfig):
             _make_importable(project.root)
-        drivers[Channel.CHAT] = BuiltDriver(ChatDriver(make_chat_target(adapters.chat)))
+        target = cap_reply_size(make_chat_target(adapters.chat), max_reply_bytes)
+        drivers[Channel.CHAT] = BuiltDriver(ChatDriver(target))
     if Channel.VOICE in channels and adapters.voice is not None:
         drivers[Channel.VOICE] = make_voice_driver(
             adapters.voice,
