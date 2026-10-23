@@ -25,6 +25,7 @@ IMPLEMENTED = {
     "calibrate",
     "mine",
     "ui",
+    "bench",
 }
 
 

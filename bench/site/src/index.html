@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hecklr Benchmark</title>
+    <meta
+      name="description"
+      content="Support-agent stacks measured by Hecklr's simulated customers, every number with its 95% confidence interval."
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div class="wrap">
+        <p class="eyebrow">Hecklr benchmark <span id="version"></span></p>
+        <h1>How support-agent stacks hold up under simulated customers</h1>
+        <p class="lede">
+          The same scenarios, callers, seed and models against every stack. Turn-taking is
+          measured from the caller's side on Hecklr's clock. Every number is shown with its 95%
+          confidence interval; overlapping intervals mean the data cannot tell two stacks apart.
+        </p>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <nav class="tabs" role="tablist" aria-label="Tracks" id="tabs"></nav>
+      <p class="track-note" id="track-note"></p>
+      <div class="table-scroll">
+        <table class="board" id="board" aria-live="polite"></table>
+      </div>
+      <p class="empty" id="empty" hidden>No results for this track yet.</p>
+
+      <section class="method">
+        <h2>Method</h2>
+        <ul id="method"></ul>
+        <p>
+          Reproduce a row with <code>hecklr bench reproduce --stack &lt;id&gt;</code>: it runs the
+          stack again and checks that every interval overlaps the published one.
+        </p>
+      </section>
+    </main>
+
+    <footer class="wrap footer" id="footer"></footer>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

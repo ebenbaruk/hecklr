@@ -13,7 +13,7 @@ import structlog
 import typer
 
 from hecklr import __version__
-from hecklr.commands import github, stubs
+from hecklr.commands import bench, github, stubs
 from hecklr.commands.calibrate import calibrate
 from hecklr.commands.compare import compare
 from hecklr.commands.doctor import doctor
@@ -83,6 +83,7 @@ app.command(help="Mine production logs into failure clusters and proposed scenar
 app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
 app.command(help="Start the local web UI.")(ui)
 stubs.register(app)
+app.add_typer(bench.app)
 app.add_typer(github.app)
 
 
