@@ -32,6 +32,7 @@ from hecklr.reports import FILE_NAMES, ReportFormat, write_report
 from hecklr.results import analyze_results, load_results
 from hecklr_core import BudgetEstimateError, RunResults
 from hecklr_report import Analysis, fmt, render_terminal
+from hecklr_report.analysis import nothing_got_through
 from hecklr_schemas import Channel, Grade, LLMProvider, RunStatus, Trial
 
 _STATUS_STYLE = {
@@ -242,5 +243,9 @@ def _exit_code(results: RunResults) -> int:
             f"{escape(results.trials[0].error or 'unknown')}",
             soft_wrap=True,
         )
+        return exit_codes.HARNESS_ERROR
+    if (blocked := nothing_got_through(results)) is not None:
+        # A setup that never let one conversation through measured nothing (ADR 00hra).
+        stderr.print(f"[bold red]No trial got through:[/] {escape(blocked)}", soft_wrap=True)
         return exit_codes.HARNESS_ERROR
     return exit_codes.OK

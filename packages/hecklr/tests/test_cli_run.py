@@ -22,6 +22,7 @@ from hecklr_llm import FakeLLM, ProviderConfigError
 from hecklr_schemas import AgentRef, Budget, LLMRequest, Run, RunId, RunStatus, new_id
 
 Edit = Callable[[Path, str, str], None]
+StubAgent = Callable[..., str]
 
 # The world sandbox and the agents under test listen on 127.0.0.1 ephemeral ports.
 pytestmark = [pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
@@ -135,6 +136,22 @@ def test_every_trial_failing_to_run_is_a_harness_error(config_path: Path) -> Non
     assert code == exit_codes.HARNESS_ERROR
     assert "Every trial failed to run." in output
     assert "Cannot gate: no trial of the candidate run could be analyzed" in output
+
+
+def test_issue33_a_run_where_no_trial_got_through_exits_3_and_fails_a_first_gate(
+    config_path: Path, stub_agent: StubAgent
+) -> None:
+    stub_agent("failing")
+
+    code, output = _run(config_path, "--trials", "1")
+
+    assert code == exit_codes.HARNESS_ERROR, output
+    assert "No trial got through: 5 agent errors, first 'agent returned HTTP 500: boom'" in output
+    assert f"Run {_run_id(output)} (completed)" in output
+    gate = runner.invoke(app, ["gate", "--config", str(config_path), "--missing-baseline", "pass"])
+    gate_output = click.unstyle(gate.output)
+    assert gate.exit_code == exit_codes.HARNESS_ERROR, gate_output
+    assert "no trial of the candidate run got through" in gate_output
 
 
 def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(
