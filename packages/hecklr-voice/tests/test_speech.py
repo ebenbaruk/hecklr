@@ -363,6 +363,7 @@ async def test_ensure_model_file_refuses_bad_downloads(tmp_path: Path) -> None:
     assert _listing(tmp_path) == []
 
 
+@pytest.mark.perf
 @pytest.mark.usefixtures("frozen_heap")
 async def test_dsp_pool_never_blocks_the_event_loop() -> None:
     """Rendering eight noisy 5 s clips at once must leave the loop free for 20 ms frames.

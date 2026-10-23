@@ -21,16 +21,17 @@ def frozen_heap() -> Iterator[None]:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Run the SC3 concurrency benchmark only when asked for, and only serially (#55).
+    """Run the voice timing tests only when asked for, and only serially (#55).
 
-    It measures real-time frame pacing for 50 calls, which is only meaningful on a machine that
-    is not also running the rest of the suite: like SC4 (ADR 0010b), it is skipped inside an
-    xdist worker and asserted by its own serial step, ``uv run pytest -m perf -p no:xdist``.
+    SC3's frame pacing for 50 calls, the loop's CPU between heartbeats and Whisper's CPU per
+    caller turn are only meaningful on a machine that is not also running the rest of the suite:
+    like SC4 (ADR 0010b), they are skipped inside an xdist worker and asserted by their own
+    serial step, ``uv run pytest packages/hecklr-voice -m perf -p no:xdist``.
     """
     if "perf" not in (config.getoption("markexpr") or ""):
-        reason = "benchmark: run alone with -m perf -p no:xdist (SC3)"
+        reason = "timing: run alone with -m perf -p no:xdist"
     elif os.environ.get("PYTEST_XDIST_WORKER"):
-        reason = "SC3 timing needs an idle CPU: uv run pytest -m perf -p no:xdist"
+        reason = "timing needs an idle CPU: uv run pytest -m perf -p no:xdist"
     else:
         return
     for item in items:

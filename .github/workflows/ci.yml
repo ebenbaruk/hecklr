@@ -49,10 +49,11 @@ jobs:
           HECKLR_SHARED_CPU: "1"
         run: uv run pytest -m sc4_timing -p no:xdist --cov --cov-report=
 
-      # SC3 (50 calls without underruns) is real-time pacing too: serial, never under xdist
-      # (#55). It is specified on 8 cores, so it skips on a smaller runner; voice-timing.yml runs
-      # it on a configurable (larger) one.
-      - name: SC3 voice concurrency (serial)
+      # SC3 (50 calls without underruns) and the other voice timing tests (the event loop's CPU
+      # around DSP, Whisper's CPU per caller turn) are serial too, never under xdist (#55). SC3 is
+      # specified on 8 cores, so it skips on a smaller runner; voice-timing.yml runs it on a
+      # configurable (larger) one.
+      - name: SC3 and voice timing (serial)
         run: uv run pytest packages/hecklr-voice -m perf -p no:xdist --cov --cov-append --cov-report=
 
       - name: Unit tests with coverage

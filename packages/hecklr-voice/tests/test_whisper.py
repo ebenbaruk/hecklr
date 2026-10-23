@@ -101,29 +101,50 @@ def _spoken(text: str, directory: Path) -> Pcm16:
         return np.frombuffer(audio.readframes(audio.getnframes()), dtype=np.int16)
 
 
-@pytest.mark.slow
-def test_issue48_words_only_decode_is_fast_and_as_accurate_on_caller_turns(
-    tmp_path: Path,
-) -> None:
+@pytest.fixture(scope="module")
+def caller_turns(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, list[Pcm16]]:
+    """The local base.en model and every caller line spoken, both skipped when not on disk."""
     model = _local_base_en()
+    directory = tmp_path_factory.mktemp("caller-turns")
+    return model, [_spoken(line, directory) for line in CALLER_LINES]
+
+
+@pytest.mark.slow
+def test_issue48_words_only_decode_is_as_accurate_on_caller_turns(
+    caller_turns: tuple[str, list[Pcm16]], tmp_path: Path
+) -> None:
+    model, spoken = caller_turns
     whisper: Any = asr._whisper(model, str(tmp_path))
     errors: list[float] = []
     timestamped_errors: list[float] = []
-    for line in CALLER_LINES:
-        pcm = _spoken(line, tmp_path)
-        started = time.process_time()
+    for line, pcm in zip(CALLER_LINES, spoken, strict=True):
         heard = whisper_transcribe(model, str(tmp_path), pcm, "en-US")
-        cpu_s = time.process_time() - started
         segments, _ = whisper.transcribe(
             pcm.astype(np.float32) / 32768, language="en", beam_size=1, without_timestamps=False
         )
         timestamped = " ".join(segment.text.strip() for segment in segments)
         errors.append(wer(line, heard.text))
         timestamped_errors.append(wer(line, timestamped))
-        print(f"{len(pcm) / SAMPLE_RATE:.1f} s of speech, {cpu_s:.2f} s CPU: {heard.text}")
-        # Generous: ~0.4 s of CPU on a 6 s line idle; the timestamped decode took 6-9 s (#48).
-        assert cpu_s < len(pcm) / SAMPLE_RATE / 2, (line, cpu_s)
         assert heard.confidence is not None
         assert heard.confidence > 0.5
     assert sum(errors) <= sum(timestamped_errors), (errors, timestamped_errors)
     assert np.mean(errors) < 0.15, errors
+
+
+@pytest.mark.slow
+@pytest.mark.perf
+def test_issue48_words_only_decode_keeps_up_with_real_time_on_caller_turns(
+    caller_turns: tuple[str, list[Pcm16]], tmp_path: Path
+) -> None:
+    # A CPU bound measures the machine as much as the decoder when other xdist workers share the
+    # cores (ADR 0010b): the hecklr-voice conftest skips it in parallel runs; the serial perf
+    # step asserts it. ~0.9 s of CPU on a 6 s line idle; the timestamped decode of a captured
+    # Kokoro turn took 6-9 s (#48).
+    model, spoken = caller_turns
+    for pcm in spoken:
+        started = time.process_time()
+        whisper_transcribe(model, str(tmp_path), pcm, "en-US")
+        cpu_s = time.process_time() - started
+        seconds = len(pcm) / SAMPLE_RATE
+        print(f"{seconds:.1f} s of speech, {cpu_s:.2f} s CPU")
+        assert cpu_s < seconds / 2, (seconds, cpu_s)
