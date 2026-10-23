@@ -296,7 +296,7 @@ def test_the_budget_keeps_two_pools_under_one_cap() -> None:
     assert budget.spent == Decimal("1.023456")
 
 
-def health(variant: str = "F1", **failed: int) -> fm.Health:
+def health(variant: str = "F1", /, **failed: int) -> fm.Health:
     return fm.Health(
         variant=variant,
         spent_usd=Decimal("0.1"),

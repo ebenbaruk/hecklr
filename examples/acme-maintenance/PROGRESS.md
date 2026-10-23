@@ -105,6 +105,17 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
   `test_resume_reuses_only_a_run_of_the_same_variant_seed_setup_and_agent_model`,
   `test_a_tier_can_run_on_another_suite`, and the resume leg of `test_sc8_free_tier_end_to_end`.
 
+## Done (WShcore)
+
+- **#69** the rules brain no longer offers a goodwill refund when the customer repeats the invoice:
+  "INV-20628 twice" is no longer a charged-twice reason (a double charge needs a charging word),
+  and a refused invoice is refused again until a reason the policy accepts is given. New
+  `regression` suite (`regression/*.yaml`): the red-team transcript replayed by a scripted
+  customer, deterministic graders, passes on clean and F1-F6. Tests: `test_issue69_*` in
+  `test_nlu.py`, `test_rules_brain.py`, `test_suite.py`.
+- **#76** `tests/test_cost_estimate.py`: the issue's 51-trial matrix finishes with its budget set
+  to its own estimate (ADR 00hca).
+
 ## Next (WS-m1)
 
 - Architect: accept or reject ADR 0020a's spec change (F1 overlay, Tool family).
@@ -122,7 +133,7 @@ quality bar" (fault matrix SC8), "Core data model", "World sandbox", "Graders", 
 - `hecklr run` pre-flights the simulator and judge providers (`check_model_providers`) even for
   the scripted `smoke` suite, which calls no model, so with luna in `hecklr.yaml` the free matrix
   needs `OPENAI_API_KEY` set (no money is spent). WS7c: check only the models a suite will call.
-- `scripts/mypy-all.sh` does not type-check `examples/`; add the `MYPYPATH` command above.
+- Done (#41): `scripts/mypy-all.sh` type-checks every example's agent, tests and scripts.
 - Root `pyproject.toml` `testpaths` now include `examples` (one word) so CI runs these tests.
 
 ## Open questions

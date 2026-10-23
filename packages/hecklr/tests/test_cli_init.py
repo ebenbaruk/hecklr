@@ -150,7 +150,7 @@ def test_a_written_project_that_does_not_load_says_how_to_retry(
 def test_interactive_init_prompts_for_agent_and_models(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("hecklr.commands.init.ollama_models", lambda: None)
+    monkeypatch.setattr("hecklr.commands.init.ollama_models", lambda base: None)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
@@ -230,7 +230,7 @@ def test_luna_projects_carry_its_price_so_budgets_work(tmp_path: Path) -> None:
 
 
 def test_a_key_skips_probing_ollama(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_probe() -> list[str]:
+    def no_probe(base: str) -> list[str]:
         raise AssertionError("Ollama was probed although a key decides")
 
     monkeypatch.setattr("hecklr.commands.init.ollama_models", no_probe)
@@ -240,3 +240,25 @@ def test_a_key_skips_probing_ollama(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     assert code == exit_codes.OK, output
     assert "simulator openai/gpt-6-luna, judge openai/gpt-6-luna" in output
+
+
+def test_issue74_init_probes_ollama_where_ollama_base_url_points(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    probed: list[str] = []
+
+    def gpu_box(base: str) -> list[str] | None:
+        probed.append(base)
+        return ["qwen3:8b"] if base == "http://gpu-box:11500" else None
+
+    monkeypatch.setattr("hecklr.commands.init.ollama_models", gpu_box)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11500/v1")
+
+    code, output = _init(tmp_path, "--yes")
+
+    assert code == exit_codes.OK, output
+    assert probed == ["http://gpu-box:11500"]
+    models = load_run_project(tmp_path / "hecklr.yaml").config.models
+    assert (models.simulator, models.judge) == ("ollama/qwen3:8b", "ollama/qwen3:8b")

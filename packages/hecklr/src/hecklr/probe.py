@@ -7,6 +7,8 @@ from typing import Final, Literal
 import httpx2
 
 DEFAULT_OLLAMA_URL: Final = "http://localhost:11434"
+OLLAMA_URL_ENV: Final = "OLLAMA_BASE_URL"
+"""Where the provider layer reaches Ollama: its OpenAI-compatible ``/v1`` base."""
 PROBE_TIMEOUT_S: Final = 3.0
 
 AdapterKind = Literal["openai-compatible", "http"]
@@ -94,6 +96,12 @@ def _get_json(client: httpx2.Client, url: str) -> object:
     except (httpx2.HTTPError, ValueError):
         # Unreachable or not JSON: simply not this kind of server.
         return None
+
+
+def local_ollama_url(env: Mapping[str, str]) -> str:
+    """The Ollama server to probe: ``OLLAMA_BASE_URL`` without its ``/v1``, else the default."""
+    configured = env.get(OLLAMA_URL_ENV, "").strip() or DEFAULT_OLLAMA_URL
+    return configured.rstrip("/").removesuffix("/v1")
 
 
 def ollama_models(

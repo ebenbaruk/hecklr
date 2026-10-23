@@ -32,6 +32,8 @@ suites:
   # plus their judge-only twins in scripted/judged/, so the judges the spec names for F1, F3 and
   # F6 are measured on the same conversations. Only the judges call a model.
   matrix: { scenarios: "scripted/**/*.yaml", trials: 1, channels: [chat] }
+  # Scripted replays of real failures of the rules brain (e.g. #69), deterministic graders only.
+  regression: { scenarios: "regression/*.yaml", trials: 1, channels: [chat] }
   # The fault matrix's Tier B: the real (LLM) agent, guided customers and judges on the core set
   # plus every booking and options-first scenario (F1) and every red-team scenario (F5: 6 refund
   # fraud attempts that issue #29 leaves runnable).

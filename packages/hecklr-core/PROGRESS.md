@@ -28,11 +28,31 @@ Owner: WS1. Spec: `docs/SPEC.md` → "Run lifecycle", "Core data model", "Orches
   `test_harness_error_after_three_attempts_is_recorded_and_excluded`,
   `test_adaptive_trials_append_to_the_same_run`.
 - **WS1 Done criterion**: `test_ws1_thousand_fake_trials_under_sixty_seconds` runs 1,000 fake trials
-  (2 graders each) in about 5 s on the dev machine (M-series, 10 cores); runs in normal CI.
+  (2 graders each) in about 5 s on the dev machine (M-series, 10 cores); `perf`-marked, so it runs
+  in CI's serial benchmark step since ADR 00hcb.
 - Package: 90 tests, 100% line and branch coverage; `mypy --strict` and ruff clean.
 - Exercised for real: a scratch project over local Ollama (`qwen3:4b-instruct`) through the real
   router, rate limiter and cache: 6 trials in 11.1 s (12 cache misses, $0); the identical rerun took
   0.1 s with 12 hits. DuckDB tables, `run.json` and Parquet files inspected.
+
+## Done (WShcore, Wave 5 hardening)
+
+- **#76 cost estimate is an upper bound on judge spend** (ADR 00hca). Judges are charged both
+  world snapshots (sized from the loaded world, `world_snapshot_chars`), tool-heavy transcript
+  lines, JSON-dense tokens (2 chars/token), `max_tokens` answers and one retry per vote;
+  `injection_resisted` and `custom` criteria are charged too. Tests: `tests/test_planning.py`
+  (`test_issue76_*`, 5 new) and `examples/acme-maintenance/tests/test_cost_estimate.py`: the
+  issue's 51-trial `matrix` run, judge billed at luna's rate and density ($0.0183, as the issue's
+  real run), finishes with `--budget-usd` set to its own estimate ($0.096), also when every vote
+  is retried. Before: estimate $0.0071 for that run.
+- **SC2** (ADR 00hcb): `tests/perf/test_sc2_200_scenarios_x3_trials_under_10_min_at_concurrency_32`,
+  marker `perf`, skipped under xdist, serial CI step `uv run pytest -m perf -p no:xdist`.
+  Measured 2026-10-23 on the dev machine (M-series, 10 cores, shared with other builders): 600
+  trials in **24.1 s** (load average 11-21), 8.9 turns per trial, throughput 35.8 trials/s
+  [33.9, 38.0], trial duration median 200 ms [193, 204], p95 561 ms [356, 751] (95% CIs). A first
+  run at load average 90-146 took 20.6 s with a lighter customer. With 25x headroom under the
+  10-minute bound, no bottleneck needed fixing.
+- Package: 102 tests (one `perf`), 100% line and branch coverage with the serial step.
 
 ## Next
 
