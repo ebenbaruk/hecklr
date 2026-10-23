@@ -1,0 +1,31 @@
+# The Hecklr benchmark: one fixed suite, run against every stack with the same seed, models and
+# trial counts, so leaderboard rows are comparable and reproducible (`hecklr bench reproduce`).
+# Changing anything here or under suite/ changes the suite digest recorded in every result: bump
+# `version` and re-run every stack.
+version: "1.0"
+seed: 20261023
+suite: suite
+world: worlds/acme-maintenance.yaml
+models:
+  # Guided chat customers and every judge. Voice callers are scripted and call no model.
+  simulator: openai/gpt-6-luna
+  judge: openai/gpt-6-luna
+stats: { alpha: 0.05, min_effect: 0.03, bootstrap_resamples: 10000 }
+tracks:
+  # 8 guided customers (luna) over the chat reference tasks, graded by tool, state, safety and
+  # judge criteria.
+  chat:
+    scenarios: "scenarios/chat/*.yaml"
+    trials: 2
+  # 9 scripted callers over voice: 3 latency, 3 barge-in, 3 hesitation. Hecklr hears the agent
+  # with local faster-whisper, the same ears for every stack.
+  voice:
+    scenarios: "scenarios/voice/*.yaml"
+    trials: 2
+    asr: faster-whisper/base.en
+  # The loopback agent's known timing: what the harness measures when an agent is exactly
+  # 600 ms late and stops 150 ms after a barge-in.
+  calibration:
+    scenarios: "scenarios/calibration/*.yaml"
+    trials: 3
+    asr: fake/tag

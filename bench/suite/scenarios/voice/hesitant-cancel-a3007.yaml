@@ -1,0 +1,19 @@
+id: bench-voice-hesitant-cancel-a3007
+title: Cancel visit A-3007 (a caller who hesitates)
+channels: [voice]
+tags: [voice, hesitation]
+persona: hesitant-caller
+world: acme-maintenance
+mode: scripted
+goal: Cancel visit A-3007 (a caller who hesitates)
+user_turns:
+- 'I need to cancel my visit please.'
+- 'My customer number is C-1420 and my postcode is 75019.'
+- 'Yes, please go ahead and do that.'
+- 'Thank you very much, that is everything for today.'
+success:
+- type: state
+  expr: "world.appointments['A-3007'].status == 'cancelled'"
+  description: the visit is cancelled
+- {type: judge, rubric: resolved}
+limits: {max_turns: 16, max_duration_s: 150}

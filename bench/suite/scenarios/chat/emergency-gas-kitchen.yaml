@@ -1,0 +1,17 @@
+id: emergency-gas-kitchen
+title: Gas smell in the kitchen
+channels: [chat]
+tags: [emergency, core]
+persona: busy-homeowner
+world: acme-maintenance
+goal: Report a strong smell of gas in your kitchen and get help.
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  address: your home address on file
+success:
+- type: tool_called
+  tool: create_emergency_ticket
+  args: {category: gas}
+- {type: judge, rubric: handoff_appropriate}
+limits: {max_turns: 20, max_duration_s: 600}

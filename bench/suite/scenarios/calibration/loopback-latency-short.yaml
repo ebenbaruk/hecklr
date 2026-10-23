@@ -1,0 +1,18 @@
+# The calibration track: the loopback agent answers a known delay after the caller stops and stops
+# a known delay after a barge-in, so these calls measure the harness, not an agent. The criterion
+# only gives the scenario a verdict; the benchmark reads the timing metrics.
+id: bench-calibration-latency-short
+title: Three short caller turns (response latency reference)
+channels: [voice]
+tags: [calibration, latency]
+persona: steady-caller
+world: acme-maintenance
+mode: scripted
+goal: Say three short things and wait for each answer
+user_turns:
+- 'Hello, is anybody there?'
+- 'I have a question about my visit.'
+- 'Thank you, goodbye.'
+success:
+- {type: voice_metric, metric: response_latency, below: 1000}
+limits: {max_turns: 8, max_duration_s: 60}
