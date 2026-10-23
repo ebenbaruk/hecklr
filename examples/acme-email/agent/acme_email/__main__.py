@@ -15,7 +15,7 @@ import dataclasses
 import os
 import sys
 from collections.abc import Sequence
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import anyio
@@ -87,12 +87,33 @@ def mailbox_from(args: argparse.Namespace) -> Mailbox:
     )
 
 
-async def run(args: argparse.Namespace, settings: AgentSettings, world: World) -> None:
+def llm_budget_from_env() -> Decimal | None:
+    """``ACME_LLM_BUDGET_USD`` as dollars, or ``None`` when unset or empty.
+
+    Raises:
+        AgentConfigError: the value is not a finite, non-negative number.
+    """
+    raw = os.environ.get("ACME_LLM_BUDGET_USD", "").strip()
+    if not raw:
+        return None
+    try:
+        budget = Decimal(raw)
+    except InvalidOperation:
+        budget = None
+    if budget is None or not budget.is_finite() or budget < 0:
+        raise AgentConfigError(
+            f"ACME_LLM_BUDGET_USD must be a non-negative number of dollars, got {raw!r}"
+        )
+    return budget
+
+
+async def run(
+    args: argparse.Namespace, settings: AgentSettings, world: World, budget_usd: Decimal | None
+) -> None:
     """Serve until interrupted."""
     files = load_email_agent_files(overlay=settings.overlay_dir())
-    cap = os.environ.get("ACME_LLM_BUDGET_USD")
     async with ProviderRouter() as router:
-        llm = SpendCappedProvider(router, Decimal(cap) if cap else None)
+        llm = SpendCappedProvider(router, budget_usd)
         agent = AcmeAgent(files.brain, settings, llm if settings.brain == "llm" else None)
         desk = EmailDesk(agent, files.mailer, files.variant)
         if args.transport == "mailbox":
@@ -109,8 +130,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         settings = settings_from(args)
+        budget_usd = llm_budget_from_env()
         world = load_world(PROJECT_ROOT / WORLD_FILE)
-        anyio.run(run, args, settings, world)
+        anyio.run(run, args, settings, world, budget_usd)
     except (AgentConfigError, WorldConfigError) as exc:
         sys.stderr.write(f"acme-email: {exc}\n")
         return 2
