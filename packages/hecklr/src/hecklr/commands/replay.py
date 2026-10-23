@@ -32,7 +32,10 @@ def replay(
     ] = None,
     persona: Annotated[
         str | None,
-        typer.Option(help="Persona the replays run with [default: the first in personas/]."),
+        typer.Option(
+            help="Persona the replays run with [default: the first non-adversarial one in "
+            "personas/]."
+        ),
     ] = None,
     model: Annotated[
         str | None, typer.Option(help="Extraction model [default: models.simulator].")
@@ -92,9 +95,16 @@ async def _extract(
 
 
 def _first_persona(project: Project) -> str:
-    paths = sorted(project.root.glob(PERSONA_LIBRARY_GLOB))
-    if not paths:
-        raise fail(
-            f"no persona in {project.root / 'personas'}; pass --persona", exit_codes.CONFIG_ERROR
-        )
-    return load_model(paths[0], Persona).id
+    """The library's first ordinary persona, by file path.
+
+    Replays stand for real customers, so the default skips adversarial personas, as
+    ``hecklr mine`` does (issue #63).
+    """
+    for path in sorted(project.root.glob(PERSONA_LIBRARY_GLOB)):
+        persona = load_model(path, Persona)
+        if persona.adversarial is None:
+            return persona.id
+    raise fail(
+        f"no non-adversarial persona in {project.root / 'personas'}; pass --persona",
+        exit_codes.CONFIG_ERROR,
+    )

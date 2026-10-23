@@ -11,7 +11,6 @@ from typer.testing import CliRunner
 import hecklr
 from hecklr import exit_codes
 from hecklr.cli import app, configure_logging, main
-from hecklr.commands.stubs import PENDING_COMMANDS
 
 runner = CliRunner()
 IMPLEMENTED = {
@@ -25,6 +24,7 @@ IMPLEMENTED = {
     "calibrate",
     "mine",
     "ui",
+    "fix",
     "bench",
 }
 
@@ -39,16 +39,8 @@ def test_version_command_prints_package_version() -> None:
 def test_no_arguments_shows_help_listing_every_command() -> None:
     result = runner.invoke(app, [])
 
-    for name in [*IMPLEMENTED, *PENDING_COMMANDS]:
+    for name in IMPLEMENTED:
         assert name in click.unstyle(result.output)
-
-
-@pytest.mark.parametrize("command", sorted(PENDING_COMMANDS))
-def test_pending_command_fails_loudly_until_implemented(command: str) -> None:
-    result = runner.invoke(app, [command, "--some-flag", "value"])
-
-    assert result.exit_code == exit_codes.NOT_IMPLEMENTED
-    assert "not implemented yet" in click.unstyle(result.output)
 
 
 def test_spec_command_surface_is_complete() -> None:
@@ -60,7 +52,7 @@ def test_spec_command_surface_is_complete() -> None:
     registered = set(typer.main.get_command(app).commands)  # type: ignore[attr-defined]  # a Typer group
 
     assert registered == spec_commands | {"version", "github"}  # github: the Action's, hidden
-    assert set(PENDING_COMMANDS) == spec_commands - IMPLEMENTED
+    assert spec_commands == IMPLEMENTED
 
 
 def test_exit_codes_never_collide_with_the_gate_codes() -> None:

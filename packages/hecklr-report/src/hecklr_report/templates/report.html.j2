@@ -165,7 +165,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
     <strong class="{{ 'bad' if g.direction == 'pass_to_fail' else 'good' }}">{{ "pass → fail" if g.direction == "pass_to_fail" else "fail → pass" }}</strong>
     · <code>{{ g.cause }}</code> · {{ g.scenario_ids|length }} scenario{{ "s" if g.scenario_ids|length != 1 }}:
     {% for s in g.scenario_ids %}<a href="#s-{{ s }}"><code>{{ s }}</code></a>{{ ", " if not loop.last }}{% endfor %}
-    {% if g.rationale %}<div class="rationale">“{{ g.rationale }}”</div>{% endif %}
+    {% if g.rationale %}<div class="rationale">“{{ g.rationale | clip }}”</div>{% endif %}
   </div>
   {% endfor %}
 </section>
@@ -286,7 +286,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
 
       <h3>World diff (before → after)</h3>
       {% if t.world %}<div class="scroll"><table><thead><tr><th>Record</th><th>Change</th><th>Before</th><th>After</th></tr></thead><tbody>
-      {% for w in t.world %}<tr><td><code>{{ w.collection }}/{{ w.key }}</code></td><td>{{ w.change }}</td><td>{% if w.before %}<pre>{{ w.before }}</pre>{% else %}—{% endif %}</td><td>{% if w.after %}<pre>{{ w.after }}</pre>{% else %}—{% endif %}</td></tr>{% endfor %}
+      {% for w in t.world %}<tr><td><code>{{ w.collection }}/{{ w.key }}</code></td><td>{{ w.change }}</td><td>{% if w.before %}<pre>{{ w.before | clip }}</pre>{% else %}—{% endif %}</td><td>{% if w.after %}<pre>{{ w.after | clip }}</pre>{% else %}—{% endif %}</td></tr>{% endfor %}
       </tbody></table></div>{% else %}<p class="meta">The world did not change.</p>{% endif %}
 
       <h3>Grades</h3>
@@ -294,7 +294,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
       {% for g in t.grades %}<tr>
         <td><code>{{ g.grader }}</code>{% if g.criterion_index is none %} <span class="meta">diagnostic</span>{% endif %}<div class="meta">v{{ g.grader_version }}{% if g.judge_model %} · {{ g.judge_model }}{% endif %}</div></td>
         <td>{% if g.status != "ok" %}<span class="warn">{{ g.status }}</span>{% elif g.passed %}<span class="good">pass</span>{% else %}<span class="bad">fail</span>{% endif %}</td>
-        <td>{% if g.rationale %}<div>{{ g.rationale }}</div>{% endif %}
+        <td>{% if g.rationale %}<div>{{ g.rationale | clip }}</div>{% endif %}
           {% if g.evidence %}<div class="meta">evidence: {% for ev in g.evidence %}<a class="evidence" href="#ev-{{ ev.event_id }}">{{ ev.event_id[-6:] }}</a>{{ ", " if not loop.last }}{% endfor %}</div>{% endif %}
           {% if g.votes %}<div class="meta">votes: {% for v in g.votes %}{{ "pass" if v.passed else "fail" }}{{ ", " if not loop.last }}{% endfor %}</div>{% endif %}</td></tr>{% endfor %}
       </tbody></table></div>{% else %}<p class="meta">No grades (harness error).</p>{% endif %}

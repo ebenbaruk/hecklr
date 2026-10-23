@@ -152,6 +152,28 @@ def test_us03_user_content_is_escaped(
     assert not any(tag == "img" for tag, _ in parse(page))
 
 
+def test_issue34_huge_text_is_cut_with_a_marker(
+    kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path
+) -> None:
+    huge = "A" * 1_000_000
+    builder = kit.RunBuilder()
+    builder.trial("s00", passed=False, user_text=huge, rationale="R" * 50_000)
+    results = builder.build()
+
+    page = render(results, kit, scenarios, tmp_path)
+
+    assert len(page) < 200_000
+    limit = html_module.MAX_EVENT_CHARS
+    assert page.count(f"truncated, {1_000_000 - limit} more characters") == 4  # 2 turns x 2 views
+    assert f"truncated, {50_000 - limit} more characters" in page
+
+
+def test_issue34_clip_keeps_text_up_to_the_limit() -> None:
+    limit = html_module.MAX_EVENT_CHARS
+    assert html_module.clip("x" * limit) == "x" * limit
+    assert html_module.clip("x" * (limit + 3)) == "x" * limit + "… [truncated, 3 more characters]"
+
+
 def test_us03_voice_trial_embeds_audio_with_waveform_and_turn_markers(
     kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path
 ) -> None:

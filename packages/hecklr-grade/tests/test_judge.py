@@ -20,7 +20,7 @@ from hecklr_grade.judge import (
     render_transcript,
 )
 from hecklr_llm import FakeLLM
-from hecklr_schemas import ErrorPayload, HandoffPayload, LLMRequest, LLMResponse
+from hecklr_schemas import ErrorPayload, HandoffPayload, LLMRequest, LLMResponse, Message
 
 if TYPE_CHECKING:
     from conftest import AcmeData, ContextFactory, EventLog, SnapshotFactory
@@ -160,7 +160,7 @@ async def test_garbage_judge_output_is_an_error_grade(
     log: EventLog, ctx_for: ContextFactory, reply: str, problem: str
 ) -> None:
     conversation(log)
-    llm = FakeLLM(script=[reply])
+    llm = FakeLLM(script=[reply, reply])
     grade = await JudgeGrader(load_rubric("resolved")).grade(
         ctx_for(log, {"type": "judge", "rubric": "resolved"}, llm=llm)
     )
@@ -168,12 +168,27 @@ async def test_garbage_judge_output_is_an_error_grade(
     assert not grade.passed
     assert problem in (grade.rationale or "")
     assert grade.judge_model == "fake/judge"
+    # An answer that is not JSON is refused by the provider and never reaches the retry.
+    retried = problem != "not valid JSON"
+    assert len(llm.calls) == 1 + retried
+    assert ("(after one retry)" in (grade.rationale or "")) is retried
 
 
-class TruncatingLLM:
+class PricedLLM:
+    """Answers from a script at $0.01 a call; an empty-text answer is cut off at max_tokens."""
+
+    def __init__(self, *answers: str) -> None:
+        self.answers = list(answers)
+        self.calls: list[LLMRequest] = []
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        self.calls.append(request)
+        text = self.answers.pop(0)
         return LLMResponse(
-            model=request.model, text='{"verdict": "pa', truncated=True, cost_usd=Decimal("0.01")
+            model=request.model,
+            text=text or '{"verdict": "pa',
+            truncated=not text,
+            cost_usd=Decimal("0.01"),
         )
 
 
@@ -181,10 +196,43 @@ async def test_truncated_answer_is_an_error_that_keeps_its_cost(
     log: EventLog, ctx_for: ContextFactory
 ) -> None:
     conversation(log)
-    grade = await JudgeGrader(load_rubric("tone")).grade(ctx_for(log, llm=TruncatingLLM()))
+    grade = await JudgeGrader(load_rubric("tone")).grade(ctx_for(log, llm=PricedLLM("", "")))
     assert grade.status == "error"
     assert "cut off" in (grade.rationale or "")
-    assert grade.cost_usd == Decimal("0.01")
+    assert grade.cost_usd == Decimal("0.02")
+
+
+async def test_issue37_a_mistyped_evidence_id_is_retried_once_with_the_problem(
+    log: EventLog, ctx_for: ContextFactory
+) -> None:
+    claim_id, _ = conversation(log)
+    # A typo in the timestamp part: monotonic ULIDs of one trial can differ in the last digit only.
+    mistyped = "7ZZZ" + claim_id[4:]
+    llm = PricedLLM(verdict(False, mistyped), verdict(False, claim_id, rationale="fee"))
+    ctx = ctx_for(log, {"type": "judge", "rubric": "resolved"}, llm=llm)
+
+    grade = await JudgeGrader(load_rubric("resolved")).grade(ctx)
+
+    assert (grade.status, grade.passed, grade.rationale) == ("ok", False, "fee")
+    assert [ref.event_id for ref in grade.evidence] == [claim_id]
+    assert grade.cost_usd == Decimal("0.02"), "the retry is paid for"
+    first, retry = llm.calls
+    assert retry.messages[:1] == first.messages
+    assert retry.messages[1] == Message(role="assistant", content=verdict(False, mistyped))
+    assert retry.messages[2].role == "user"
+    assert f"not events of the trial: ['{mistyped}']" in retry.messages[2].content
+    assert retry.seed == judge_seed(ctx.trial.seed, "resolved/retry", 0) != first.seed
+
+
+async def test_issue37_a_retry_is_reproducible(log: EventLog, ctx_for: ContextFactory) -> None:
+    conversation(log)
+    calls = []
+    for _ in range(2):
+        llm = PricedLLM("not json", verdict(True))
+        ctx = ctx_for(log, {"type": "judge", "rubric": "resolved"}, llm=llm)
+        assert (await JudgeGrader(load_rubric("resolved")).grade(ctx)).passed
+        calls.append(llm.calls)
+    assert calls[0] == calls[1]
 
 
 async def test_provider_failure_is_an_error_grade(log: EventLog, ctx_for: ContextFactory) -> None:

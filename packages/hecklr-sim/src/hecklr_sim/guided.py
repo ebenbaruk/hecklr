@@ -1,7 +1,7 @@
 """Guided mode: an LLM customer pursues the scenario's goal adaptively.
 
 Replay scenarios run the same way (their goal and facts were extracted from a real transcript),
-and so do adversarial personas, whose brief adds a hidden attack strategy.
+and so do adversarial personas, whose brief adds a strategy framed as an authorised test.
 """
 
 import math
@@ -39,6 +39,12 @@ _CHECKER_SYSTEM = (
 )
 
 
+DEFAULT_MAX_TOKENS = 2048
+"""Output limit per decision. Reasoning models count their reasoning against it: at 512,
+gpt-6-luna cut off opening probe turns (a provider error or truncated JSON, so a harness error).
+A decision's JSON is far shorter; only tokens actually produced are paid for."""
+
+
 @dataclass(frozen=True)
 class SimulatorSettings:
     """How LLM-driven simulators call their model; one instance serves a whole run."""
@@ -50,7 +56,7 @@ class SimulatorSettings:
     llm_consistency_check: bool = False
     """Also ask the model whether each draft contradicts the brief (catches a changed goal)."""
     temperature: float | None = None
-    max_tokens: int = 512
+    max_tokens: int = DEFAULT_MAX_TOKENS
 
     def __post_init__(self) -> None:
         if self.max_regenerations < 0:

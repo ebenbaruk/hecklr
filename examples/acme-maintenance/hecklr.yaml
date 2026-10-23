@@ -10,6 +10,8 @@ agent:
     # X-Hecklr-Trial-Id and X-Hecklr-World-Url headers; the agent calls its tools at the trial's
     # world sandbox URL (ADR 0007d).
     chat: { type: http, url: "http://127.0.0.1:8000/chat/stream", stream: sse, timeout_s: 180 }
+  # What `hecklr fix` may change (ADR 0015a). It starts the agent itself for every candidate:
+  #   hecklr fix --from-run latest --agent-cmd '{python} agent/serve.py --brain rules --port {port}'
   editable: [prompts/system.md, tools/descriptions.yaml]
 world: worlds/acme-maintenance.yaml
 suites:
