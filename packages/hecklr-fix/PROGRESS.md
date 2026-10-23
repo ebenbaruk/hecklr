@@ -1,32 +1,45 @@
 # hecklr-fix progress
 
-Owner: WS15. Spec: `docs/SPEC.md` → "Fixer (`hecklr-fix`)", US-10, WS15 row. ADR 0015a.
-
-## Plan
-
-1. `patching`: the model proposes find/replace edits; Hecklr applies them to the editable files
-   and writes the unified diff itself (exact, `git apply`-able). Edits to anything outside
-   `agent.editable`, and editable entries that are scenarios, personas, the world or
-   `hecklr.yaml`, are refused.
-2. `target`: a fix target is a `FailureCluster` plus its scenarios, from the miner's store
-   (ADR 0013a) or from a failing run (`--from-run`, optional `--baseline`, `--tag`, `--scenario`).
-3. `workspace` + `agent`: every pass runs in a temp copy of the project with the candidate's files,
-   its agent started from the `--agent-cmd` template on a free port (ADR 0015a).
-4. `validation`: targeted pass (cluster scenarios, paired by trial cell, improvement verdict),
-   guard pass (guard suite, regression verdict on the suite or any tag, BH over tags).
-5. `fixer`: the pipeline, budget and the honest outcomes; `store` + `report`: artifacts under
-   `<output_dir>/fix/<fix id>/`; `pr`: `--pr` through `git worktree` + `gh`.
-6. `hecklr fix` CLI; proofs on acme-maintenance (F1 auto-fix, planted bad patch rejected).
+Owner: WS15. Spec: `docs/SPEC.md` → "Fixer (`hecklr-fix`)", US-10, WS15 row. Decisions: ADR
+0015a. Proposed schema change: RFC 0015a (`agent.command`).
 
 ## Done
 
-- Empty package scaffold (Wave 0).
+- `patching`: find/replace proposals applied by Hecklr, `git apply`-compatible diffs
+  (`test_patching.py`, incl. a hypothesis property and `git apply` round trips).
+- `editable`: guardrail, config/world/scenario/persona files refused even if listed
+  (`test_guardrail_files_that_define_the_tests_are_never_editable`).
+- `target`: mined clusters (ADR 0013a files) and `--from-run` (+ `--baseline`, `--tag`,
+  `--scenario`) targets (`test_target.py`).
+- `workspace` + `agent`: per-pass project copy, port rewrite, agent process group start/stop
+  (`test_workspace.py`, `test_agent.py`, real subprocesses).
+- `validation`: cell-paired `compare_runs`, improvement / regression rules, tag-only BH family
+  (`test_guard_a_regression_on_one_tag_is_caught_even_when_the_suite_improves`).
+- `fixer`, `store`, `report`, `pr` (`test_fixer.py`, `test_report_store.py`, `test_pr.py` with a
+  real repo, bare origin and fake `gh`).
+- `hecklr fix` CLI (`packages/hecklr/tests/test_cli_fix.py`):
+  `test_ws15_fixes_f1_and_the_guard_rejects_a_planted_bad_patch` (rules brain, free, real agent
+  processes, `--pr --draft` against a local origin), the mined-cluster "nothing to fix" path and
+  exit 78 for every configuration error.
+- Coverage of `packages/hecklr-fix/src`: 99% (71 tests).
+- Live proof on the LLM brain (`openai/gpt-6-luna`), F1 overlay, `options` scenarios x 3 trials,
+  2 candidates, guard `ci` x 1 trial: fix session `01M5K3SFHE8PW4B9MN1TWKACZ5`, outcome
+  `fixed`. Candidate 0: targeted 16.7% → 94.4% (+77.8 pts [+55.6, +94.4], p < 0.001, 18 cells),
+  guard 92.3% → 92.3% (0.0 pts [−10.3, +10.3], p = 1.000, 39 cells). Spend: Hecklr $0.3422
+  (fix $0.3004 + initial run $0.0418), agent ≈ $0.39 (measured $0.0447 initial run; fix passes
+  estimated from 627 requests at the measured rate): ≈ $0.73 of the $1.20 cap. The OpenAI credit
+  balance ran out during the last pass (candidate 1's guard run); candidate 0's runs had no 429.
+- Free proof of the planted bad patch (CLI, rules brain, smoke suite): session
+  `01M5K52CRHS9QCPNZC7ND8TMB0`; the patch that restores confirmation but plants F5's refund rule
+  improves the targeted set by +100 pts yet is `rejected_guard` on `tag=catches-f5`
+  (−100 pts, p < 0.001, q < 0.001, 18 cells) while the suite verdict alone was inconclusive.
 
 ## Next
 
-- Everything in the plan.
+- Detect an agent-side provider outage in a pass (agent errors from a 429 count as failures) and
+  refuse the pass, like `scripts/fault-matrix`'s `check_health`.
+- RFC 0015a review; then read `agent.command` from `hecklr.yaml`.
 
 ## Open questions
 
-- `hecklr.yaml` has no field for the agent's start command (the schema is frozen,
-  `extra="forbid"`): `--agent-cmd` for now, RFC 0015a proposes `agent.command`.
+- None blocking.
