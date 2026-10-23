@@ -21,7 +21,7 @@ drafts: [`demo/RESULTS.md`](../../demo/RESULTS.md), [M2](M2.md), [M1](M1.md).
 | 9 | CONTRIBUTING guide | **done** | `CONTRIBUTING.md`, plus `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md`, issue forms |
 | 10 | Resume line ready | **drafted** | Below |
 | 11 | 90-second demo video (SC10) | **assets ready, video needs a human** | `demo/VIDEO.md`; real runs in `demo/RESULTS.md`; screenshots in `docs/assets/` |
-| 12 | Benchmark with ≥ 6 stacks (SC10) | **built, rows preliminary** | `hecklr bench` (PR #80): 8 stacks defined, 7 measured, `reproduce` passes on `loopback-reference`. The rows were measured on a shared laptop (load average up to about 250), with local qwen3 4B customers and judges, and without `acme-chat-luna` (OpenAI credit exhausted): labelled not for publication. Re-measure on an idle machine before launch |
+| 12 | Benchmark with ≥ 6 stacks (SC10) | **built, rows preliminary** | `hecklr bench` (PR #80): 8 stacks defined and measured, `reproduce` passes on `loopback-reference`. The rows were measured on a shared laptop (load average up to about 250), with local qwen3 4B customers and judges (`acme-chat-luna` added once OpenAI credit was restored): labelled not for publication. Re-measure on an idle machine before launch |
 | 13 | `hecklr fix` beat of the demo | **command built, beat not recorded** | `hecklr fix` merged (PR #79). Free end-to-end proof: `packages/hecklr/tests/test_cli_fix.py` fixes F1 on the reference agent and rejects a planted patch that breaks refunds. The demo beat needs a real patch-writing model (OpenAI credit exhausted); the demo stops at the report until then |
 
 Before going public, also:
