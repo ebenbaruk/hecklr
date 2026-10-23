@@ -100,6 +100,32 @@ Owner: WS6 (chat), WS10 (voice), WS12 (email). Spec: `docs/SPEC.md` → "Agent a
 - Issue #28: the caller-audio contract test judges the heard speech span only where the case's
   timing is meaningful (LiveKit times speech by arrival); the rate check runs everywhere.
 
+## Done (hflake, Wave 5): flaky tests fixed at the root (ADR 00hfa)
+
+- #73 (1) SmallWebRTC teardown: hang-up waits for ICE gathering, cancels every aioice
+  connectivity check and stops every ICE transport; loopback agents are called without a STUN
+  server (local connect 5 s -> ms, no internet traffic from unit tests); max-bundle.
+  `test_issue73_hangup_leaves_no_ice_check_retrying_on_a_closed_socket`,
+  `test_issue73_hangup_during_gathering_leaves_no_stun_query_behind` (both fail on the old code
+  with the exact `'NoneType' object has no attribute 'sendto'` ExceptionGroup),
+  `test_issue73_only_an_agent_off_this_machine_is_called_with_a_stun_server`.
+- #73 (2) the loop-free contract times each event-loop step's CPU (bound unchanged, 5 ms per
+  step); worst steps measured 0.2-2.0 ms across the six cases.
+  `test_ws10_loop_step_timer_catches_a_step_that_holds_the_loop`.
+- #56 `WebSocketChatTarget(config, connect_timeout_s=10.0)`: the handshake has its own bound.
+  `test_issue56_the_reply_timeout_does_not_bound_the_opening_handshake`,
+  `test_issue56_a_handshake_slower_than_the_connect_timeout_is_an_agent_timeout`,
+  `test_issue56_the_connect_timeout_must_be_positive`.
+- #70 IMAP reply polling retries a dropped poll once the mailbox has answered.
+  `test_issue70_a_poll_that_fails_once_the_mailbox_answered_is_retried`,
+  `test_issue70_polls_failing_for_the_whole_timeout_fail_the_reply_stream`; end to end in
+  `examples/acme-email` (`test_issue70_dropped_reply_polls_change_no_verdict`).
+- #27 explained: the "lost" caller speech is aiortc holding a stream's last five frames until
+  more follow (the contract now keeps the line open; `caller_loss_ms` removed, the case is held
+  to 20 ms); the late reply is the in-process bot's Pipecat sender catching up in a burst after
+  being starved (`jitter_ms=200` kept). `test_issue27_aiortc_holds_the_last_five_frames_...`,
+  `tests/contract/test_pipecat_bot.py`.
+
 ## Next
 
 - `webhook` chat adapter (P1, spec table). `make_chat_target` refuses it with a clear error.
@@ -111,13 +137,11 @@ Owner: WS6 (chat), WS10 (voice), WS12 (email). Spec: `docs/SPEC.md` → "Agent a
 
 - Agents that report tool calls over SSE while also calling the world sandbox get each call logged
   twice. WS7 may want to drop agent-reported tool events in `tool_mode: sandbox`.
-- Pipecat SmallWebRTC reference bot (Pipecat 1.13): it hears ~110 ms less of each caller
-  utterance, and one reply late in a long call arrives ~150 ms later than the rest. The same
-  caller track looped through plain aiortc keeps every edge within 10 ms
-  (`test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place`), so it is the bot's receive
-  path; the case carries wider allowances. Tracked in
-  [#27](https://github.com/ebenbaruk/hecklr/issues/27). Run them with
-  `uv run pytest packages/hecklr-adapters/tests/contract/test_voice_contract.py`.
+- The SmallWebRTC case's 200 ms `jitter_ms` allowance could shrink only if the reference bot
+  ran in its own process (GIL) on an idle CPU, or if the playout compressed silence after a burst
+  as a NetEq jitter buffer does (ADR 00hfa). Neither is needed for any SC.
+- `WebSocketAdapterConfig` has no `connect_timeout_s` (frozen schema): an RFC can add it if a user
+  needs to set the chat handshake bound from `hecklr.yaml`.
 - An async function-scoped fixture that started the DSP pool (`warm_dsp_pool`) left the next
   test with dead worker processes (`BrokenWorkerProcess`); the driver warms the pool itself, so
   the fixture was dropped. Worth a look by WS9 if a long-lived harness warms the pool from a
@@ -132,5 +156,7 @@ Owner: WS6 (chat), WS10 (voice), WS12 (email). Spec: `docs/SPEC.md` → "Agent a
 - ADR 0010a: playout clock, exact resampling, background reading, LiveKit backlog handling,
   Pipecat as SmallWebRTC, and how the contract states truth and transport delay.
 - RFC 0010a: add `WebSocketVoiceAdapterConfig` to the schema's `VoiceAdapterConfig`.
+- ADR 00hfa: SmallWebRTC teardown and STUN policy, per-step loop-free contract, the chat
+  handshake's own timeout, IMAP poll retries, and what the Pipecat bot's allowances measure.
 - `pipecat-ai[webrtc,websocket]` is a dev dependency (real Pipecat in the contract); resolving it
   moves the workspace to onnxruntime 1.24 and protobuf 6 (Pipecat's pins). WS11 needs Pipecat too.
