@@ -100,3 +100,6 @@ Desktop.ini
 *.iml
 .fleet/
 .zed/
+
+# --- Local CI gate (scripts/ci-local.sh) ---------------------------------------
+.ci-local/
