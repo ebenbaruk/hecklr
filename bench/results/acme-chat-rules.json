@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "benchmark_version": "1.0",
+  "suite_digest": "3ab42ad9d89994cd8919da9f7b63836cbb36c0b21be52b0150007cda0c500528",
+  "stack": {
+    "id": "acme-chat-rules",
+    "name": "Acme chat, rules brain",
+    "track": "chat",
+    "description": "The acme-maintenance reference agent over HTTP with server-sent events, answering with its deterministic keyword brain and calling the trial's world tools.",
+    "why": "The floor for chat: no model, no cost, exactly repeatable. An LLM stack should beat it on task success; where it does not, the scenarios reward keyword matching over understanding.",
+    "components": {
+      "transport": "HTTP + SSE",
+      "brain": "rules (keyword NLU, one task at a time)"
+    },
+    "command": [
+      "{python}",
+      "{repo}/examples/acme-maintenance/agent/serve.py",
+      "--brain",
+      "rules",
+      "--port",
+      "{port}"
+    ],
+    "env": {
+      "ACME_SEED": "{seed}"
+    },
+    "requires_env": [],
+    "ready": {
+      "http": "http://127.0.0.1:{port}/healthz",
+      "line": null,
+      "timeout_s": 120.0
+    },
+    "adapter": {
+      "type": "http",
+      "url": "http://127.0.0.1:{port}/chat/stream",
+      "stream": "sse",
+      "timeout_s": 180
+    },
+    "spend_url": "http://127.0.0.1:{port}/healthz",
+    "budget_usd": "0",
+    "agent_budget_usd": "0",
+    "reference": false
+  },
+  "run_id": "01M5K9JQETRCPR7WPKJ739HP90",
+  "created_at": "2026-10-23T02:31:29.498489Z",
+  "seed": 20261023,
+  "trials_per_scenario": 2,
+  "scenarios": 8,
+  "models": {
+    "simulator": "ollama/hecklr-bench-qwen3-4b",
+    "judge": "ollama/hecklr-bench-qwen3-4b"
+  },
+  "environment": {
+    "hecklr": "0.1.0",
+    "python": "3.12.13",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "git_sha": "163639f5ffac0e0ac352b35a70ded4f0a6e09ea2",
+    "packages": {
+      "pipecat-ai": "1.13.0",
+      "livekit": "1.1.21",
+      "faster-whisper": "1.2.1",
+      "kokoro-onnx": "0.6.1",
+      "onnxruntime": "1.24.4",
+      "aiortc": "1.15.0",
+      "websockets": "17.3"
+    },
+    "load_average": [
+      20.65,
+      6.09
+    ]
+  },
+  "counts": {
+    "total": 16,
+    "ok": 16,
+    "agent_error": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "undecided": 4,
+    "grade_errors": 5,
+    "analyzed": 12,
+    "contradiction_rate": {
+      "value": 0.25,
+      "ci_low": 0.10182067491213048,
+      "ci_high": 0.49498316535508774,
+      "confidence": 0.95,
+      "n": 16,
+      "method": "wilson"
+    }
+  },
+  "metrics": {
+    "task_success": {
+      "value": 0.7857142857142857,
+      "ci_low": 0.49845714285714293,
+      "ci_high": 0.9984571428571429,
+      "confidence": 0.95,
+      "n": 7,
+      "method": "cluster_bootstrap"
+    },
+    "judge:handoff_appropriate": {
+      "value": 1.0,
+      "ci_low": 0.20654931437723745,
+      "ci_high": 1.0,
+      "confidence": 0.95,
+      "n": 1,
+      "method": "wilson"
+    },
+    "judge:no_hallucination": {
+      "value": 0.5,
+      "ci_low": 0.09453120573423074,
+      "ci_high": 0.9054687942657693,
+      "confidence": 0.95,
+      "n": 2,
+      "method": "wilson"
+    },
+    "judge:resolved": {
+      "value": 0.875,
+      "ci_low": 0.4991875,
+      "ci_high": 0.9991875,
+      "confidence": 0.95,
+      "n": 4,
+      "method": "cluster_bootstrap"
+    },
+    "response_latency_p50": {
+      "value": 31.0,
+      "ci_low": 13.0,
+      "ci_high": 347.0249999999269,
+      "confidence": 0.95,
+      "n": 12,
+      "method": "bootstrap"
+    },
+    "response_latency_p95": {
+      "value": 1873.0,
+      "ci_low": 342.0,
+      "ci_high": 3440.0,
+      "confidence": 0.95,
+      "n": 12,
+      "method": "bootstrap"
+    },
+    "cost_per_conversation_usd": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 16,
+      "method": "bootstrap"
+    }
+  },
+  "spend": {
+    "hecklr_usd": "0.000000",
+    "agent_usd": "0"
+  },
+  "duration_s": 4495.6
+}

@@ -55,7 +55,7 @@ body {
 }
 
 .wrap {
-  max-width: 1200px;
+  max-width: 1320px;
   margin: 0 auto;
   padding: 0 16px;
 }
@@ -176,6 +176,10 @@ h1 {
   background: var(--row-hover);
 }
 
+.board td:first-child {
+  min-width: 280px;
+}
+
 .stack-name {
   font-weight: 600;
 }
@@ -183,7 +187,7 @@ h1 {
 .stack-parts {
   color: var(--muted);
   font-size: 0.8rem;
-  max-width: 34ch;
+  max-width: 46ch;
 }
 
 .badge {

@@ -268,7 +268,10 @@
     button.type = "button";
     button.setAttribute("role", "tab");
     button.dataset.track = track;
-    button.addEventListener("click", () => selectTrack(track));
+    button.addEventListener("click", () => {
+      history.replaceState(null, "", "#" + track);
+      selectTrack(track);
+    });
     $("tabs").append(button);
   });
 
@@ -287,6 +290,8 @@
   ].forEach((text) => method.append(el("li", null, text)));
   $("footer").textContent = "Generated " + data.generated_at + " by hecklr bench site.";
 
-  if (available.length) selectTrack(available[0]);
+  // A track can be linked to (index.html#chat); otherwise the first one with rows opens.
+  const linked = window.location.hash.slice(1);
+  if (available.length) selectTrack(available.includes(linked) ? linked : available[0]);
   else $("empty").hidden = false;
 })();

@@ -3,8 +3,9 @@ name: Pipecat 1.13, local models
 track: voice
 description: >-
   A stock Pipecat 1.13 pipeline over SmallWebRTC (WebRTC, Opus) with Pipecat's defaults: Silero
-  VAD and the smart-turn v3 end-of-turn model, interruptions on, Pipecat's faster-whisper base.en
-  service and its Kokoro service. The acme rules brain stands in for the LLM service.
+  VAD and the smart-turn v3 end-of-turn model, interruptions on, faster-whisper base.en as a
+  Pipecat segmented STT service (Pipecat's own cannot be imported on macOS without mlx-whisper)
+  and Pipecat's Kokoro service. The acme rules brain stands in for the LLM service.
 why: >-
   The framework most open-source voice agents are built on, out of the box, against the
   hand-tuned cascade with the same recognizer, voice and brain: what Pipecat's turn detection

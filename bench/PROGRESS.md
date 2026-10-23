@@ -1,28 +1,39 @@
 # bench (WS17) progress
 
 Owner: WS17. Spec: `docs/SPEC.md` -> SC10, US-12, WS17 row, "Voice simulation engine > Metrics",
-"Agent adapters", `hecklr bench`. Decisions: ADR 0017a.
-
-## Plan
-
-1. `bench/suite/`: a frozen copy of the world, 8 guided chat scenarios, 9 scripted voice
-   scenarios (latency, barge-in, hesitation) and 3 calibration scenarios; `bench/bench.yaml`
-   pins the benchmark version, the seed, the models and the trials per track.
-2. `hecklr bench` (`packages/hecklr/src/hecklr/commands/bench/`): `list`, `run --stack`,
-   `reproduce --stack`, `site`. A run starts the stack's agent process, writes a per-stack
-   `hecklr.yaml` over the suite, runs it in process at concurrency 1, reads the agent's own
-   spend per trial, and writes `bench/results/<stack>.json` (every metric an `Estimate`).
-3. Stacks (`bench/stacks/*.yaml`, agents in `bench/stacks/agents/`): chat rules / luna / qwen3
-   (local Ollama); voice: acme cascaded pipeline (local), the same pipeline over LiveKit, a
-   Pipecat 1.13 pipeline (Silero + smart-turn + Whisper + Kokoro), the Pipecat pipeline with
-   AssemblyAI streaming + OpenAI TTS; the loopback calibration agent as the timing reference.
-4. Static leaderboard: `bench/site/src` rendered with the results into `bench/site/dist`.
-5. Run every stack for real under the $1.20 cap, reproduce one, view the site in a browser.
+"Agent adapters", `hecklr bench`. Decisions: ADR 0017a. Measured rows: [RESULTS.md](RESULTS.md).
 
 ## Done
 
-(in progress)
+- **Suite** (`bench.yaml`, `suite/`): frozen acme world, 8 guided chat scenarios, 9 scripted voice
+  scenarios (3 latency, 3 barge-in, 3 hesitation), 3 calibration calls; version, seed, models and
+  trials pinned; SHA-256 suite digest in every row.
+- **`hecklr bench`** (`packages/hecklr/src/hecklr/commands/bench/`): `list`, `run`, `reproduce`,
+  `site`. Tests in `packages/hecklr/tests/bench/` (34): the US-12 end to end
+  (`test_us12_run_writes_a_row_with_every_metric_and_its_interval`,
+  `test_us12_reproduce_checks_every_metric_against_the_published_row`,
+  `test_us12_reproduce_fails_when_a_published_interval_is_not_met`) against the real acme agent
+  process with scripted models; outage refusal, spend attribution, placeholders, process
+  readiness, judge scores, reproduction criterion, the site, the Pipecat agent's meter.
+  Coverage of the bench modules 95%.
+- **Stacks**: 8 defined; 7 measured (see RESULTS.md). New agents: `stacks/agents/pipecat_acme.py`
+  (stock Pipecat 1.13 over SmallWebRTC) and `stacks/agents/livekit_acme.py` (acme cascade behind a
+  local livekit-server in Docker).
+- **Site**: `site/src` (HTML/CSS/JS), built by `hecklr bench site` into `site/dist`, checked in
+  headless Chromium.
 
-## Open questions
+## Decisions (beyond ADR 0017a)
 
-- None yet.
+- The project's OpenAI credits ran out during the first live run (`acme-chat-luna`: 4 of 16
+  conversations hit `429 insufficient_quota`). The runner now refuses such a row instead of
+  publishing agent errors; Hecklr's own models moved to qwen3 4B on local Ollama with a 32k
+  context (`models/`); the cloud Pipecat stack tests AssemblyAI only (no OpenAI TTS).
+- The acme cascade caches synthesized replies on disk; its rows are measured warm (the first,
+  cold run had p95 7.7 s, all of it first-time Kokoro synthesis of long replies).
+
+## Next / open
+
+- `acme-chat-luna` is defined but unmeasured until OpenAI credits are restored:
+  `uv run --env-file .env hecklr bench run --stack acme-chat-luna --budget-usd 0.30`.
+- Re-measure every row on an idle machine before quoting numbers publicly (rows record their load).
+- Issue #81: parallel first downloads of a voice model race in `hecklr-voice`.
