@@ -20,7 +20,9 @@ event sink and no clock.
   `complete_structured`. All fields are required because small models fill required fields
   reliably.
 - **Modes.** `scripted` → `ScriptedSimulator`, which never calls a model; its script position is
-  the number of customer messages in the dialogue, so it holds no state. Running out of script
+  the number of its lines the dialogue's customer turns already said, in order (amended for
+  issue #44: a voice barge-in interjection is a customer turn but not a line), so it holds no
+  state. Running out of script
   ends with `goal_achieved`: graders, not the end reason, decide success. `guided` and `replay` →
   `GuidedSimulator`. A persona with `adversarial` set follows its strategy in any non-scripted
   mode, so red-team personas can be crossed with ordinary scenarios; `adversarial` mode without a
