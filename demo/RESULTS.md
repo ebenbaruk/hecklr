@@ -77,6 +77,14 @@ The clean agent's one failure, `voice-barge-in-electrician`, is not an agent err
 too short for the caller to barge into, so the only criterion was skipped and the trial has no
 passing criterion.
 
+The agent's own view of the same clean run: its log (`demo/out/voice/agent-clean.log`, written
+by `voice_call.py`, not committed) has **37** `call.answered` lines, one per answered turn, with a
+median `answer_ms` of **7 ms** (min 1, max 895). `answer_ms` starts when the agent's endpointing
+decides the turn is over; Hecklr's response latency (865 ms median above) starts at the caller's
+last speech frame. These are the "7 ms vs 865 ms" and "37 answered turns" of the launch drafts.
+Reproduce from the log:
+`grep -o 'answer_ms=[0-9]*' demo/out/voice/agent-clean.log | cut -d= -f2 | sort -n`.
+
 In the clean run's trial `voice-barge-in-book` (the screenshot `docs/assets/report-voice-trial.png`
 and `docs/assets/ui-trial.png`), the caller barged in three times and the agent stopped talking
 168, 154 and 152 ms later, each time measured from the caller's audio.

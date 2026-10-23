@@ -98,7 +98,9 @@ uv run pytest tests/docs                         # the executed docs, SC1 includ
 Docs cannot rot: `tests/docs` checks that every `hecklr` command line in the docs parses against
 the CLI, that every YAML block titled `hecklr.yaml`, `scenarios/...`, `personas/...` or
 `worlds/...` validates against the schema, that the generated reference pages match the code, and
-it runs the quickstart literally (SC1). If you change a command, a flag or a config field, update
+it runs the quickstart literally (SC1), on the starter agent and on the reference agent. The
+command check runs each documented line with `--help` appended, so it catches unknown commands and
+options, not wrong option values: run a new example for real once. If you change a command, a flag or a config field, update
 the docs in the same pull request; CI tells you where.
 
 ## Decisions: ADRs and RFCs

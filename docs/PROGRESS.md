@@ -27,7 +27,7 @@ other workstreams' ADRs or milestone reports), `mkdocs.yml`, `CONTRIBUTING.md`,
 
 - **Reference pages are generated and committed** (`docs/scripts/gen_reference.py`): the CLI page
   is Typer's own `typer ... utils docs` output; the configuration page walks the pydantic models
-  `hecklr` loads (`ProjectConfig`, `Scenario`, `Persona`, success criteria) and their field
+  `hecklr` loads (`ProjectConfig`, `Scenario`, `Persona`, `World`, success criteria) and their field
   docstrings. Committing them keeps the site buildable without importing Hecklr; a test fails when
   they drift.
 - **Repository documents stay out of the site** (`exclude_docs`: SPEC, ADRs, RFCs, milestones):
@@ -38,6 +38,13 @@ other workstreams' ADRs or milestone reports), `mkdocs.yml`, `CONTRIBUTING.md`,
 - **SC1 as an offline laptop.** The quickstart test strips model keys and makes `localhost:11434`
   unreachable through proxy variables so `hecklr init` picks scripted `fake/` models on a machine
   that runs Ollama too (`hecklr init` probes a fixed URL; #74 asks it to honor `OLLAMA_BASE_URL`).
+- **SC1 on both agents** (review round 1). SC1 says "quickstart on reference agent", so the test
+  checks the three-command quickstart on the starter agent `hecklr init --yes` writes, and then
+  the quickstart's "Point it at your agent" block (`hecklr init --yes --agent-url ... --force`,
+  `hecklr run`) against `acme-maintenance` started with the documented `serve.py --brain rules`
+  command; agent start to first report under 300 s. The documented `localhost:8000` becomes
+  `127.0.0.1:<free port>` (the proxy variables that hide Ollama spare only `127.0.0.1`) and
+  `uv run python` becomes the test interpreter: the only changes to the documented commands.
 - **Demo on the rules brain.** The chat demo's numbers come from the reference agent's
   deterministic rules brain on the scripted `smoke` suite: free and exactly repeatable. The spec's
   example numbers ("down 7 points") are replaced by the measured ones.
@@ -45,8 +52,9 @@ other workstreams' ADRs or milestone reports), `mkdocs.yml`, `CONTRIBUTING.md`,
 ## Done (2026-10-23)
 
 - Site: 17 pages plus 2 generated references; `uv run --group docs mkdocs build --strict` clean.
-- Executed docs, `tests/docs` (11 tests): `test_sc1_quickstart_init_to_first_report_under_5_minutes`
-  (about 10 s locally), `test_documented_hecklr_commands_parse`,
+- Executed docs, `tests/docs` (12 tests): `test_sc1_quickstart_init_to_first_report_under_5_minutes`
+  (about 10 s on an idle laptop), `test_sc1_quickstart_on_reference_agent_under_5_minutes` (about
+  16 s idle, agent start included), `test_documented_hecklr_commands_parse`,
   `test_documented_project_files_validate[...]` (7 blocks), `test_docs_show_project_files_for_every_kind`,
   `test_generated_reference_pages_match_the_code`. CI: `.github/workflows/docs.yml`.
 - Demo from real runs, numbers in `demo/RESULTS.md`: chat gate REGRESSION −27.3 pts
@@ -63,7 +71,11 @@ other workstreams' ADRs or milestone reports), `mkdocs.yml`, `CONTRIBUTING.md`,
 - Reconcile `docs/guides/fixer.md` and the demo's fifth beat with WS15's `hecklr fix` when it lands.
 - Link the benchmark (WS17) from the README and roadmap when it lands.
 - `scripts/mypy-all.sh` does not cover `tests/docs`, `docs/scripts` or `demo/` (checked by hand,
-  clean); the integrator may add them (the script is not WS18's).
+  clean); the integrator may add them (the script is not WS18's). `demo/screenshots.py` imports
+  Playwright, which is not a workspace dependency: it is type-checked only through its inline
+  script metadata (`uv run --script`), not with `uv run mypy`.
+- `.pre-commit-config.yaml` is outside WS18's paths; this PR's change to it is disclosed in the PR
+  for the integrator to acknowledge.
 - Launch-day items in LAUNCH.md (public repo, domain, PyPI, hosting the site, the video).
 
 ## Open questions
