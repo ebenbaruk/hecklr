@@ -31,6 +31,10 @@ Every request carries `X-Hecklr-Trial-Id` (`SessionContext.headers()`) plus the 
 whose data is the `hecklr_schemas` payload as JSON: `tool_call`, `tool_result`, `handoff`, and
 `end` when it closes the conversation.
 
+`timeout_s` bounds each reply. The `websocket` opening handshake has its own bound,
+`WebSocketChatTarget(config, connect_timeout_s=10.0)`, so a short reply deadline does not fail a
+handshake that was merely slow on a busy machine (ADR 00hfa).
+
 Errors: `AgentError` / `AgentTimeoutError` when the agent fails (the driver reports the trial as
 `agent_error` / `timeout`), `AdapterConfigError` when the configuration cannot work (raised by
 `make_chat_target`). Anything else is a harness bug and propagates.
@@ -51,7 +55,10 @@ Replies are routed by recipient address, never by threading headers, so an agent
 thread (F11) is still recorded exactly as it wrote. `make_reply(parent, body=..., from_addr=...)`
 builds an RFC 5322 threaded reply; `to_mime` / `from_mime` convert to and from the wire.
 `hecklr_adapters.email.testing` starts a throwaway GreenMail server in Docker (`greenmail()`) and
-runs a minimal IMAP/SMTP agent (`run_mailbox_agent`). Decisions: ADR 0012a.
+runs a minimal IMAP/SMTP agent (`run_mailbox_agent`). Once the mailbox has answered a trial's
+first poll, a failed IMAP poll is retried at the next interval; the reply stream fails only when
+the first poll fails or polls keep failing for `ctx.timeout_s` (issue #70). Decisions: ADRs 0012a,
+00hfa.
 
 ## Contract suite
 
@@ -83,6 +90,10 @@ await link.hangup()
 | `websocket`, `protocol: pipecat` | Pipecat's `ProtobufFrameSerializer` frames (`FastAPIWebsocketTransport`) | none | `InterruptionFrame` |
 | `pipecat` | Pipecat SmallWebRTC: offer POSTed to `url` (the runner's `/api/offer`) | `pipecat` (aiortc) | Pipecat drops its queued audio |
 | `livekit` | joins room `<room_prefix>-<trial_id>`, token signed with `api_key_env` / `api_secret_env` | `livekit` | the agent clears its source |
+
+The `pipecat` caller calls an agent on this machine (`localhost`, loopback addresses) without a
+STUN server and any other agent with aiortc's default one, bundles media and data on one
+transport, and on hang-up leaves no ICE check or STUN query running (ADR 00hfa).
 
 Every adapter plays the agent's audio out in real time, as a phone would (a burst is heard over
 its length; `clear` cuts it where playback had got to), and delivers 16 kHz frames whose
