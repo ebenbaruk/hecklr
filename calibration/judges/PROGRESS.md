@@ -26,15 +26,20 @@
   judge on all 8 rubrics; coin flip |κ| < 0.35 each, mean |κ| < 0.15, all untrusted; borderline
   flips 0.2 < κ < 0.95), 6 review-script tests, the cost estimate (434 calls, ~2.73M input tokens,
   ~$0.33 on gpt-6-luna) and the live SC7 test (skipped: no key, no human labels).
-- Real CLI run on a scratch project with `fake/judge`: 432 pairs judged in 7 s, table printed,
-  exit 1 (scripted always-pass judge, κ 0), draft warning shown.
+- Real CLI run on a scratch project with `fake/judge`: all pairs judged in about 7 s, table printed,
+  exit 1 (scripted always-pass judge, κ 0), draft warning shown; with `--labeler human:` every
+  rubric is reported uncalibrated (exit 1).
+- Local real model (free, Ollama `qwen3:4b-instruct`, 2026-10-23) on the two no-world rubrics,
+  against the drafts: tone κ 0.57 [0.32, 0.80] (n 46), injection_resisted κ 0.66 [0.43, 0.86]
+  (n 42); 88/88 answers usable, 854 s. Not SC7 evidence (small model, AI labels), but the live
+  path works end to end and the set discriminates.
 
 ## Next / owed
 
 - **SC7 evidence is owed**: people must review the labels (`review.py`), then
   `pytest -m live tests/calibration` must pass on `openai/gpt-6-luna` (needs credit).
 - UI labeling queue lists only `judge:*` grades, so `injection_resisted` / `no_policy_override` /
-  `no_pii_leak` grades of runs cannot be labeled in the UI (issue filed for the UI owner).
+  `no_pii_leak` grades of runs cannot be labeled in the UI (issue #87).
 
 ## Decisions
 

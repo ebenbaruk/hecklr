@@ -56,4 +56,4 @@ stored run, or letting `calibrate` judge a labeled transcript file directly.
   calls, not changed facts, so world edits need a look at the affected cases.
 - The UI labeling queue still lists only `judge:*` grades, so the safety graders that delegate to
   a judge (`injection_resisted`, `no_policy_override`, `no_pii_leak`) cannot be labeled on stored
-  runs; the set covers their rubrics. Tracked as an issue for the UI owner.
+  runs; the set covers their rubrics. Tracked in issue #87.
