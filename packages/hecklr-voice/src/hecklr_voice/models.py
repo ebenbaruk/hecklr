@@ -4,6 +4,8 @@ import hashlib
 import importlib
 import importlib.util
 import os
+import threading
+import uuid
 from pathlib import Path
 from typing import Any, Final
 
@@ -31,18 +33,42 @@ async def ensure_model_file(
 
     The download goes to a temporary file that is renamed only once complete (and, with
     ``sha256``, verified), so an interrupted download never leaves a corrupt model behind.
+    Concurrent calls for one file are safe: within a process the first caller downloads and the
+    others wait for it; separate processes each download to their own temporary file and the
+    atomic rename publishes one complete copy.
     """
     await anyio.to_thread.run_sync(_download, url, path, sha256, transport)
     return path
 
 
+_PATH_LOCKS: dict[Path, threading.Lock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _path_lock(path: Path) -> threading.Lock:
+    with _PATH_LOCKS_GUARD:
+        return _PATH_LOCKS.setdefault(path.resolve(), threading.Lock())
+
+
 def _download(
     url: str, path: Path, sha256: str | None, transport: httpx2.BaseTransport | None
 ) -> None:
-    if path.exists():
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f"{path.name}.{os.getpid()}.part")
+    with _path_lock(path):
+        if path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Unique per call: another process may be downloading the same file right now.
+        partial = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.part")
+        try:
+            _fetch(url, partial, sha256, transport)
+            _publish(partial, path)
+        finally:
+            partial.unlink(missing_ok=True)
+
+
+def _fetch(
+    url: str, partial: Path, sha256: str | None, transport: httpx2.BaseTransport | None
+) -> None:
     digest = hashlib.sha256()
     try:
         with (
@@ -55,13 +81,24 @@ def _download(
                 for chunk in response.iter_bytes(_CHUNK):
                     digest.update(chunk)
                     out.write(chunk)
-        if sha256 is not None and digest.hexdigest() != sha256:
-            raise VoiceProviderError(f"downloading {url}: checksum mismatch, refusing the file")
-        partial.replace(path)
     except httpx2.HTTPError as exc:
         raise VoiceProviderError(f"downloading {url}: {exc}") from exc
-    finally:
-        partial.unlink(missing_ok=True)
+    if sha256 is not None and digest.hexdigest() != sha256:
+        raise VoiceProviderError(f"downloading {url}: checksum mismatch, refusing the file")
+
+
+def _publish(partial: Path, path: Path) -> None:
+    """Rename the complete download into place.
+
+    Where replacing a file another process holds open is refused (Windows), the rename can fail
+    because a competing download already published the same file: that file is complete (it was
+    renamed into place whole), so it counts as success.
+    """
+    try:
+        partial.replace(path)
+    except OSError:
+        if not path.exists():
+            raise
 
 
 def require_extra(module: str, what: str) -> None:

@@ -1,18 +1,23 @@
 """Edge cases of the ``python`` and ``websocket`` adapters, and ``make_chat_target``."""
 
+import asyncio
 import socket
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from pydantic import TypeAdapter
 from websockets.asyncio.client import ClientConnection
+from websockets.asyncio.server import ServerConnection, serve
 
 from hecklr_adapters import (
     AdapterConfigError,
     AgentError,
     AgentSession,
+    AgentTimeoutError,
     HttpChatTarget,
     OpenAICompatibleChatTarget,
     PythonChatTarget,
@@ -186,6 +191,56 @@ async def test_websocket_unreachable_agent_is_an_agent_error() -> None:
     config = WebSocketAdapterConfig(type="websocket", url=f"ws://127.0.0.1:{port}/ws")
     with pytest.raises(AgentError, match="cannot connect"):
         await WebSocketChatTarget(config).open(CTX)
+
+
+@asynccontextmanager
+async def _slow_handshake_agent(delay_s: float) -> AsyncIterator[str]:
+    """A WebSocket agent that takes ``delay_s`` to accept, then echoes each message once."""
+
+    async def accept_late(connection: ServerConnection, request: object) -> None:
+        await asyncio.sleep(delay_s)
+
+    async def echo(connection: ServerConnection) -> None:
+        async for message in connection:
+            await connection.send(message)
+
+    process_request: Callable[[ServerConnection, Any], Awaitable[None]] = accept_late
+    async with serve(echo, "127.0.0.1", 0, process_request=process_request) as server:
+        port = next(iter(server.sockets)).getsockname()[1]
+        yield f"ws://127.0.0.1:{port}/ws"
+
+
+@pytest.mark.anyio
+@pytest.mark.enable_socket
+@pytest.mark.allow_hosts(["127.0.0.1"])
+async def test_issue56_the_reply_timeout_does_not_bound_the_opening_handshake() -> None:
+    """An agent slower to accept than to reply is not a timeout: the handshake has its own."""
+    async with _slow_handshake_agent(delay_s=0.4) as url:
+        config = WebSocketAdapterConfig(type="websocket", url=url, timeout_s=0.1)
+        session = await WebSocketChatTarget(config).open(CTX)
+        chunks = [chunk async for chunk in session.send("hello")]
+        await session.close()
+    assert chunks[-1].final
+    assert "hello" in "".join(chunk.text or "" for chunk in chunks)
+
+
+@pytest.mark.anyio
+@pytest.mark.enable_socket
+@pytest.mark.allow_hosts(["127.0.0.1"])
+async def test_issue56_a_handshake_slower_than_the_connect_timeout_is_an_agent_timeout() -> None:
+    async with _slow_handshake_agent(delay_s=1.5) as url:
+        config = WebSocketAdapterConfig(type="websocket", url=url)
+        target = WebSocketChatTarget(config, connect_timeout_s=0.2)
+        started = time.monotonic()
+        with pytest.raises(AgentTimeoutError, match="did not accept"):
+            await target.open(CTX)
+        assert time.monotonic() - started < 1.0
+
+
+def test_issue56_the_connect_timeout_must_be_positive() -> None:
+    config = WebSocketAdapterConfig(type="websocket", url="ws://127.0.0.1:1/ws")
+    with pytest.raises(AdapterConfigError, match="connect_timeout_s"):
+        WebSocketChatTarget(config, connect_timeout_s=0)
 
 
 # --- factory -----------------------------------------------------------------------------------

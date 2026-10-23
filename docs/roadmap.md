@@ -25,7 +25,7 @@ milestone report with evidence for every criterion.
 ## In progress (toward v1.0)
 
 - **Benchmark numbers:** the measured rows are preliminary (a shared, loaded laptop; local qwen3
-  customers and judges; the gpt-6-luna stack missing). Re-measure on an idle machine before
+  customers and judges). Re-measure on an idle machine before
   publishing the leaderboard.
 - **Docs and launch:** this site, the demo, the launch posts.
 - `agent.command` in `hecklr.yaml` instead of `hecklr fix --agent-cmd` (RFC 0015a, v1.1).

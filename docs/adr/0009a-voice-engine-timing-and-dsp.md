@@ -2,6 +2,8 @@
 
 Date: 2026-10-21 · Status: proposed · Workstream: WS9
 
+> Superseded in part by [00hva](00hva-own-dsp-worker-pool.md): DSP runs in Hecklr's own worker pool, not `anyio.to_process`.
+
 ## Context
 
 ADR 0006 fixed what voice events mean (`utterance.latency_ms`, `interrupt.reaction_ms`, silence

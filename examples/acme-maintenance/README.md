@@ -14,6 +14,7 @@ tools/descriptions.yaml     editable: the tool catalog the agent's model sees
 personas/                   8 customers + adversarial/ (refund fraudster, data prober)
 scenarios/                  64 guided scenarios (LLM-simulated customers, judges)
 scripted/                   33 scripted scenarios, deterministic graders only (smoke suite)
+regression/                 scripted replays of real rules-brain failures (regression suite)
 agent/acme_agent/           the agent (FastAPI service, brains, tool backends)
 tests/                      world, suite, brains, faults, HTTP/SSE, live LLM
 ```

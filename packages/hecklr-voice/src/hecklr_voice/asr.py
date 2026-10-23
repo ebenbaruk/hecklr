@@ -93,9 +93,17 @@ def _whisper(model: str, download_root: str) -> Any:
 
 
 def whisper_transcribe(model: str, download_root: str, pcm: Pcm16, language: str) -> Transcript:
-    """Pool job: transcribe with faster-whisper; confidence is the mean token probability."""
+    """Pool job: transcribe with faster-whisper; confidence is the mean token probability.
+
+    Greedy and words only: the caller needs the agent's words, and a turn's edges come from the
+    audio (ADR 0009a). Decoding timestamp tokens took 6-9 s instead of 0.4 s on some 5-7 s
+    utterances, every run, for the same words (#48).
+    """
     segments, _ = _whisper(model, download_root).transcribe(
-        from_pcm16(pcm), language=language.split("-")[0].lower(), beam_size=1
+        from_pcm16(pcm),
+        language=language.split("-")[0].lower(),
+        beam_size=1,
+        without_timestamps=True,
     )
     parts = list(segments)
     text = " ".join(part.text.strip() for part in parts).strip()

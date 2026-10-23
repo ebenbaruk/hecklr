@@ -5,7 +5,7 @@ from collections.abc import Callable
 import httpx2
 import pytest
 
-from hecklr.probe import ollama_models, probe_agent, reply_path
+from hecklr.probe import local_ollama_url, ollama_models, probe_agent, reply_path
 
 Handler = Callable[[httpx2.Request], httpx2.Response]
 
@@ -73,6 +73,20 @@ def test_ollama_models_are_listed() -> None:
 
 def test_no_ollama() -> None:
     assert ollama_models(transport=_transport({})) is None
+
+
+@pytest.mark.parametrize(
+    ("env", "url"),
+    [
+        ({}, "http://localhost:11434"),
+        ({"OLLAMA_BASE_URL": ""}, "http://localhost:11434"),
+        ({"OLLAMA_BASE_URL": "http://gpu-box:11500/v1"}, "http://gpu-box:11500"),
+        ({"OLLAMA_BASE_URL": "http://gpu-box:11500/v1/"}, "http://gpu-box:11500"),
+        ({"OLLAMA_BASE_URL": "http://127.0.0.1:9"}, "http://127.0.0.1:9"),
+    ],
+)
+def test_issue74_ollama_is_looked_for_at_ollama_base_url(env: dict[str, str], url: str) -> None:
+    assert local_ollama_url(env) == url
 
 
 @pytest.mark.parametrize(

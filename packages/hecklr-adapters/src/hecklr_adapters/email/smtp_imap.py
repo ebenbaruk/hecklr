@@ -57,15 +57,33 @@ class SmtpImapEmailTarget:
         await anyio.to_thread.run_sync(self._send, mime, ctx.timeout_s)
 
     async def replies(self, ctx: SessionContext) -> AsyncIterator[EmailMessage]:
-        """Poll the customer mailboxes of this trial; never ends by itself."""
+        """Poll the customer mailboxes of this trial; never ends by itself.
+
+        Once the mailbox has answered a poll, a failed poll is retried at the next interval:
+        one dropped IMAP connection on a busy server is not the agent failing, and failing the
+        trial for it made a timeout read as an agent error at random (issue #70). A failure is
+        raised when the trial's first poll fails (a wrong or dead server, reported at once) or
+        when polls have kept failing for ``ctx.timeout_s``.
+        """
         seen: dict[str, set[bytes]] = {}
+        answered_at: float | None = None
+        """When a poll last succeeded, on the event loop's clock."""
         try:
             while True:
                 for address in sorted(self._addresses.of(ctx.trial_id)):
                     known = seen.setdefault(address, set())
-                    fresh = await anyio.to_thread.run_sync(
-                        self._fetch_new, address, known, ctx.timeout_s
-                    )
+                    try:
+                        fresh = await anyio.to_thread.run_sync(
+                            self._fetch_new, address, known, ctx.timeout_s
+                        )
+                    except AgentError:
+                        if (
+                            answered_at is None
+                            or anyio.current_time() - answered_at >= ctx.timeout_s
+                        ):
+                            raise
+                        continue
+                    answered_at = anyio.current_time()
                     for raw in fresh:
                         yield from_mime(raw)
                 await anyio.sleep(self._poll_interval_s)
