@@ -9,7 +9,7 @@ import anyio
 import pytest
 
 from hecklr_adapters import AdapterConfigError, AgentError, AgentTimeoutError, make_email_target
-from hecklr_adapters.email import SmtpImapEmailTarget, make_reply, smtp_imap
+from hecklr_adapters.email import SmtpImapEmailTarget, make_reply, smtp_imap, to_mime
 from hecklr_adapters.email.testing import MailServer, run_mailbox_agent
 from hecklr_schemas import (
     EmailMessage,
@@ -144,6 +144,72 @@ async def test_ws12_an_empty_imap_fetch_is_an_agent_error(monkeypatch: pytest.Mo
     target._addresses.add(context.trial_id, "c@customers.hecklr.test")
     with pytest.raises(AgentError, match="FETCH of UID 7 returned no message"):
         await anext(target.replies(context))
+
+
+class FlakyImap:
+    """An IMAP server whose connections fail as scripted: ``None`` answers, an error is raised."""
+
+    def __init__(self, script: list[Exception | None], message: bytes) -> None:
+        self.script = script
+        self.message = message
+        self.connections = 0
+
+    @contextmanager
+    def connect(self, host: str, port: int, timeout_s: float) -> Iterator[FakeImap]:
+        failure = self.script[min(self.connections, len(self.script) - 1)]
+        self.connections += 1
+        if failure is not None:
+            raise failure
+        # The reply is in the mailbox from the third connection on.
+        yield ReplyImap(self.message if self.connections >= 3 else None)
+
+
+class ReplyImap(FakeImap):
+    """A mailbox holding ``message`` as UID 7, or nothing."""
+
+    def __init__(self, message: bytes | None) -> None:
+        super().__init__([(b"7 (BODY[] {1}", message), b")"])
+        self.message = message
+
+    def uid(self, command: str, *args: str) -> tuple[str, list[Any]]:
+        if command == "SEARCH" and self.message is None:
+            return "OK", [b""]
+        return super().uid(command, *args)
+
+
+def reply_mime() -> bytes:
+    return to_mime(email(body="Your visit is moved")).as_bytes()
+
+
+async def test_issue70_a_poll_that_fails_once_the_mailbox_answered_is_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One dropped IMAP connection on a busy server is not the agent failing: the next poll
+    finds the reply."""
+    flaky = FlakyImap([None, ConnectionResetError("reset by peer"), None], reply_mime())
+    monkeypatch.setattr(smtp_imap, "_imap", flaky.connect)
+    target = SmtpImapEmailTarget(config(), poll_interval_s=0.01)
+    context = ctx()
+    target._addresses.add(context.trial_id, "c@customers.hecklr.test")
+    with anyio.fail_after(5):
+        reply = await anext(target.replies(context))
+    assert reply.body == "Your visit is moved"
+    assert flaky.connections == 3
+
+
+async def test_issue70_polls_failing_for_the_whole_timeout_fail_the_reply_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flaky = FlakyImap([None, ConnectionResetError("reset by peer")], reply_mime())
+    monkeypatch.setattr(smtp_imap, "_imap", flaky.connect)
+    target = SmtpImapEmailTarget(config(), poll_interval_s=0.01)
+    context = ctx(timeout_s=0.2)
+    target._addresses.add(context.trial_id, "c@customers.hecklr.test")
+    started = anyio.current_time()
+    with anyio.fail_after(5), pytest.raises(AgentError, match="ConnectionResetError"):
+        await anext(target.replies(context))
+    assert anyio.current_time() - started >= 0.2
+    assert flaky.connections > 3
 
 
 # --- against a real mail server ---------------------------------------------------------------
