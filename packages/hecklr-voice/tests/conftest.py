@@ -1,6 +1,7 @@
 """Voice test configuration."""
 
 import gc
+import os
 from collections.abc import Iterator
 
 import pytest
@@ -20,14 +21,19 @@ def frozen_heap() -> Iterator[None]:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Run the SC3 concurrency benchmark only when asked for (``-m perf``).
+    """Run the voice timing tests only when asked for, and only serially (#55).
 
-    It measures real-time frame pacing for 50 calls, which is only meaningful on a machine that
-    is not also running the rest of the suite in parallel.
+    SC3's frame pacing for 50 calls, the loop's CPU between heartbeats and Whisper's CPU per
+    caller turn are only meaningful on a machine that is not also running the rest of the suite:
+    like SC4 (ADR 0010b), they are skipped inside an xdist worker and asserted by their own
+    serial step, ``uv run pytest packages/hecklr-voice -m perf -p no:xdist``.
     """
-    if "perf" in (config.getoption("markexpr") or ""):
+    if "perf" not in (config.getoption("markexpr") or ""):
+        reason = "timing: run alone with -m perf -p no:xdist"
+    elif os.environ.get("PYTEST_XDIST_WORKER"):
+        reason = "timing needs an idle CPU: uv run pytest -m perf -p no:xdist"
+    else:
         return
-    skip = pytest.mark.skip(reason="benchmark: run alone with -m perf (SC3)")
     for item in items:
         if item.get_closest_marker("perf") and "hecklr-voice" in str(item.path):
-            item.add_marker(skip)
+            item.add_marker(pytest.mark.skip(reason=reason))
