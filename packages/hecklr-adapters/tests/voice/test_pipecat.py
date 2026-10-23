@@ -12,7 +12,13 @@ import av
 import numpy as np
 import pytest
 from aioice import stun
-from aiortc import MediaStreamTrack, RTCConfiguration, RTCIceServer, RTCPeerConnection
+from aiortc import (
+    MediaStreamTrack,
+    RTCConfiguration,
+    RTCIceServer,
+    RTCOutboundRtpStreamStats,
+    RTCPeerConnection,
+)
 from aiortc.mediastreams import MediaStreamError
 
 from hecklr_adapters import AgentError
@@ -37,11 +43,11 @@ def ctx() -> SessionContext:
     return SessionContext(trial_id=TrialId(new_id()), seed=1)
 
 
-async def test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place() -> None:
-    """The caller track loses nothing and moves nothing: edges within the Opus codec delay."""
-    clip = np.concatenate(
-        [np.zeros(8000, np.int16), synthetic_reply("sure I can help"), np.zeros(8000, np.int16)]
-    )
+@asynccontextmanager
+async def heard_by_aiortc(
+    hear: Callable[[av.AudioFrame], None],
+) -> AsyncIterator[tuple[CallerTrack, RTCPeerConnection]]:
+    """A caller track sent to a plain aiortc peer that hands each frame it decodes to ``hear``."""
     sender, receiver = RTCPeerConnection(LOCAL), RTCPeerConnection(LOCAL)
     track = CallerTrack()
     sender.addTransceiver(track, direction="sendonly")
@@ -52,23 +58,43 @@ async def test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place() -> N
     await receiver.setLocalDescription(await receiver.createAnswer())
     await sender.setRemoteDescription(receiver.localDescription)
     remote = await arrived
-    heard: list[np.ndarray] = []
 
     async def listen() -> None:
         while True:
             frame = await remote.recv()
             assert isinstance(frame, av.AudioFrame)
-            heard.append(frame.to_ndarray().reshape(-1, 2).mean(axis=1).astype(np.int16))
+            hear(frame)
 
     listening = asyncio.get_running_loop().create_task(listen())
+    try:
+        yield track, sender
+    finally:
+        listening.cancel()
+        await sender.close()
+        await receiver.close()
+
+
+async def play(track: CallerTrack, clip: np.ndarray) -> None:
+    """Push ``clip`` in real-time 20 ms frames."""
     start = time.monotonic()
     for index in range(len(clip) // 320):
         await asyncio.sleep(max(0.0, start + index * 0.02 - time.monotonic()))
         track.push(clip[index * 320 : (index + 1) * 320].tobytes())
-    await asyncio.sleep(0.3)
-    listening.cancel()
-    await sender.close()
-    await receiver.close()
+
+
+async def test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place() -> None:
+    """The caller track loses nothing and moves nothing: edges within the Opus codec delay."""
+    clip = np.concatenate(
+        [np.zeros(8000, np.int16), synthetic_reply("sure I can help"), np.zeros(8000, np.int16)]
+    )
+    heard: list[np.ndarray] = []
+
+    def hear(frame: av.AudioFrame) -> None:
+        heard.append(frame.to_ndarray().reshape(-1, 2).mean(axis=1).astype(np.int16))
+
+    async with heard_by_aiortc(hear) as (track, _):
+        await play(track, clip)
+        await asyncio.sleep(0.3)
     sent = speech_edges(clip)
     got = speech_edges(np.concatenate(heard))
     assert sent is not None
@@ -76,6 +102,36 @@ async def test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place() -> N
     sent_ms = (sent[1] - sent[0]) / 16
     got_ms = (got[1] - got[0]) / 48
     assert abs(got_ms - sent_ms) <= 10
+
+
+async def test_issue27_aiortc_holds_the_last_five_frames_of_a_stream_until_more_follow() -> None:
+    """Why the voice contract keeps the caller's line open after speaking.
+
+    The sender's encoder holds the last frame (it resamples to 48 kHz in 20 ms blocks) and the
+    receiver's audio jitter buffer (capacity 16, prefetch 4) releases a frame only once four
+    more are behind it. So a stream that stops leaves its last 100 ms undelivered, and a stream
+    that goes on, as the driver's line does all call long, only delays them. This is the
+    ~110 ms of each caller utterance the Pipecat reference bot "lost" (issue #27).
+    """
+    received = 0
+
+    def hear(frame: av.AudioFrame) -> None:
+        nonlocal received
+        received += 1
+
+    async with heard_by_aiortc(hear) as (track, sender):
+        await play(track, np.zeros(50 * 320, np.int16))
+        await asyncio.sleep(0.5)
+        stats = (await sender.getStats()).values()
+        [outbound] = [s for s in stats if isinstance(s, RTCOutboundRtpStreamStats)]
+        held_by_sender, held_by_receiver = (
+            50 - outbound.packetsSent,
+            outbound.packetsSent - received,
+        )
+        await play(track, np.zeros(5 * 320, np.int16))  # the line goes on
+        await asyncio.sleep(0.3)
+    assert (held_by_sender, held_by_receiver) == (1, 4)
+    assert received >= 50
 
 
 async def test_caller_track_refuses_reads_once_stopped() -> None:

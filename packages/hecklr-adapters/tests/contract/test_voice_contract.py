@@ -137,8 +137,11 @@ async def test_ws10_contract_target_and_link_satisfy_the_protocols(case: VoiceCa
 
 async def test_ws10_contract_caller_audio_reaches_the_agent_at_its_rate(case: VoiceCase) -> None:
     # Half a second of line silence first, as a caller listens before speaking: an agent may
-    # not be listening the instant the call connects.
-    clip = np.concatenate([np.zeros(8000, dtype=np.int16), synthetic_reply(SHORT_REPLY)])
+    # not be listening the instant the call connects. The line then stays open, as the driver
+    # keeps it: a WebRTC receiver holds its last packets until more arrive (issue #27).
+    clip = np.concatenate(
+        [np.zeros(8000, np.int16), synthetic_reply(SHORT_REPLY), np.zeros(9600, np.int16)]
+    )
     frames = len(clip) // FRAME_SAMPLES
     async with case.agent(reply_after_ms=10_000) as agent:
         link = await agent.target.connect(context())
@@ -148,7 +151,6 @@ async def test_ws10_contract_caller_audio_reaches_the_agent_at_its_rate(case: Vo
             await anyio.sleep(max(0.0, due - time.monotonic()))
             pcm = clip[index * FRAME_SAMPLES : (index + 1) * FRAME_SAMPLES]
             await link.send_frame(pcm.astype("<i2").tobytes(), SAMPLE_RATE)
-        await anyio.sleep(0.6)  # the tail is still in flight through the agent's buffers
         call = await agent.call(0)
         await link.hangup()
     brain = call.brain
@@ -160,7 +162,7 @@ async def test_ws10_contract_caller_audio_reaches_the_agent_at_its_rate(case: Vo
     if case.timing_is_meaningful:
         first, last = speech_edges(clip) or (0, 0)
         heard_ms = max(brain.speech_ms) - min(brain.speech_ms)
-        assert abs(heard_ms - (last - first) / 16) <= TOLERANCE_MS + case.caller_loss_ms
+        assert abs(heard_ms - (last - first) / 16) <= TOLERANCE_MS
 
 
 async def test_ws10_contract_agent_audio_arrives_as_real_time_16khz_frames(

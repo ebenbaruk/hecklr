@@ -88,8 +88,6 @@ class VoiceCase:
     themselves are ``sc4_timing``: they run serially, and for these cases only on a dedicated
     CPU, not on CI's shared runner: ADR 0010b.)
     """
-    caller_loss_ms: float = 0.0
-    """Caller speech the reference agent's own receive path may lose (see PROGRESS.md)."""
     protocol: Protocol = "pcm"
     rhythm: Rhythm = "paced"
     extra: dict[str, Any] = field(default_factory=dict)
@@ -236,13 +234,10 @@ VOICE_CASES = [
         transport="pipecat",
         can_fail=False,
         offset_ms=(0.0, 400.0),
-        # Measured against Pipecat 1.13's SmallWebRTC receive path (aiortc on the bot side):
-        # the bot hears ~110 ms less of each utterance and one reply in a long call arrives
-        # ~150 ms later than the rest. The same caller track looped through plain aiortc keeps
-        # every edge within 10 ms (tests/voice/test_pipecat.py), so this is the bot's side:
-        # https://github.com/ebenbaruk/hecklr/issues/27
+        # The reference bot's sender (Pipecat's RawAudioTrack) runs on a thread of this
+        # process: when it is starved of CPU it falls behind and catches up in a burst, which
+        # the caller hears as later audio for the rest of the call (ADR 00hfa, issue #27).
         jitter_ms=200.0,
-        caller_loss_ms=150.0,
         timing_needs_idle_cpu=True,
     ),
 ]
