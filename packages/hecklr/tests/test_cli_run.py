@@ -1,6 +1,12 @@
 """``hecklr run`` through Typer's CliRunner, on starter projects and scripted models."""
 
+import asyncio
+import logging
 import re
+import signal
+import subprocess
+import sys
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -220,6 +226,60 @@ def test_issue34_max_reply_bytes_sets_the_cap(config_path: Path, stub_agent: Stu
 
     code, output = _run(config_path, "--trials", "1", "--max-reply-bytes", "2000")
     assert code == exit_codes.OK, output
+
+
+@pytest.mark.slow
+def test_issue35_ctrl_c_prints_one_line_and_exits_130(
+    config_path: Path, stub_agent: StubAgent
+) -> None:
+    stub_agent("slow", 2.0)
+    # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal.
+    command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
+    process = subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
+        [*command, "-c", str(config_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stderr is not None
+    plan = process.stderr.readline()
+    assert plan.startswith("Suite ci:"), plan
+    run_id = plan.split("; run ")[1].strip()
+    recorded = config_path.parent / ".hecklr" / "runs" / run_id / "run.json"
+    deadline = time.monotonic() + 30
+    while not recorded.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    time.sleep(0.5)  # trials are in flight: each agent reply takes 2 s
+    process.send_signal(signal.SIGINT)
+    _, rest = process.communicate(timeout=60)
+
+    assert process.returncode == exit_codes.INTERRUPTED, rest
+    assert rest.strip() == f"Interrupted: run {run_id} recorded as cancelled"
+    store = ResultStore(config_path.parent / ".hecklr" / "runs")
+    (run,) = store.list_runs()
+    store.close()
+    assert (run.id, run.status) == (run_id, RunStatus.CANCELLED)
+
+
+def test_issue35_only_cancellations_of_the_embedded_server_are_silenced(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("uvicorn.error")
+    try:
+        raise asyncio.CancelledError
+    except asyncio.CancelledError as exc:
+        cancelled = exc
+    with caplog.at_level(logging.ERROR, logger="uvicorn.error"):
+        with hecklr.commands.run._quiet_server_cancellations():
+            logger.error("Exception in 'lifespan' protocol", exc_info=cancelled)
+            logger.error("Traceback ...\nasyncio.exceptions.CancelledError\n")
+            logger.error("Exception in ASGI application", exc_info=ValueError("tool bug"))
+        logger.error("after the run")
+
+    assert [r.getMessage() for r in caplog.records] == [
+        "Exception in ASGI application",
+        "after the run",
+    ]
 
 
 def test_a_missing_provider_key_is_a_config_error_before_the_run_starts(

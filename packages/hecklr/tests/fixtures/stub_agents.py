@@ -1,4 +1,4 @@
-"""Broken agents behind a JSON HTTP endpoint, as the red team's repros used them (issues #33, #34).
+"""Broken agents behind a JSON HTTP endpoint, as the red team's repros used them (#33-#35).
 
 Each factory returns an ASGI app whose ``POST /chat`` misbehaves in one way; ``serve`` runs any
 of them on an ephemeral 127.0.0.1 port.
@@ -9,6 +9,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+import anyio
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
@@ -33,6 +34,18 @@ def flooding_agent(reply_bytes: int) -> FastAPI:
     @app.post("/chat")
     async def chat() -> PlainTextResponse:
         return PlainTextResponse(body, media_type="application/json")
+
+    return app
+
+
+def slow_agent(delay_s: float) -> FastAPI:
+    """Answers every message with ``{"reply": "ok"}`` after ``delay_s`` seconds."""
+    app = FastAPI()
+
+    @app.post("/chat")
+    async def chat() -> dict[str, str]:
+        await anyio.sleep(delay_s)
+        return {"reply": "ok"}
 
     return app
 

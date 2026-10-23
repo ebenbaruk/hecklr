@@ -5,7 +5,10 @@ the recorded ``--baseline`` when there is one; the self-contained HTML report is
 run directory.
 """
 
-from collections.abc import Mapping, Sequence
+import asyncio
+import logging
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
@@ -181,7 +184,7 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
         progress.update(task, total=(progress.tasks[0].total or 0) + extra)
         stderr.print(f"Adaptive pass: {extra} more trials")
 
-    with progress:
+    with progress, _quiet_server_cancellations():
         try:
             return anyio.run(
                 partial(
@@ -192,9 +195,41 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
                     on_adaptive=on_adaptive,
                 )
             )
+        except KeyboardInterrupt:
+            # asyncio cancelled the run on SIGINT and the executor recorded it as cancelled.
+            stderr.print(f"Interrupted: run {prepared.plan.run.id} recorded as cancelled")
+            raise typer.Exit(code=exit_codes.INTERRUPTED) from None
         except Exception as exc:
             # The executor already recorded the run as failed; say why and stop.
             raise fail(f"the run failed: {describe_error(exc)}", exit_codes.HARNESS_ERROR) from exc
+
+
+class _DropCancellations(logging.Filter):
+    """Drops records about a task cancellation: its exception, or its formatted traceback."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info is not None:
+            return not isinstance(record.exc_info[1], asyncio.CancelledError)
+        # Starlette reports a failed lifespan to uvicorn as traceback text, which uvicorn logs as
+        # the message; its last line names the exception.
+        return not record.getMessage().rstrip().endswith("CancelledError")
+
+
+@contextmanager
+def _quiet_server_cancellations() -> Iterator[None]:
+    """Keep a cancelled embedded server from printing a traceback (issue #35).
+
+    On Ctrl-C asyncio cancels every task still running, including the world sandbox's uvicorn
+    lifespan task, which logs its ``CancelledError`` as an error on ``uvicorn.error``. A cancelled
+    server is not an error, and the run already says it was interrupted.
+    """
+    logger = logging.getLogger("uvicorn.error")
+    quiet = _DropCancellations()
+    logger.addFilter(quiet)
+    try:
+        yield
+    finally:
+        logger.removeFilter(quiet)
 
 
 def _summarize(prepared: PreparedRun, results: RunResults) -> None:
