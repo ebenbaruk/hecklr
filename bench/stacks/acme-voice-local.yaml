@@ -4,7 +4,8 @@ track: voice
 description: >-
   The acme-voice reference pipeline as shipped: Silero VAD, 800 ms endpointing with speculative
   transcription, faster-whisper base.en, the acme rules brain and Kokoro TTS, all on this
-  machine, over a raw PCM WebSocket.
+  machine, over a raw PCM WebSocket. Synthesized replies are cached on disk by text (the rules
+  brain repeats its phrasings), so the published row is measured with a warm cache.
 why: >-
   The hand-built baseline the other voice rows are compared with: free, local, and tuned for
   turn-taking (speculative ASR keeps the recognizer off the response path).

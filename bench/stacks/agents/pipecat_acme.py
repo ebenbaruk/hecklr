@@ -120,7 +120,11 @@ class Meter:
     cap_usd: Decimal | None = None
     """Refuse new calls once the cloud spend reaches this; ``None``: no cap."""
     stt_seconds: float = 0.0
+    """Streaming session time of finished calls."""
     tts_seconds: float = 0.0
+    live_since: dict[int, float] = field(default_factory=dict)
+    """Start (monotonic seconds) of each call in progress, by call number: a session bills while
+    it is open, so the spend read when a conversation ends already includes it."""
     calls: int = 0
     calls_by_world_source: Counter[str] = field(default_factory=Counter)
 
@@ -129,7 +133,9 @@ class Meter:
         """What the cloud services cost so far; local services are free."""
         spent = Decimal(0)
         if self.stt == "assemblyai":
-            spent += ASSEMBLYAI_USD_PER_HOUR * Decimal(str(self.stt_seconds)) / 3600
+            now = time.monotonic()
+            seconds = self.stt_seconds + sum(now - start for start in self.live_since.values())
+            spent += ASSEMBLYAI_USD_PER_HOUR * Decimal(str(seconds)) / 3600
         if self.tts == "openai":
             spent += OPENAI_TTS_USD_PER_MINUTE * Decimal(str(self.tts_seconds)) / 60
         return spent.quantize(Decimal("0.000001"))
@@ -302,13 +308,14 @@ class AcmeBot:
         async def on_disconnected(transport: Any, client: Any) -> None:
             await runner.cancel()
 
-        started = time.monotonic()
+        call = self.meter.calls
+        self.meter.live_since[call] = time.monotonic()
         try:
             await runner.add_workers(worker)
             await runner.run()
         finally:
             # A streaming recognizer's session lasts as long as the call.
-            self.meter.stt_seconds += time.monotonic() - started
+            self.meter.stt_seconds += time.monotonic() - self.meter.live_since.pop(call)
 
 
 def build_app(bot: AcmeBot) -> FastAPI:

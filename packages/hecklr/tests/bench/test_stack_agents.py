@@ -6,6 +6,7 @@ pin the parts a run cannot check: the brain's input and the cloud spend meter an
 
 import importlib
 import sys
+import time
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
@@ -56,3 +57,10 @@ def test_cloud_speech_is_charged_at_list_price_and_capped(pipecat_acme: ModuleTy
     meter.tts_seconds = 240.0
 
     assert meter.exhausted
+
+
+def test_a_call_in_progress_is_charged_while_it_lasts(pipecat_acme: ModuleType) -> None:
+    meter = pipecat_acme.Meter("assemblyai", "kokoro")
+    meter.live_since[1] = time.monotonic() - 3600  # a call open for an hour
+
+    assert Decimal("0.149") < meter.spent_usd <= Decimal("0.151")

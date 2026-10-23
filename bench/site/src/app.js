@@ -226,6 +226,14 @@
       if (row.stack.reference) title.append(el("span", "badge", "reference"));
       name.append(title);
       name.append(el("div", "stack-parts", Object.values(row.stack.components).join(" · ")));
+      // A thinner row (conversations without a verdict) or a busy machine changes how far the
+      // row can be trusted, so both sit next to its name.
+      const [loadStart, loadEnd] = row.environment.load_average;
+      name.append(
+        el("div", "stack-parts",
+          row.counts.analyzed + "/" + row.counts.total + " conversations with a verdict · load " +
+          loadStart.toFixed(1) + "→" + loadEnd.toFixed(1) + " on " + row.environment.cpus + " CPUs"),
+      );
       const open = state.open.has(row.stack.id);
       const toggle = el("button", "expand", open ? "Hide details" : "Details");
       toggle.type = "button";

@@ -4,6 +4,7 @@ track: voice
 description: >-
   The acme-voice reference pipeline, unchanged, run as a LiveKit agent worker: the caller and the
   agent meet in a room of a local livekit-server (Docker, v1.13.10) and talk over WebRTC (Opus).
+  It shares the local cascade's on-disk reply cache, measured warm.
 why: >-
   Same models, same brain, same endpointing as the local cascade; only the transport differs.
   Isolates what an SFU and WebRTC's jitter buffer and codec add to what callers hear.
