@@ -12,10 +12,10 @@ not on PyPI yet; see the quickstart's "Before the first PyPI release" note). For
 
 It reproduces the quickstart on a laptop with no model key and no local Ollama, where ``hecklr
 init`` picks scripted ``fake/`` models: no network and no cost. Keys are removed from the
-environment, and the proxy variables make ``localhost:11434`` unreachable on a developer machine
-that runs Ollama (``hecklr init`` probes that fixed URL), while ``127.0.0.1`` (the world sandbox
-and the reference agent) stays direct. That is why the documented ``localhost:8000`` becomes
-``127.0.0.1`` and a free port, the only change made to the documented commands.
+environment, and ``OLLAMA_BASE_URL`` points at a closed port, so a developer machine that runs
+Ollama looks like one that does not (``hecklr init`` probes that URL, #74). The documented
+``localhost:8000`` becomes ``127.0.0.1`` and a free port, the only change made to the documented
+commands.
 """
 
 import os
@@ -39,18 +39,13 @@ SC1_LIMIT_S = 300
 _AGENT_START_TIMEOUT_S = SC1_LIMIT_S
 _DOCUMENTED_AGENT = "http://localhost:8000"
 _MODEL_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+_CLOSED_PORT = "http://127.0.0.1:9"
+"""The discard port: nothing listens there, so no Ollama answers."""
 
 
 def _offline_laptop_env() -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if key not in _MODEL_KEYS}
-    env.update(
-        HTTP_PROXY="http://127.0.0.1:9",
-        http_proxy="http://127.0.0.1:9",
-        NO_PROXY="127.0.0.1",
-        no_proxy="127.0.0.1",
-        NO_COLOR="1",
-        COLUMNS="160",
-    )
+    env.update(OLLAMA_BASE_URL=_CLOSED_PORT, NO_COLOR="1", COLUMNS="160")
     return env
 
 

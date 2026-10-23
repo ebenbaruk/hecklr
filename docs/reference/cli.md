@@ -186,6 +186,8 @@ $ hecklr calibrate [OPTIONS]
 * `--replicates <int range>`: --aa: simulated A/A comparisons (0 skips the simulation).  [default: 200; x&gt;=0]
 * `--labels <file>`: --judges: human labels, JSONL.
 * `--run <str>`: --judges: runs whose judge grades were labeled .
+* `--set <directory>`: --judges: a labeled transcript set to judge now (e.g. calibration/judges).
+* `--labeler <str>`: --judges: only labels whose labeler starts with this, e.g. human: (repeatable).
 * `--help`: Show this message and exit.
 
 ## `hecklr replay`

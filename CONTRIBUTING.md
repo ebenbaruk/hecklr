@@ -100,8 +100,8 @@ The docs site lives in `docs/` and builds with MkDocs Material:
 
 ```bash
 uv sync --all-packages --all-extras --group docs
-uv run mkdocs serve                              # http://127.0.0.1:8000/
-uv run mkdocs build --strict                     # what CI runs
+uv run --group docs mkdocs serve                 # http://127.0.0.1:8000/
+uv run --group docs mkdocs build --strict        # what CI runs
 uv run python docs/scripts/gen_reference.py      # regenerate the CLI and configuration reference
 uv run pytest tests/docs                         # the executed docs, SC1 included
 ```

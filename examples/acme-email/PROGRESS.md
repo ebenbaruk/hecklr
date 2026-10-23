@@ -82,6 +82,16 @@ threading, `resolved`), "Testing strategy" (fault matrix F11, F12), WS12 row. AD
   `resolved` on the 6 `catches-f12` scenarios). Total live spend $0.444. The refund scenario now
   runs (issue #29 fixed on main by #49).
 
+## Done in Wave 5 (hflake, issue #70)
+
+- `test_sc8_mailbox_agent_over_smtp_imap[F12]` read `agent_error` instead of `timeout` under CI
+  load: one IMAP poll of Hecklr's `smtp-imap` adapter failed during F12's 4 s wait and the adapter
+  failed the reply stream. The adapter now retries a dropped poll once the mailbox has answered
+  (ADR 00hfa). `test_issue70_dropped_reply_polls_change_no_verdict` drops every third poll against
+  real GreenMail: the old adapter gives exactly the CI result (`['agent_error', 'state']`), the
+  new one `['timeout', 'state']` for F12 and a clean pass for the clean agent. The matrix test's
+  assertion now prints the trial's error.
+
 ## Next
 
 - Grade email emergencies with `handoff_appropriate` once the email channel can carry a handoff

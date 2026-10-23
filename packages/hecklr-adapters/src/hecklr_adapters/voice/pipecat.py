@@ -7,6 +7,12 @@ trial id and its world URLs travel as headers (``session_headers``) and in ``req
 (``session_fields``). The call is answered when the agent's audio track arrives; it ends when
 that track ends.
 
+An agent on this machine is called without a STUN server: it reaches the caller's host
+candidates directly, and querying a public server only delays the call (by 5 s when an
+interface, such as a link-local one, has no route to it). Any other agent is called with
+aiortc's default STUN server. Media and the data channel share one transport (max-bundle), as
+on Pipecat's side.
+
 Pipecat agents reached over WebSocket instead use the ``websocket`` adapter with
 ``protocol: pipecat``.
 """
@@ -14,16 +20,26 @@ Pipecat agents reached over WebSocket instead use the ``websocket`` adapter with
 import asyncio
 import contextlib
 import fractions
+import ipaddress
 import json
 from collections.abc import AsyncIterator
 from typing import Final
+from urllib.parse import urlsplit
 
 import anyio
 import av
 import httpx2
 import numpy as np
 import numpy.typing as npt
-from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
+from aioice import Connection
+from aiortc import (
+    MediaStreamTrack,
+    RTCBundlePolicy,
+    RTCConfiguration,
+    RTCIceTransport,
+    RTCPeerConnection,
+    RTCSessionDescription,
+)
 from aiortc.mediastreams import MediaStreamError
 
 from hecklr_adapters._http import agent_http_errors, check_status, parse_json
@@ -37,6 +53,21 @@ from hecklr_schemas import PipecatAdapterConfig, SessionContext, TimedFrame
 _TIME_BASE: Final = fractions.Fraction(1, SAMPLE_RATE)
 _LEFT_POLL_S: Final = 0.05
 """How often a quiet receive checks whether the agent has left."""
+_GATHERING_LIMIT_S: Final = 6.0
+"""Bound on waiting for ICE gathering at hang-up: aioice ends it by itself after 5 s."""
+
+
+def peer_configuration(url: str) -> RTCConfiguration:
+    """How to call the agent at ``url``: no STUN server when it runs on this machine."""
+    host = urlsplit(url).hostname or ""
+    try:
+        local = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:  # a host name other than localhost
+        local = False
+    # aiortc reads iceServers=None as "its default STUN server".
+    return RTCConfiguration(
+        iceServers=[] if local else None, bundlePolicy=RTCBundlePolicy.MAX_BUNDLE
+    )
 
 
 def _mono(frame: av.AudioFrame) -> npt.NDArray[np.int16]:
@@ -48,6 +79,37 @@ def _mono(frame: av.AudioFrame) -> npt.NDArray[np.int16]:
     else:
         mixed = data.reshape(-1, len(frame.layout.channels)).mean(axis=1)
     return mixed.astype(np.int16)
+
+
+async def _stop_checks(connections: list[Connection]) -> None:
+    """Cancel every ICE connectivity check still running and wait until each has ended."""
+    checks = [pair.task for c in connections for pair in c._check_list if pair.task is not None]
+    for check in checks:
+        check.cancel()
+    if checks:
+        # Waited for, not gathered: a check that failed rather than being cancelled must
+        # still surface (asyncio reports a task exception nobody retrieved).
+        await asyncio.wait(checks)
+
+
+async def _close_peer(pc: RTCPeerConnection, ice_transports: list[RTCIceTransport]) -> None:
+    """Close the peer connection and every ICE transport it gathered on, leaving nothing behind.
+
+    A connectivity check the agent triggers after ICE completed (its checks arriving from
+    another interface, such as a link-local one) starts a STUN transaction that retries at
+    0.5 s, 1 s, 2 s, ... until answered. aioice 0.10's ``Connection.close`` does not cancel it,
+    so its retry fired on the closed socket and raised inside the event loop (issue #73). The
+    checks are reached through aioice's private state because nothing public exposes them.
+    """
+    connections = [ice.iceGatherer._connection for ice in ice_transports]
+    await _stop_checks(connections)
+    try:
+        await pc.close()
+    finally:
+        for ice in ice_transports:
+            await ice.stop()
+        # The agent may have triggered another check while the transports were closing.
+        await _stop_checks(connections)
 
 
 class CallerTrack(MediaStreamTrack):
@@ -86,7 +148,7 @@ class PipecatVoiceTarget:
 
     async def connect(self, ctx: SessionContext) -> "PipecatAudioLink":
         """Offer, answer, and wait for the agent's audio track."""
-        link = PipecatAudioLink()
+        link = PipecatAudioLink(peer_configuration(self._url))
         try:
             answer = await self._negotiate(ctx, await link.offer())
             await link.answer(answer)
@@ -115,13 +177,20 @@ class PipecatVoiceTarget:
 class PipecatAudioLink:
     """One call over a WebRTC peer connection."""
 
-    def __init__(self) -> None:
-        self._pc = RTCPeerConnection()
+    def __init__(self, configuration: RTCConfiguration | None = None) -> None:
+        self._pc = RTCPeerConnection(configuration)
         self._caller = CallerTrack()
         self._pc.addTransceiver(self._caller, direction="sendrecv")
         # Pipecat announces a hang-up on the data channel ("peerLeft") before closing, which
         # is how its clients learn of it promptly.
-        self._pc.createDataChannel("hecklr").on("message", self._on_message)
+        channel = self._pc.createDataChannel("hecklr")
+        channel.on("message", self._on_message)
+        # Every ICE transport (one under max-bundle), as hang-up must close each of them.
+        self._ice = list(
+            {t.receiver.transport.transport for t in self._pc.getTransceivers()}
+            | {channel.transport.transport.transport}
+        )
+        self._gathering: asyncio.Task[None] | None = None
         self._agent: MediaStreamTrack | None = None
         self._settled = anyio.Event()
         """Set once the connection is up or has failed."""
@@ -134,7 +203,13 @@ class PipecatAudioLink:
 
     async def offer(self) -> RTCSessionDescription:
         """The local offer, with every ICE candidate gathered (aiortc does not trickle)."""
-        await self._pc.setLocalDescription(await self._pc.createOffer())
+        # Gathering runs to its end even if the caller gives up: aioice queries the STUN server
+        # in tasks that only it can cancel, when gathering ends, so a cancelled gathering would
+        # leave queries retrying on the sockets hang-up closes. Hang-up waits for it instead.
+        self._gathering = asyncio.ensure_future(
+            self._pc.setLocalDescription(await self._pc.createOffer())
+        )
+        await asyncio.shield(self._gathering)
         description: RTCSessionDescription = self._pc.localDescription
         return description
 
@@ -171,12 +246,15 @@ class PipecatAudioLink:
         if self._hung_up:
             return
         self._hung_up = True
+        if self._gathering is not None:
+            with anyio.move_on_after(_GATHERING_LIMIT_S, shield=True):
+                await asyncio.wait([self._gathering])
         with anyio.move_on_after(RELEASE_TIMEOUT_S, shield=True):
             try:
                 await self._receiver.stop()
             finally:
                 self._caller.stop()
-                await self._pc.close()
+                await _close_peer(self._pc, self._ice)
 
     async def _receive(self) -> bool:
         track = self._agent

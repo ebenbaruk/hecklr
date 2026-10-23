@@ -60,3 +60,18 @@ Options considered:
 - `pytest -n auto` alone does not prove SC4; contributors run the serial command too
   (CONTRIBUTING.md). The serial step adds its own run time to CI.
 - A new SC4 timing test must carry `@pytest.mark.sc4_timing`, or it will flake under xdist again.
+
+## Follow-up (2026-10-23, hvoice: #55, #59)
+
+- **SC3 gets the same treatment** (#55). `test_sc3_fifty_simultaneous_calls_without_underruns`
+  (`-m perf`) is skipped inside an xdist worker, like `sc4_timing`, and `ci.yml` runs it in its
+  own serial step: `uv run pytest packages/hecklr-voice -m perf -p no:xdist`. It is specified
+  on 8 cores, so on GitHub's standard runner the step reports it skipped.
+- **The WebRTC exception has a home** (#59). `.github/workflows/voice-timing.yml` runs
+  `uv run pytest -m sc4_timing -p no:xdist` *without* `HECKLR_SHARED_CPU`, so the livekit and
+  pipecat-smallwebrtc cases assert SC4 too, followed by the serial SC3 step. It runs weekly and on
+  demand, on the runner named by the `runner` input or the `VOICE_TIMING_RUNNER` repository
+  variable (default `ubuntu-latest`). It needs a larger or dedicated runner: on the shared
+  4-vCPU runner the WebRTC bots' own timing truth wanders by hundreds of ms (above) and SC3
+  skips. Its first run is owed until Actions billing is restored (ADR 0021a); until then the same
+  commands run serially on an idle developer machine.

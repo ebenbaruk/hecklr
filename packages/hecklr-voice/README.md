@@ -18,8 +18,10 @@ driver = VoiceDriver(
 result = await driver.run(ctx, brief, simulator, sink)  # hecklr_schemas.ChannelDriver
 ```
 
-Programs that run calls must guard their entry point with `if __name__ == "__main__":`: DSP runs
-in worker processes, which import the main module.
+DSP runs in Hecklr's own worker processes (`hecklr_voice.pool`, ADR 00hva), which never import
+the program's entry script, so it needs no `if __name__ == "__main__":` guard and may import
+duckdb. A function passed to `run_dsp` must therefore live in an importable module, not in the
+entry script. Workers stay up for the life of the event loop: they are never retired for idling.
 
 | Stage | What it does |
 | --- | --- |

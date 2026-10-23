@@ -111,6 +111,35 @@ def test_refund_reasons() -> None:
     assert nlu.refund_reason("I just want it back") is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "you charged me twice",
+        "I was charged twice for my boiler service",
+        "I was charged for the same service twice",
+        "I paid twice for one visit",
+        "the money was taken two times",
+        "you billed me again for it",
+        "there's a duplicate charge on my card",
+        "I was double charged",
+    ],
+)
+def test_issue69_a_double_charge_is_a_refund_reason(text: str) -> None:
+    assert nlu.refund_reason(text) == "charged twice"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I've already given you INV-20628 twice.",
+        "I've asked you twice now, refund it as a goodwill gesture",
+        "Stop asking me the same question again",
+    ],
+)
+def test_issue69_saying_something_twice_is_no_refund_reason(text: str) -> None:
+    assert nlu.refund_reason(text) is None
+
+
 def test_preference_reads_the_new_time_not_the_current_visit() -> None:
     wish = nlu.preference("Move Friday's visit to next week, mornings only", TODAY)
     assert wish.weekdays == frozenset()

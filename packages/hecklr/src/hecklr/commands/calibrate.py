@@ -5,7 +5,10 @@
   two stored runs (``--runs A --runs B``), then simulates 200 A/A comparisons of a suite of the
   same shape to measure the false-alarm rate (and the power to see a 10-point drop).
 - ``--judges`` (SC7): agreement of every judge rubric with human labels (Cohen's κ, precision
-  and recall, with intervals); rubrics below κ 0.70 are untrusted.
+  and recall, with intervals); rubrics below κ 0.70 are untrusted. The labels are either of judge
+  grades in stored runs (``--labels FILE --run ID``, written by the UI's labeling queue) or of a
+  labeled transcript set (``--set DIR``, e.g. ``calibration/judges``), which is judged on the
+  spot with the project's judge model (ADR 00hja). ``--labeler`` keeps only some labelers' labels.
 - ``--voice-loopback`` (SC4): calls an in-process loopback agent with known timing through the
   real voice driver; response latency and barge-in reaction must be within 20 ms of the truth.
 
@@ -14,19 +17,19 @@ rate above alpha; an untrusted judge; a voice timing error above 20 ms), 3 a run
 analyzed, 78 config.
 """
 
-from collections import defaultdict
-from collections.abc import Sequence
+from collections import Counter, defaultdict
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Final
 
 import anyio
 import typer
-from pydantic import ValidationError
 from rich.table import Table
 from rich.text import Text
 
-from hecklr import exit_codes, voice_calibration
+from hecklr import exit_codes, judge_calibration, voice_calibration
 from hecklr.commands._common import (
     DEFAULT_CONFIG,
     ConfigPath,
@@ -37,11 +40,13 @@ from hecklr.commands._common import (
     stdout,
 )
 from hecklr.commands.run import run_with_progress
-from hecklr.compose import RunRequest
+from hecklr.compose import RunRequest, check_model_providers
+from hecklr.judge_calibration import CalibrationSet, CalibrationSetError
 from hecklr.results import LATEST, analyze_results, load_results, open_store, resolve_run
-from hecklr_core import Project, RunResults
+from hecklr.testing import scripted_models
+from hecklr_core import Project, RunResults, open_llm
 from hecklr_report import fmt, render_terminal
-from hecklr_schemas import Estimate, Grade, HumanLabel, Verdict
+from hecklr_schemas import Estimate, Grade, HumanLabel, LLMProvider, Verdict
 from hecklr_stats import JudgeCalibration, calibrate_judge, verdict_rate
 
 SIMULATED_COMPARISONS: Final = 200
@@ -86,12 +91,32 @@ def calibrate(
         list[str] | None,
         typer.Option("--run", help="--judges: runs whose judge grades were labeled [latest]."),
     ] = None,
+    calibration_set: Annotated[
+        Path | None,
+        typer.Option(
+            "--set",
+            exists=True,
+            file_okay=False,
+            help="--judges: a labeled transcript set to judge now (e.g. calibration/judges).",
+        ),
+    ] = None,
+    labelers: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--labeler",
+            help="--judges: only labels whose labeler starts with this, e.g. human: (repeatable).",
+        ),
+    ] = None,
 ) -> None:
     """Self-tests: A/A false-positive rate, judge agreement, voice loopback."""
     if not (aa or judges or voice_loopback):
         raise fail(
             "choose a self-test: --aa, --judges or --voice-loopback", exit_codes.CONFIG_ERROR
         )
+    if not judges and (calibration_set is not None or labelers):
+        raise fail("--set and --labeler only apply to --judges", exit_codes.CONFIG_ERROR)
+    if calibration_set is not None and judged_runs:
+        raise fail("--set judges its own transcripts; drop --run", exit_codes.CONFIG_ERROR)
     passed = True
     if voice_loopback:
         passed &= _report_voice_loopback(seed or 0)
@@ -101,12 +126,16 @@ def calibrate(
     if aa:
         pair = _aa_runs(ctx, project, config, suite, trials, seed, runs)
         passed &= _report_aa(project, *pair, replicates=replicates)
-    if judges:
+    if judges and calibration_set is not None:
+        providers = overrides(ctx).llm_providers or scripted_models()
+        passed &= _report_judge_set(project, calibration_set, labels, labelers or [], providers)
+    elif judges:
         if labels is None:
             raise fail(
-                "--judges needs --labels FILE (JSONL of human labels)", exit_codes.CONFIG_ERROR
+                "--judges needs --labels FILE (JSONL of human labels) or --set DIR",
+                exit_codes.CONFIG_ERROR,
             )
-        passed &= _report_judges(project, labels, judged_runs or [LATEST])
+        passed &= _report_judges(project, labels, judged_runs or [LATEST], labelers or [])
     raise typer.Exit(code=exit_codes.OK if passed else exit_codes.CHECK_FAILED)
 
 
@@ -245,8 +274,10 @@ def _ms(estimate: Estimate) -> str:
 # --- judges -------------------------------------------------------------------------------------
 
 
-def _report_judges(project: Project, labels_path: Path, refs: Sequence[str]) -> bool:
-    labels = _read_labels(labels_path)
+def _report_judges(
+    project: Project, labels_path: Path, refs: Sequence[str], labelers: Sequence[str]
+) -> bool:
+    labels = _read_labels(labels_path, labelers)
     with config_errors(), open_store(project) as store:
         grades = [
             grade
@@ -254,34 +285,151 @@ def _report_judges(project: Project, labels_path: Path, refs: Sequence[str]) -> 
             for grade in load_results(project, resolve_run(store, ref).id).grades
             if grade.grader.startswith(JUDGE_PREFIX) and grade.status == "ok"
         ]
-    stats = project.config.stats
-    seed = stats.seed if stats.seed is not None else project.config.seed
-    calibrations = [
-        calibrate_judge(group, labels, seed=seed, resamples=stats.bootstrap_resamples)
-        for group in _judge_groups(grades, labels)
-    ]
+    calibrations = _calibrations(project, grades, labels)
     if not calibrations:
         raise fail(
             f"no label in {labels_path} matches a judge grade of the runs {', '.join(refs)}",
             exit_codes.CONFIG_ERROR,
         )
     stdout.print(_judge_table(calibrations))
+    _warn_if_not_human(labels, calibrations)
     return all(c.trusted for c in calibrations)
 
 
-def _read_labels(path: Path) -> list[HumanLabel]:
-    labels = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
+def _report_judge_set(
+    project: Project,
+    root: Path,
+    labels_path: Path | None,
+    labelers: Sequence[str],
+    providers: Mapping[str, LLMProvider],
+) -> bool:
+    """Judge the labeled pairs of the set at ``root``, then compare the verdicts with the labels.
+
+    Only pairs with a label of the chosen labelers and the rubric's current version are judged,
+    so no judge call is paid for nothing; with no such pair at all it is a config error. Every
+    rubric of the set must be calibrated: one without a usable label, or whose judge answered
+    nothing usable, fails the self-test.
+    """
+    try:
+        calibration_set = judge_calibration.load_set(root)
+        labels = _read_labels(labels_path or calibration_set.labels_path, labelers)
+    except CalibrationSetError as exc:
+        raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
+    pairs = judge_calibration.labeled_pairs(calibration_set, labels)
+    if not pairs:
+        raise fail(
+            f"no label{_by(labelers)} is of a current rubric version of {root}: nothing to "
+            "calibrate (review the set: calibration/judges/GUIDE.md)",
+            exit_codes.CONFIG_ERROR,
+        )
+    judge_model = project.config.models.judge
+    stdout.print(
+        f"Judging {len(pairs)} labeled (conversation, rubric) pairs of {root} with {judge_model}.",
+        soft_wrap=True,
+    )
+    with config_errors():
         try:
-            labels.append(HumanLabel.model_validate_json(line))
-        except ValidationError as exc:
-            raise fail(
-                f"{path}:{number}: not a human label: {exc.errors()[0]['msg']}",
-                exit_codes.CONFIG_ERROR,
-            ) from exc
-    return labels
+            grades = anyio.run(_judge_set, project, calibration_set, pairs, providers)
+        except CalibrationSetError as exc:
+            raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
+    usable = [grade for grade in grades if grade.status == "ok"]
+    calibrations = _calibrations(project, usable, labels)
+    if calibrations:
+        stdout.print(_judge_table(calibrations))
+    uncalibrated = _uncalibrated(calibration_set, pairs, grades, calibrations)
+    for grader, problem in uncalibrated.items():
+        stdout.print(f"[bold red]{grader}[/]: not calibrated, {problem}", soft_wrap=True)
+    errors = Counter(grade.grader for grade in grades if grade.status == "error")
+    for grader, count in sorted(errors.items()):
+        stdout.print(f"[yellow]{grader}[/]: {count} judge answer(s) unusable, left out")
+    spent = sum((grade.cost_usd for grade in grades), Decimal(0))
+    stdout.print(f"Judge spend: ${spent:.4f}")
+    _warn_if_not_human(labels, calibrations)
+    return bool(calibrations) and not uncalibrated and all(c.trusted for c in calibrations)
+
+
+def _by(labelers: Sequence[str]) -> str:
+    return f" by {', '.join(labelers)}" if labelers else ""
+
+
+async def _judge_set(
+    project: Project,
+    calibration_set: CalibrationSet,
+    pairs: Collection[tuple[str, str]],
+    providers: Mapping[str, LLMProvider],
+) -> list[Grade]:
+    config = project.config
+    # Fail fast on a missing API key, before hundreds of judge calls each become an error.
+    await check_model_providers(config.models, [config.models.judge], providers)
+    async with open_llm(config, project.output_dir, providers=providers) as llm:
+        return await judge_calibration.judge_set(
+            calibration_set, llm, config.models.judge, pairs=pairs
+        )
+
+
+def _uncalibrated(
+    calibration_set: CalibrationSet,
+    pairs: Collection[tuple[str, str]],
+    grades: Sequence[Grade],
+    calibrations: Sequence[JudgeCalibration],
+) -> dict[str, str]:
+    """Why each rubric of the set has no calibration, by grader name."""
+    calibrated = {c.grader for c in calibrations}
+    labeled = {judge_calibration.grader_name(name) for _, name in pairs}
+    rubrics = {name for _, name in calibration_set.items()}
+    problems = {}
+    for name in sorted(rubrics):
+        grader = judge_calibration.grader_name(name)
+        if grader not in labeled:
+            problems[grader] = (
+                f"no label of its current rubric version {judge_calibration.rubric(name).version}"
+                " (relabel the set: calibration/judges/GUIDE.md)"
+            )
+        elif grader not in calibrated:
+            problems[grader] = "every judge answer was unusable"
+    return problems
+
+
+def _calibrations(
+    project: Project, grades: Sequence[Grade], labels: Sequence[HumanLabel]
+) -> list[JudgeCalibration]:
+    """Agreement of every judge with the labels of its rubric version, where any label joins."""
+    stats = project.config.stats
+    seed = stats.seed if stats.seed is not None else project.config.seed
+    labeled = {(label.trial_id, label.grader, label.grader_version) for label in labels}
+    return [
+        calibrate_judge(group, labels, seed=seed, resamples=stats.bootstrap_resamples)
+        for group in _judge_groups(grades, labels)
+        # A rubric version can be labeled on other trials than these grades judged: no join.
+        if any((g.trial_id, g.grader, g.grader_version) in labeled for g in group)
+    ]
+
+
+def _warn_if_not_human(
+    labels: Sequence[HumanLabel], calibrations: Sequence[JudgeCalibration]
+) -> None:
+    drafts = Counter(
+        label.labeler
+        for label in labels
+        if not label.labeler.startswith(judge_calibration.HUMAN_PREFIX)
+    )
+    if calibrations and drafts:
+        names = ", ".join(sorted(drafts))
+        stdout.print(
+            f"[yellow]note[/]: {sum(drafts.values())} of {len(labels)} labels are not from "
+            f"'{judge_calibration.HUMAN_PREFIX}' labelers ({names}); agreement with them is not "
+            "evidence of agreement with humans (SC7). Use --labeler human: once people have "
+            "reviewed the labels.",
+            soft_wrap=True,
+        )
+
+
+def _read_labels(path: Path, labelers: Sequence[str]) -> list[HumanLabel]:
+    try:
+        labels = judge_calibration.read_labels(path)
+    except CalibrationSetError as exc:
+        raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
+    return judge_calibration.by_labeler(labels, labelers)
 
 
 def _judge_groups(grades: Sequence[Grade], labels: Sequence[HumanLabel]) -> list[list[Grade]]:

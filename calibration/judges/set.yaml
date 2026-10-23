@@ -1,0 +1,9 @@
+# The judge calibration set (SC7): read by `hecklr calibrate --judges --set calibration/judges`.
+# Labeling guide: GUIDE.md. Review or relabel: `uv run python calibration/judges/review.py --name <you>`.
+version: 1
+# The acme-maintenance reference world: the tool calls in the cases run against it, and the
+# ground-truth rubrics see its state before and after each conversation.
+world: ../../examples/acme-maintenance/worlds/acme-maintenance.yaml
+cases: cases/*.yaml
+# One HumanLabel per line, append-only; the newest label of a labeler wins.
+labels: labels.jsonl

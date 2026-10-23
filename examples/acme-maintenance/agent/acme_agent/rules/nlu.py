@@ -234,7 +234,13 @@ def service(text: str) -> str | None:
 _REFUND_REASONS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
     (reason, re.compile(pattern, re.IGNORECASE))
     for reason, pattern in (
-        ("charged twice", r"twice|double|duplicate|two times|charged again"),
+        # A repeat must be of a charge: "I've given you INV-20628 twice" is no reason (#69).
+        (
+            "charged twice",
+            r"\b(charged|billed|paid|debited|taken|took|charge|payment)\b(\W+\w+){0,4}?\W+"
+            r"(twice|two times|again)\b|\bdouble[- ]?(charged|charge|charging|billed|billing|"
+            r"payment)\b|\bduplicate\b",
+        ),
         (
             "visit cancelled by Acme",
             r"you cancelled|cancelled by (you|acme)|never (came|showed)|"
