@@ -93,8 +93,8 @@ Write `stacks/<id>.yaml` (see the existing files; placeholders `{python}`, `{rep
 
 > **Preliminary, not for publication.** These rows were measured on one shared laptop (Apple
 > silicon, 10 cores) whose load average reached about 250 during the measurement window (other
-> builds); each row records only its start and end 1-minute load, 4.1 to 20.7. Hecklr's customers
-> and judges were qwen3 4B on local Ollama, and the gpt-6-luna stack is missing (OpenAI credit
-> exhausted). Re-measure every row on an idle machine, with the luna stack, before quoting a number.
+> builds); each row records only its start and end 1-minute load, 4.0 to 20.7. Hecklr's customers
+> and judges were qwen3 4B on local Ollama. The gpt-6-luna stack was measured later, on the same
+> shared laptop (load 6.4 → 4.0). Re-measure every row on an idle machine before quoting a number.
 
 See [RESULTS.md](RESULTS.md) for the measured rows, what was run and what it cost.
