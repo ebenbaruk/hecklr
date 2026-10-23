@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import re
 import signal
 import subprocess
@@ -235,26 +236,32 @@ def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     stub_agent("slow", 2.0)
     # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal.
     command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
-    process = subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
+    with subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
         [*command, "-c", str(config_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-    )
-    assert process.stderr is not None
-    plan = process.stderr.readline()
-    assert plan.startswith("Suite ci:"), plan
-    run_id = plan.split("; run ")[1].strip()
-    recorded = config_path.parent / ".hecklr" / "runs" / run_id / "run.json"
-    deadline = time.monotonic() + 30
-    while not recorded.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    time.sleep(0.5)  # trials are in flight: each agent reply takes 2 s
-    process.send_signal(signal.SIGINT)
-    _, rest = process.communicate(timeout=60)
+        # CI forces colour on; the assertions read plain text.
+        env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
+    ) as process:
+        try:
+            assert process.stderr is not None
+            plan = click.unstyle(process.stderr.readline())
+            assert plan.startswith("Suite ci:"), plan
+            run_id = plan.split("; run ")[1].strip()
+            recorded = config_path.parent / ".hecklr" / "runs" / run_id / "run.json"
+            deadline = time.monotonic() + 30
+            while not recorded.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            time.sleep(0.5)  # trials are in flight: each agent reply takes 2 s
+            process.send_signal(signal.SIGINT)
+            _, rest = process.communicate(timeout=60)
+        finally:
+            if process.poll() is None:
+                process.kill()
 
     assert process.returncode == exit_codes.INTERRUPTED, rest
-    assert rest.strip() == f"Interrupted: run {run_id} recorded as cancelled"
+    assert click.unstyle(rest).strip() == f"Interrupted: run {run_id} recorded as cancelled"
     store = ResultStore(config_path.parent / ".hecklr" / "runs")
     (run,) = store.list_runs()
     store.close()
