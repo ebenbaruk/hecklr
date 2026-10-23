@@ -114,6 +114,25 @@ async def test_cached_tts_synthesizes_once_per_key(tmp_path: Path) -> None:
     assert len(_listing(tmp_path)) == 2
 
 
+async def test_issue43_concurrent_synthesis_of_the_same_text_is_safe(tmp_path: Path) -> None:
+    # Two callers barging in with the same interjection synthesize one request at once.
+    cached = CachedTTS(SyntheticTTS(), tmp_path)
+    request = SpeechRequest(text="Wait, hold on a second.", voice="caller")
+    results: list[np.ndarray] = []
+
+    async def speak() -> None:
+        results.append(await cached.synthesize(request))
+
+    async with anyio.create_task_group() as group:
+        for _ in range(24):
+            group.start_soon(speak)
+
+    assert len(results) == 24
+    assert all(np.array_equal(audio, results[0]) for audio in results)
+    assert _listing(tmp_path) == [cached.path_for(request)]
+    assert np.array_equal(await cached.synthesize(request), results[0])
+
+
 @pytest.mark.parametrize(
     ("cls", "key", "url_part", "rate"),
     [
