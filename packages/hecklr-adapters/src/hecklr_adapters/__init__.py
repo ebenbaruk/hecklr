@@ -5,7 +5,7 @@ Chat adapters implement ``hecklr_schemas.ChatTarget``; build one from config wit
 build one with ``make_voice_target``. Email adapters (``hecklr_adapters.email``) implement
 ``hecklr_schemas.EmailTarget``; build one with ``make_email_target``. Adapters raise
 ``AgentError`` (or ``AgentTimeoutError``) when the agent fails; any other exception is a harness
-failure.
+failure. ``cap_reply_size`` bounds the text of one agent turn around any chat target.
 """
 
 from hecklr_adapters.context import (
@@ -29,12 +29,14 @@ from hecklr_adapters.python import (
     PythonChatTarget,
     load_agent,
 )
+from hecklr_adapters.reply_cap import DEFAULT_MAX_REPLY_BYTES, cap_reply_size
 from hecklr_adapters.voice import WebSocketVoiceAdapterConfig, make_voice_target
 from hecklr_adapters.websocket import WebSocketChatSession, WebSocketChatTarget
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_MAX_REPLY_BYTES",
     "WORLD_MCP_URL_HEADER",
     "WORLD_URL_HEADER",
     "AdapterConfigError",
@@ -51,6 +53,7 @@ __all__ = [
     "WebSocketChatSession",
     "WebSocketChatTarget",
     "WebSocketVoiceAdapterConfig",
+    "cap_reply_size",
     "load_agent",
     "make_chat_target",
     "make_email_target",

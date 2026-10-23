@@ -79,8 +79,15 @@ def resolve_baseline(store: ResultStore, ref: str, candidate: Run) -> Run | None
         and run.suite == candidate.suite
         and run.id != candidate.id
         and (run.created_at, run.id) < (candidate.created_at, candidate.id)
+        and _got_through(run)
     ]
     return earlier[-1] if earlier else None
+
+
+def _got_through(run: Run) -> bool:
+    # A completed run in which no trial got through measured a broken setup (ADR 00hra): after
+    # the agent is fixed, the next gate must compare with the last real measurement instead.
+    return run.counts.finished == 0 or run.counts.ok > 0
 
 
 def _distinct(baseline: Run, candidate: Run) -> Run:

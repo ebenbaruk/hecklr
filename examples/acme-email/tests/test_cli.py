@@ -1,11 +1,18 @@
 """The command line and the in-process agent's default tool backends."""
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from acme_agent import HttpWorldTools, LocalWorldTools
 from acme_email import InProcessEmailAgent
-from acme_email.__main__ import mailbox_from, main, parse_args, settings_from
+from acme_email.__main__ import (
+    llm_budget_from_env,
+    mailbox_from,
+    main,
+    parse_args,
+    settings_from,
+)
 from email_testing import email_desk
 
 from hecklr_adapters import AgentSession
@@ -41,6 +48,26 @@ def test_mailbox_flags_and_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_an_unknown_fault_exits_with_a_config_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--brain", "rules", "--fault", "F99", "webhook"]) == 2
     assert "no fault variant 'F99'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["lots", "-0.5", "NaN", "Infinity"])
+def test_issue67_a_malformed_or_negative_llm_budget_is_a_config_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    monkeypatch.setenv("ACME_LLM_BUDGET_USD", value)
+    assert main(["--brain", "rules", "webhook"]) == 2
+    err = capsys.readouterr().err
+    assert f"ACME_LLM_BUDGET_USD must be a non-negative number of dollars, got {value!r}" in err
+
+
+@pytest.mark.parametrize(("value", "budget"), [("", None), (" 0.25 ", Decimal("0.25")), ("0", 0)])
+def test_issue67_the_llm_budget_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, value: str, budget: Decimal | None
+) -> None:
+    monkeypatch.setenv("ACME_LLM_BUDGET_USD", value)
+    assert llm_budget_from_env() == budget
+    monkeypatch.delenv("ACME_LLM_BUDGET_USD")
+    assert llm_budget_from_env() is None
 
 
 @pytest.mark.anyio

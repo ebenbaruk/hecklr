@@ -3,14 +3,14 @@
 A judge's version is a content hash of everything that shapes its prompt (the shared system
 prompt, the transcript format and the rubric text), so editing a rubric can never leave cached
 grades or human labels silently mixed across prompt versions. Malformed judge output (invalid
-JSON, a missing field, evidence ids that are not events of the trial) yields an ``error`` grade:
-never a crash and never a pass.
+JSON, a missing field, evidence ids that are not events of the trial) is retried once with the
+problem as feedback, then yields an ``error`` grade: never a crash and never a pass.
 """
 
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from importlib import resources
 from typing import Annotated, Final, Literal
@@ -27,6 +27,7 @@ from hecklr_schemas import (
     Grade,
     GradeContext,
     HandoffPayload,
+    LLMProvider,
     LLMRequest,
     Message,
     ToolCallPayload,
@@ -72,6 +73,14 @@ transcript. Keep "rationale" to at most three sentences.
 
 Answer with a single JSON object: {"verdict": "pass" | "fail", "rationale": string,
 "evidence": [event ids]}."""
+
+
+JUDGE_RETRIES: Final = 1
+"""How many times an unusable judge answer is retried with the problem as feedback."""
+
+JUDGE_RETRY: Final = """\
+Your answer could not be used: {problem}. Answer again with a single JSON object as instructed,
+citing in "evidence" only event ids that appear in square brackets in the transcript."""
 
 
 class JudgeVerdict(BaseModel):
@@ -191,6 +200,39 @@ class _JudgmentError(Exception):
     """One judgment could not be turned into a vote."""
 
 
+@dataclass(frozen=True, slots=True)
+class _Judgment:
+    """A vote, or why there is none, and what asking cost."""
+
+    cost_usd: Decimal
+    vote: JudgeVote | None = None
+    error: str = ""
+    unusable: tuple[str, str] | None = None
+    """The judge's answer and what is wrong with it, when it answered but not usably."""
+
+
+async def _ask(
+    llm: LLMProvider, request: LLMRequest, events: Mapping[str, Event], ctx: GradeContext
+) -> _Judgment:
+    """One judge call turned into a vote, or into the reason it is not one."""
+    try:
+        response = await llm.complete(request)
+    except LLMOutputError as exc:
+        # The provider itself rejected the reply as malformed structured output.
+        return _Judgment(Decimal(0), error=f"unusable judge answer: {exc}")
+    except LLMError as exc:
+        return _Judgment(Decimal(0), error=f"judge call failed: {exc}")
+    try:
+        vote = _vote(response.text, response.truncated, events, ctx, response.model)
+    except _JudgmentError as exc:
+        return _Judgment(
+            response.cost_usd,
+            error=f"unusable judge answer: {exc}",
+            unusable=(response.text, str(exc)),
+        )
+    return _Judgment(response.cost_usd, vote=vote)
+
+
 class JudgeGrader:
     """``judge:<rubric>``: an LLM applies the rubric, optionally as a 3-judge majority.
 
@@ -227,25 +269,44 @@ class JudgeGrader:
                 json_schema=JudgeVerdict.model_json_schema(),
                 schema_name="JudgeVerdict",
             )
-            try:
-                response = await ctx.llm.complete(request)
-            except LLMOutputError as exc:
-                # The provider itself rejected the reply as malformed structured output.
-                return errored(
-                    ctx, self, f"unusable judge answer: {exc}", judge_model=model, cost_usd=cost
-                )
-            except LLMError as exc:
-                return errored(
-                    ctx, self, f"judge call failed: {exc}", judge_model=model, cost_usd=cost
-                )
-            cost += response.cost_usd
-            try:
-                votes.append(_vote(response.text, response.truncated, events, ctx, response.model))
-            except _JudgmentError as exc:
-                return errored(
-                    ctx, self, f"unusable judge answer: {exc}", judge_model=model, cost_usd=cost
-                )
+            judgment = await self._judge(ctx, ctx.llm, request, events, index)
+            cost += judgment.cost_usd
+            if judgment.vote is None:
+                return errored(ctx, self, judgment.error, judge_model=model, cost_usd=cost)
+            votes.append(judgment.vote)
         return self._decide(ctx, votes, events, model, cost)
+
+    async def _judge(
+        self,
+        ctx: GradeContext,
+        llm: LLMProvider,
+        request: LLMRequest,
+        events: Mapping[str, Event],
+        index: int,
+    ) -> "_Judgment":
+        """One vote; an unusable answer is retried once, told what was wrong (issue #37).
+
+        Near misses (a mistyped evidence id, a missing field) are rare but would otherwise shrink
+        the analyzed sample, possibly on one side of a comparison only. The retry has its own
+        seed, so it is a fresh, reproducible sample, and its cost is counted.
+        """
+        first = await _ask(llm, request, events, ctx)
+        if first.unusable is None:
+            return first
+        answer, problem = first.unusable
+        retry = request.model_copy(
+            update={
+                "messages": [
+                    *request.messages,
+                    Message(role="assistant", content=answer),
+                    Message(role="user", content=JUDGE_RETRY.format(problem=problem)),
+                ],
+                "seed": judge_seed(ctx.trial.seed, f"{self.rubric.name}/retry", index),
+            }
+        )
+        second = await _ask(llm, retry, events, ctx)
+        error = f"{second.error} (after one retry)" if second.vote is None else ""
+        return replace(second, cost_usd=first.cost_usd + second.cost_usd, error=error)
 
     def _decide(
         self,

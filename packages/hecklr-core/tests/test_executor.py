@@ -799,11 +799,14 @@ async def test_cancelled_run_is_recorded(tmp_path: Path, ci_suite: Suite) -> Non
     executor = RunExecutor(
         ci_suite, make_collaborators(driver=FakeDriver(hang=True)), store, retry=NO_WAIT
     )
-    with anyio.move_on_after(0.2):
+    with capture_logs() as logs, anyio.move_on_after(0.2):
         await executor.execute(_planned(ci_suite))
     (run,) = store.list_runs()
     store.close()
     assert run.status is RunStatus.CANCELLED
+    # Issue #35: Ctrl-C is not an error; the CLI prints its own one-line notice.
+    run_end = next(entry for entry in logs if entry["event"] == "run.end")
+    assert (run_end["log_level"], run_end["status"]) == ("info", "cancelled")
 
 
 @pytest.mark.anyio

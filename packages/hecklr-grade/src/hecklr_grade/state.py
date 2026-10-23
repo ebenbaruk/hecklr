@@ -242,9 +242,26 @@ def evaluate(
         raise StateExpressionError(f"{type(exc).__name__}: {exc}") from exc
     if not isinstance(result, bool):
         raise StateExpressionError(
-            f"expression must be a boolean, got {type(result).__name__} {result!r}"
+            f"expression must be a boolean, got {type(result).__name__} {_brief(result)}"
         )
     return result
+
+
+_BRIEF_CHARS: Final = 60
+"""How much of a non-boolean result an error message quotes."""
+
+
+def _brief(value: object) -> str:
+    """A short repr for an error message.
+
+    ``repr`` itself raises ``ValueError`` for an int over Python's int-to-str digit limit, which
+    an expression like ``12**121212`` produces (issue #38).
+    """
+    try:
+        text = repr(value)
+    except ValueError:
+        return "too large to print"
+    return text if len(text) <= _BRIEF_CHARS else f"{text[:_BRIEF_CHARS]}..."
 
 
 def _attribute_reader(evaluator: Any) -> Callable[[ast.Attribute], object]:

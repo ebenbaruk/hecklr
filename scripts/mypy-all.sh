@@ -10,4 +10,7 @@ for package in packages/*/; do
 done
 uv run --frozen mypy --strict conftest.py tests/test_network_guard.py || status=1
 uv run --frozen mypy --strict tests/e2e || status=1
+# The reference agents are not workspace packages: their import roots go on MYPYPATH (#67).
+MYPYPATH=examples/acme-maintenance/agent:examples/acme-email/agent:examples/acme-voice/agent \
+  uv run --frozen mypy --strict -p acme_agent -p acme_email -p acme_voice || status=1
 exit "$status"
