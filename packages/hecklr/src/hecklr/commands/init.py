@@ -13,7 +13,7 @@ from rich.markup import escape
 from hecklr import exit_codes
 from hecklr.commands._common import CONFIG_ERRORS, fail, stdout
 from hecklr.compose import load_run_project
-from hecklr.probe import ollama_models, probe_agent, reply_path
+from hecklr.probe import local_ollama_url, ollama_models, probe_agent, reply_path
 from hecklr.scaffold import (
     CONFIG_FILE,
     MODEL_KEYS,
@@ -136,7 +136,7 @@ def _models(simulator: str | None, judge: str | None, *, yes: bool) -> ModelChoi
     if simulator is not None and judge is not None:
         return ModelChoice(simulator, judge, "chosen on the command line")
     # Only probed when no key decides: a key present makes the local server irrelevant.
-    found = None if _has_key(os.environ) else ollama_models()
+    found = None if _has_key(os.environ) else ollama_models(local_ollama_url(os.environ))
     detected = choose_models(os.environ, found)
     chosen = ModelChoice(
         simulator or detected.simulator,

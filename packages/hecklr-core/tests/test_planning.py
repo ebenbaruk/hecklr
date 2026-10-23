@@ -1,5 +1,7 @@
 """Run lifecycle step 2: matrix expansion, seeds, cost estimate and budget refusal."""
 
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -19,7 +21,11 @@ from hecklr_core import (
     resolve_suite,
 )
 from hecklr_core.loading import Project
-from hecklr_core.planning import CostEstimate
+from hecklr_core.planning import (
+    PROMPT_CHARS_PER_TOKEN,
+    CostEstimate,
+    world_snapshot_chars,
+)
 from hecklr_llm import UnknownPriceError
 from hecklr_schemas import (
     Budget,
@@ -29,6 +35,7 @@ from hecklr_schemas import (
     Scenario,
     ScenarioLimits,
     TrialSpec,
+    World,
 )
 
 SONNET = "anthropic/claude-sonnet-5-5"
@@ -121,9 +128,11 @@ def test_estimate_uses_max_turns_and_prices(ci_suite: Suite) -> None:
     )
     # Simulator: 2 calls, input 2*800 + 80*2*1 = 1760, output 160, at $2/$10 per Mtok.
     assert estimate.simulator_usd == Decimal("0.00512")
-    # Judge: input 1500 + 4*80 = 1820, output 300, at $2/$8 per Mtok.
-    assert estimate.judge_usd == Decimal("0.00604")
-    assert estimate.total_usd == Decimal("0.01116")
+    # Judge prompt: 4000 instructions + goal 1 + facts "{}" 2 + 4 turns x 1200 transcript
+    # + 4 x 400 world growth = 10403 chars = 5202 tokens. Asked twice (one retry resends the
+    # answer): input 2 x 5202 + 1024 = 11428, output 2 x 1024 = 2048, at $2/$8 per Mtok.
+    assert estimate.judge_usd == Decimal("0.039240")
+    assert estimate.total_usd == Decimal("0.044360")
     assert estimate.trials == 1
 
 
@@ -260,3 +269,96 @@ def test_plan_run_refuses_when_estimate_exceeds_budget(project: Project) -> None
     with pytest.raises(BudgetEstimateError):
         plan_run(suite, budget_usd=Decimal("0.01"))
     assert plan_run(suite, budget_usd=Decimal(100)).run.budget.usd == Decimal(100)
+
+
+WORLD = World.model_validate(
+    {
+        "id": "w",
+        "collections": {
+            "customers": {
+                "key": "id",
+                "records": [{"id": f"C-{n}", "address": f"{n} Rue de Rivoli"} for n in range(50)],
+            },
+            "tickets": {},
+        },
+    }
+)
+
+
+def test_issue76_world_snapshot_is_sized_as_the_judge_renders_it() -> None:
+    chars = world_snapshot_chars(WORLD)
+    rendered = {
+        "customers": {
+            f"C-{n}": {"address": f"{n} Rue de Rivoli", "id": f"C-{n}"} for n in range(50)
+        },
+        "tickets": {},
+    }
+    assert chars == len(json.dumps(rendered, sort_keys=True, indent=1))
+    assert chars > 50 * len("C-10 Rue de Rivoli")
+
+
+def test_issue76_world_reading_judges_are_charged_both_snapshots(ci_suite: Suite) -> None:
+    spec = expand_matrix(ci_suite, run_seed=0)[0].model_copy(update={"scenario_id": "s"})
+
+    def judge_usd(rubric: str, world: World | None) -> Decimal:
+        scenario = _scenario(success=[{"type": "judge", "rubric": rubric}])
+        return estimate_cost(
+            [spec], {"s": scenario}, simulator_model="fake/s", judge_model=SONNET, world=world
+        ).judge_usd
+
+    # Two snapshots per ask, two asks per vote, at $2 per Mtok of input.
+    snapshot_tokens = 2 * 2 * world_snapshot_chars(WORLD) / PROMPT_CHARS_PER_TOKEN
+    extra = judge_usd("no_hallucination", WORLD) - judge_usd("no_hallucination", None)
+    assert abs(extra - Decimal(snapshot_tokens) * 2 / 10**6) < Decimal("0.00001")
+    assert judge_usd("tone", WORLD) == judge_usd("tone", None)
+    assert judge_usd("handoff_appropriate", WORLD) == judge_usd("tone", WORLD)
+    assert judge_usd("tone", WORLD) < judge_usd("resolved", WORLD)
+
+
+def test_issue76_every_criterion_that_asks_a_model_is_charged(ci_suite: Suite) -> None:
+    spec = expand_matrix(ci_suite, run_seed=0)[0].model_copy(update={"scenario_id": "s"})
+
+    def judge_usd(*success: dict[str, object]) -> Decimal:
+        scenario = _scenario(mode="scripted", user_turns=["hi"], success=list(success))
+        return estimate_cost(
+            [spec], {"s": scenario}, simulator_model=SONNET, judge_model=SONNET, world=WORLD
+        ).judge_usd
+
+    tone = judge_usd({"type": "judge", "rubric": "tone"})
+    injection = judge_usd({"type": "injection_resisted", "forbidden": ["CANARY"]})
+    custom = judge_usd({"type": "custom", "name": "no_policy_override"})
+    resolved = judge_usd({"type": "judge", "rubric": "resolved"})
+    assert injection == tone  # one world-blind vote
+    assert custom == resolved  # one vote that may read the world
+    assert judge_usd({"type": "no_unauthorized_refund"}, {"type": "contains", "text": "x"}) == 0
+
+
+def test_issue76_a_world_with_an_unread_seed_file_cannot_be_sized(ci_suite: Suite) -> None:
+    world = World.model_validate(
+        {"id": "w", "collections": {"customers": {"seed_file": "customers.csv"}}}
+    )
+    spec = expand_matrix(ci_suite, run_seed=0)[0].model_copy(update={"scenario_id": "s"})
+    with pytest.raises(ValueError, match=r"\['customers'\] still name a seed_file"):
+        estimate_cost(
+            [spec], {"s": _scenario()}, simulator_model=SONNET, judge_model=SONNET, world=world
+        )
+
+
+def test_issue76_plan_run_sizes_judges_with_the_project_world(ci_suite: Suite) -> None:
+    project = ci_suite.project
+    models = project.config.models.model_copy(update={"judge": SONNET})
+    paid = replace(project, config=project.config.model_copy(update={"models": models}))
+    suite = replace(ci_suite, project=paid)
+    plan = plan_run(suite)
+
+    def estimate(world: World | None) -> CostEstimate:
+        return estimate_cost(
+            plan.run.matrix,
+            suite.scenarios,
+            simulator_model=models.simulator,
+            judge_model=SONNET,
+            world=world,
+        )
+
+    assert plan.estimate == estimate(project.world)
+    assert plan.estimate.judge_usd > estimate(None).judge_usd

@@ -14,13 +14,17 @@ import pytest
 SC4_SERIAL = pytest.mark.skip(
     reason="SC4 timing needs an idle CPU (ADR 0010b): uv run pytest -m sc4_timing -p no:xdist"
 )
+PERF_SERIAL = pytest.mark.skip(
+    reason="benchmarks need the whole machine (ADR 00hcb): uv run pytest -m perf -p no:xdist"
+)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Re-enable sockets for ``live`` tests; every other test runs with the network blocked.
 
     ``sc4_timing`` tests measure the machine as much as Hecklr when other xdist workers share
-    the CPU, so a parallel run skips them; CI asserts them in a serial step (ADR 0010b).
+    the CPU, so a parallel run skips them; CI asserts them in a serial step (ADR 0010b). So do
+    ``perf`` benchmarks, which measure throughput with every core to themselves (ADR 00hcb).
     """
     parallel = bool(os.environ.get("PYTEST_XDIST_WORKER"))
     for item in items:
@@ -28,3 +32,5 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.enable_socket)
         if parallel and item.get_closest_marker("sc4_timing"):
             item.add_marker(SC4_SERIAL)
+        if parallel and item.get_closest_marker("perf"):
+            item.add_marker(PERF_SERIAL)

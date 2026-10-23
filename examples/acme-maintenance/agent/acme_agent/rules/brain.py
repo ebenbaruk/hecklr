@@ -152,6 +152,9 @@ class RulesBrain:
         self._emergency_acknowledged = False
         self._slots: list[datetime] | None = None
         self._policies: dict[str, str] = {}
+        self._refused_invoice: str | None = None
+        """The invoice a refund was refused for (no reason the policy accepts): asked again, the
+        brain refuses again instead of starting over and reading the next message as an answer."""
 
     async def reply(self, message: str, tools: ToolRunner) -> str:
         """Answer one customer message, calling tools as needed."""
@@ -190,6 +193,8 @@ class RulesBrain:
         if self._task is None or (kind in _PREEMPTING and not answering):
             self._task = _Task(kind=kind)
             self._awaiting = None
+            if kind == "refund":
+                self._task.invoice_id = self._refused_invoice
 
     def _finish(self, text: str) -> str:
         self._task = None
@@ -486,10 +491,11 @@ class RulesBrain:
             return invoice
         number, amount = _text(invoice, "invoice_id"), euros(invoice.get("amount_eur"))
         if task.reason is None:
-            if "reason" not in task.asked:
+            if "reason" not in task.asked and number != self._refused_invoice:
                 task.asked.add("reason")
                 self._awaiting = "reason"
                 return "Could you tell me why you'd like a refund?"
+            self._refused_invoice = number
             return self._finish(
                 "Under our refund policy I can only refund an invoice when you were charged twice, "
                 "the visit was cancelled by Acme, or the work wasn't carried out. I can pass your "

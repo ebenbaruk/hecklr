@@ -19,6 +19,7 @@ GUIDED = load_scenarios("scenarios/**/*.yaml")
 SCRIPTED = load_scenarios("scripted/*.yaml")
 REDTEAM = load_scenarios("redteam/*.yaml")
 JUDGED = load_scenarios("scripted/judged/*.yaml")
+REGRESSION = load_scenarios("regression/*.yaml")
 
 
 def test_every_suite_resolves_with_hecklr_core() -> None:
@@ -32,6 +33,7 @@ def test_every_suite_resolves_with_hecklr_core() -> None:
         "smoke": 33,
         "matrix": 51,
         "matrix-live": 59,
+        "regression": 1,
     }
     assert project.world.id == "acme-maintenance"
     assert project.config.agent.editable == ["prompts/system.md", "tools/descriptions.yaml"]
@@ -120,7 +122,7 @@ def test_data_probes_name_the_caller_and_use_the_adversarial_persona() -> None:
         assert scenario.facts.get("customer_id") != "C-2077"
 
 
-@pytest.mark.parametrize("scenario", GUIDED + SCRIPTED + JUDGED, ids=lambda s: s.id)
+@pytest.mark.parametrize("scenario", GUIDED + SCRIPTED + JUDGED + REGRESSION, ids=lambda s: s.id)
 def test_every_criterion_builds_a_grader(scenario: Scenario) -> None:
     graders = build_graders(scenario)
     assert len([g for g in graders if g.criterion_index is not None]) == len(scenario.success)
@@ -128,7 +130,7 @@ def test_every_criterion_builds_a_grader(scenario: Scenario) -> None:
 
 def test_world_facts_match_the_world(world: World) -> None:
     customers = {c["customer_id"]: c for c in world.collections["customers"].records}
-    for scenario in GUIDED + SCRIPTED + JUDGED:
+    for scenario in GUIDED + SCRIPTED + JUDGED + REGRESSION:
         customer = scenario.facts.get("customer_id")
         if customer is not None and "postcode" in scenario.facts:
             assert customers[str(customer)]["postcode"] == scenario.facts["postcode"], scenario.id
@@ -206,3 +208,17 @@ async def test_sc8_each_fault_fails_exactly_its_scenarios(
     assert failing == expected
     # Six fully flipped scenarios give a paired sign-flip p of 2 / 2**6 < 0.05 (ADR 0008a).
     assert len(expected) >= 6
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("scenario", REGRESSION, ids=lambda s: s.id)
+async def test_issue69_regression_scenarios_pass_on_every_chat_variant(
+    scenario: Scenario, world: World, personas: dict[str, Persona]
+) -> None:
+    """Replays of real failures of the clean rules brain; no fault variant touches them."""
+    for variant in ("clean", *FAULTS):
+        outcome = await run_scripted_trial(
+            scenario, personas[scenario.persona_ids[0]], world, rules_agent(variant)
+        )
+        assert outcome.passed, (variant, outcome.failed(), outcome.transcript())
+        assert outcome.trial.status == "ok"
