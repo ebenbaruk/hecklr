@@ -7,8 +7,11 @@ hang-up, agent failure, a new call after a failed one, a silent agent, clean han
 event loop left free (spec "Agent adapters", "Calibration and self-tests"; WS10).
 """
 
+import asyncio
+import contextlib
 import dataclasses
 import gc
+import threading
 import time
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -287,30 +290,57 @@ async def test_ws10_contract_silent_agent_times_out(case: VoiceCase) -> None:
     assert not sink.utterances("agent")
 
 
+@contextlib.contextmanager
+def loop_steps_timed() -> Iterator[list[float]]:
+    """The CPU milliseconds each event-loop step (a callback or one task step) takes on this
+    thread while the block runs; other threads' loops (the reference agents') are not timed."""
+    steps: list[float] = []
+    loop_thread = threading.get_ident()
+    run = asyncio.events.Handle._run
+
+    def timed(handle: asyncio.events.Handle) -> None:
+        if threading.get_ident() != loop_thread:
+            return run(handle)
+        started = time.thread_time()
+        try:
+            return run(handle)
+        finally:
+            steps.append((time.thread_time() - started) * 1000)
+
+    with pytest.MonkeyPatch.context() as patch:
+        # asyncio runs every callback and task step through Handle._run; nothing public
+        # exposes a step's duration.
+        patch.setattr(asyncio.events.Handle, "_run", timed)
+        yield steps
+
+
+async def test_ws10_loop_step_timer_catches_a_step_that_holds_the_loop() -> None:
+    """The instrument behind the loop-free contract sees a busy step and only that."""
+
+    async def busy() -> None:
+        started = time.thread_time()
+        while time.thread_time() - started < 0.006:
+            pass
+
+    with loop_steps_timed() as steps:
+        await asyncio.get_running_loop().create_task(busy())
+        await anyio.sleep(0.01)
+    assert max(steps) >= 6.0
+    assert sorted(steps)[-2] < 5.0, steps
+
+
 async def test_ws10_contract_adapter_leaves_the_event_loop_free(case: VoiceCase) -> None:
-    """While a reply streams in, nothing holds the loop for 5 ms or more.
+    """While a reply streams in, no event-loop step takes 5 ms or more.
 
-    A heartbeat sleeps 5 ms at a time. A wake-up that comes late because the loop thread was
-    busy shows as both wall-clock lateness and loop-thread CPU time; lateness alone is the OS
-    scheduling other processes, so the stall is the smaller of the two.
+    What holds the loop is a step's CPU time on the loop thread. (A heartbeat used to count all
+    loop-thread CPU in a 5 ms window it woke late from, so a burst converted in many short steps
+    on a loaded machine, late for other reasons, read as one long stall: issue #73.)
     """
-    worst = 0.0
-
-    async def heartbeat(stop: anyio.Event) -> None:
-        nonlocal worst
-        while not stop.is_set():
-            cpu, wall = time.thread_time(), time.perf_counter()
-            await anyio.sleep(0.005)
-            late_ms = (time.perf_counter() - wall) * 1000 - 5
-            worst = max(worst, min(late_ms, (time.thread_time() - cpu) * 1000))
-
     reply = synthetic_reply(LONG_REPLY)
     async with case.agent(reply=reply, greeting=True, hang_up_after=1) as agent:
         link = await agent.target.connect(context())
-        stop = anyio.Event()
-        async with anyio.create_task_group() as group:
-            group.start_soon(heartbeat, stop)
-            await collect(link, limit_s=10)
-            stop.set()
+        with loop_steps_timed() as steps:
+            received = await collect(link, limit_s=10)
         await link.hangup()
-    assert worst < 5.0, worst
+    assert received, "no agent audio"
+    assert max(steps) < 5.0, sorted(steps)[-5:]
