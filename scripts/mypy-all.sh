@@ -11,6 +11,7 @@ done
 uv run --frozen mypy --strict conftest.py tests/test_network_guard.py || status=1
 uv run --frozen mypy --strict tests/e2e || status=1
 uv run --frozen mypy --strict tests/docs || status=1
+uv run --frozen mypy --strict tests/calibration calibration/judges/review.py || status=1
 uv run --frozen mypy --strict tests/perf || status=1
 uv run --frozen mypy --strict docs/scripts demo/voice_call.py || status=1
 # Playwright is not a workspace dependency: the screenshot script declares it inline
