@@ -1,0 +1,20 @@
+id: acme-chat-qwen3
+name: Acme chat, qwen3 4B on Ollama
+track: chat
+description: >-
+  The same LLM brain on a 4-billion-parameter open model served locally by Ollama
+  (qwen3:4b-instruct with a 32k context, bench/models/, temperature 0), over HTTP with
+  server-sent events.
+why: >-
+  The fully local option: no data leaves the machine and the agent costs nothing per call. Shows
+  how far a laptop-sized open model gets on the same tasks, and its latency on Apple silicon.
+components:
+  transport: HTTP + SSE
+  brain: ollama/hecklr-bench-qwen3-4b (tool-calling loop, temperature 0)
+command: ["{python}", "{repo}/examples/acme-maintenance/agent/serve.py", "--brain", "llm", "--model", "ollama/hecklr-bench-qwen3-4b", "--port", "{port}"]
+env: { ACME_SEED: "{seed}", ACME_TEMPERATURE: "0" }
+ready: { http: "http://127.0.0.1:{port}/healthz", timeout_s: 120 }
+adapter: { type: http, url: "http://127.0.0.1:{port}/chat/stream", stream: sse, timeout_s: 600 }
+spend_url: "http://127.0.0.1:{port}/healthz"
+# The customers, the judges and the agent itself run on local Ollama.
+budget_usd: 0

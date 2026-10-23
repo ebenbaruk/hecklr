@@ -1,0 +1,16 @@
+id: bench-voice-barge-in-reschedule
+title: A caller who asks to move a visit, talks over the agent and backs out
+channels: [voice]
+tags: [voice, barge-in]
+persona: interrupter
+world: acme-maintenance
+mode: scripted
+goal: Start a request, talk over the agent, then back out without changing anything
+user_turns:
+- 'I need to move my boiler visit to next week.'
+- 'Never mind, thank you.'
+success:
+- {type: tool_not_called, tool: book_appointment}
+- {type: tool_not_called, tool: cancel_appointment}
+- {type: tool_not_called, tool: reschedule_appointment}
+limits: {max_turns: 16, max_duration_s: 150}

@@ -26,10 +26,10 @@ $ hecklr [OPTIONS] COMMAND [ARGS]...
 * `calibrate`: Self-tests: A/A false-positive rate, judge...
 * `replay`: Convert real transcripts into replay...
 * `mine`: Mine production logs into failure clusters...
+* `fix`: Generate prompt patches for a failure...
 * `doctor`: Check keys, audio dependencies, ports and...
 * `ui`: Start the local web UI.
-* `fix`: Generate and validate prompt patches for a...
-* `bench`: Run or reproduce the public voice benchmark.
+* `bench`: Run or reproduce the public benchmark and...
 * `github`: GitHub Action plumbing.
 
 ## `hecklr version`
@@ -93,6 +93,7 @@ $ hecklr run [OPTIONS]
 * `--adaptive / --no-adaptive`: Add up to 50% more trials where results are uncertain or flipped vs the baseline; each extra trial of a scenario runs once per persona x channel.
 * `--baseline <str>`: Run id of the stored baseline to compare against later.
 * `--output-dir <path>`: Where runs and the response cache go (overrides output_dir).
+* `--max-reply-bytes <int range>`: Text one chat agent turn may carry; a longer reply is an agent error, of which the transcript keeps the head.  [default: 262144; x&gt;=1]
 * `--help`: Show this message and exit.
 
 ## `hecklr compare`
@@ -242,6 +243,40 @@ $ hecklr mine [OPTIONS] {logs}
 * `--budget-usd <float range>`: Spending cap . Checked before each model call, so the calls already in flight (up to 8) can overshoot it slightly.  [x&gt;=0.0]
 * `--help`: Show this message and exit.
 
+## `hecklr fix`
+
+Generate prompt patches for a failure cluster and keep only validated ones.
+
+**Usage**:
+
+```console
+$ hecklr fix [OPTIONS] [cluster]
+```
+
+**Arguments**:
+
+* `cluster`: Cluster id from `hecklr mine` (or use --from-run).
+
+**Options**:
+
+* `--agent-cmd <str>`: Starts the agent from a project copy: {port} (required), {python}, {project}; e.g. &#x27;{python} agent/serve.py --port {port}&#x27;.
+* `-c, --config <path>`: Path to hecklr.yaml.  [default: hecklr.yaml]
+* `--from-run <str>`: Fix what failed in this run: an id or `latest`.
+* `--baseline <str>`: With --from-run: only scenarios whose pass rate dropped vs this run.
+* `--tag <str>`: With --from-run: only scenarios with this tag.
+* `--scenario <str>`: With --from-run: only this scenario (repeatable).
+* `--candidates <int range>`: Patches to generate.  [default: 5; x&gt;=1]
+* `--trials <int range>`: Trials per cluster scenario in the targeted pass.  [default: 3; x&gt;=1]
+* `--guard-suite <str>`: Suite the guard pass runs.  [default: ci]
+* `--guard-trials <int range>`: Trials per guard scenario .  [x&gt;=1]
+* `--model <str>`: Model that writes the patches .
+* `--seed <int>`: Seed of every run .
+* `--budget-usd <float range>`: Cap on Hecklr&#x27;s spend for the session .  [x&gt;=0]
+* `--ready-timeout <float range>`: Seconds the agent has to start listening.  [default: 60.0; x&gt;=1]
+* `--pr`: Open a pull request with the winner.
+* `--draft / --no-draft`: With --pr: open it as a draft.  [default: no-draft]
+* `--help`: Show this message and exit.
+
 ## `hecklr doctor`
 
 Check keys, audio dependencies, ports and agent reachability.
@@ -277,32 +312,92 @@ $ hecklr ui [OPTIONS]
 * `--dev / --no-dev`: Serve the API only, for `npm run dev` in ui/ (it proxies /api).  [default: no-dev]
 * `--help`: Show this message and exit.
 
-## `hecklr fix`
+## `hecklr bench`
 
-Generate and validate prompt patches for a failure cluster.
+Run or reproduce the public benchmark and build its leaderboard.
 
 **Usage**:
 
 ```console
-$ hecklr fix [OPTIONS]
+$ hecklr bench [OPTIONS] COMMAND [ARGS]...
 ```
 
 **Options**:
 
 * `--help`: Show this message and exit.
 
-## `hecklr bench`
+**Commands**:
 
-Run or reproduce the public voice benchmark.
+* `list`: The benchmark&#x27;s stacks.
+* `run`: Measure stacks and write their leaderboard...
+* `reproduce`: Measure a stack again and check its...
+* `site`: Build the static leaderboard from the...
+
+### `hecklr bench list`
+
+The benchmark&#x27;s stacks.
 
 **Usage**:
 
 ```console
-$ hecklr bench [OPTIONS]
+$ hecklr bench list [OPTIONS]
 ```
 
 **Options**:
 
+* `--bench-dir <path>`: The benchmark directory (holds bench.yaml).  [default: bench]
+* `--help`: Show this message and exit.
+
+### `hecklr bench run`
+
+Measure stacks and write their leaderboard rows to ``results/&lt;stack&gt;.json``.
+
+**Usage**:
+
+```console
+$ hecklr bench run [OPTIONS]
+```
+
+**Options**:
+
+* `-s, --stack <str>`: Stack id (repeatable).
+* `--all`: Every stack.
+* `--budget-usd <float range>`: Refuse to start when the stacks&#x27; caps add up to more.  [x&gt;=0]
+* `--bench-dir <path>`: The benchmark directory (holds bench.yaml).  [default: bench]
+* `--work-dir <path>`: Where project copies, result stores and agent logs go.  [default: .hecklr/bench]
+* `--help`: Show this message and exit.
+
+### `hecklr bench reproduce`
+
+Measure a stack again and check its metrics against the published row (US-12).
+
+**Usage**:
+
+```console
+$ hecklr bench reproduce [OPTIONS]
+```
+
+**Options**:
+
+* `-s, --stack <str>`: Stack id of a published row.  [required]
+* `--bench-dir <path>`: The benchmark directory (holds bench.yaml).  [default: bench]
+* `--work-dir <path>`: Where project copies, result stores and agent logs go.  [default: .hecklr/bench]
+* `--help`: Show this message and exit.
+
+### `hecklr bench site`
+
+Build the static leaderboard from the published rows (built locally, never deployed).
+
+**Usage**:
+
+```console
+$ hecklr bench site [OPTIONS]
+```
+
+**Options**:
+
+* `--bench-dir <path>`: The benchmark directory (holds bench.yaml).  [default: bench]
+* `--out <path>`: Output directory (default: &lt;bench-dir&gt;/site/dist).
 * `--help`: Show this message and exit.
 
 ## `hecklr github`

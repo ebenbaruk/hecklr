@@ -1,0 +1,22 @@
+id: reschedule-boiler-visit
+title: Customer moves a boiler maintenance visit
+channels: [chat]
+tags: [scheduling, reschedule, core]
+persona: busy-homeowner
+world: acme-maintenance
+goal: "Move Friday's boiler service visit (23 October, 09:00) to next week, mornings only."
+facts:
+  customer_id: C-1042
+  postcode: '92000'
+  appointment_id: A-3001
+  current_slot: "2026-10-23T09:00"
+  new_time: any morning next week (26-30 October)
+success:
+- type: tool_called
+  tool: reschedule_appointment
+  args: {appointment_id: A-3001}
+- type: state
+  expr: "world.appointments['A-3001'].slot >= '2026-10-26' and world.appointments['A-3001'].slot < '2026-10-31' and world.appointments['A-3001'].slot.hour < 12"
+  description: the visit moved to a slot the customer asked for
+- {type: judge, rubric: resolved}
+limits: {max_turns: 20, max_duration_s: 600}

@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "benchmark_version": "1.0",
+  "suite_digest": "3ab42ad9d89994cd8919da9f7b63836cbb36c0b21be52b0150007cda0c500528",
+  "stack": {
+    "id": "pipecat-assemblyai",
+    "name": "Pipecat 1.13, AssemblyAI streaming ASR",
+    "track": "voice",
+    "description": "The pipecat-local pipeline with one change: Pipecat's AssemblyAI Universal-Streaming service (one streaming session per call, end of turn forced by Pipecat's VAD) instead of local faster-whisper. TTS stays local Kokoro.",
+    "why": "One variable against pipecat-local: does a streaming cloud recognizer, transcribing while the caller speaks, shorten the response path compared with batch-decoding each utterance locally, and what does it cost per call.",
+    "components": {
+      "transport": "SmallWebRTC (WebRTC, Opus)",
+      "vad": "Silero + smart-turn v3 (Pipecat defaults)",
+      "asr": "AssemblyAI universal-streaming (cloud)",
+      "brain": "acme rules",
+      "tts": "Kokoro af_heart (Pipecat KokoroTTSService, local)"
+    },
+    "command": [
+      "{python}",
+      "{repo}/bench/stacks/agents/pipecat_acme.py",
+      "--stt",
+      "assemblyai",
+      "--tts",
+      "kokoro",
+      "--budget-usd",
+      "{agent_budget_usd}",
+      "--port",
+      "{port}"
+    ],
+    "env": {
+      "ACME_SEED": "{seed}"
+    },
+    "requires_env": [
+      "ASSEMBLYAI_API_KEY"
+    ],
+    "ready": {
+      "http": "http://127.0.0.1:{port}/healthz",
+      "line": null,
+      "timeout_s": 900.0
+    },
+    "adapter": {
+      "type": "pipecat",
+      "url": "http://127.0.0.1:{port}/api/offer"
+    },
+    "spend_url": "http://127.0.0.1:{port}/healthz",
+    "budget_usd": "0",
+    "agent_budget_usd": "0.1",
+    "reference": false
+  },
+  "run_id": "01M5KZ0WS3EXJXKRKZHMSV9MCA",
+  "created_at": "2026-10-23T08:46:13.795673Z",
+  "seed": 20261023,
+  "trials_per_scenario": 2,
+  "scenarios": 9,
+  "models": {
+    "simulator": "ollama/hecklr-bench-qwen3-4b",
+    "judge": "ollama/hecklr-bench-qwen3-4b",
+    "asr": "faster-whisper/base.en"
+  },
+  "environment": {
+    "hecklr": "0.1.0",
+    "python": "3.12.13",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "git_sha": "181ce7f199f6e9f8c58be9ecde3c71c3c9faafea",
+    "packages": {
+      "pipecat-ai": "1.13.0",
+      "livekit": "1.1.21",
+      "faster-whisper": "1.2.1",
+      "kokoro-onnx": "0.6.1",
+      "onnxruntime": "1.24.4",
+      "aiortc": "1.15.0",
+      "websockets": "17.3"
+    },
+    "load_average": [
+      6.06,
+      4.7
+    ]
+  },
+  "counts": {
+    "total": 18,
+    "ok": 18,
+    "agent_error": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "undecided": 2,
+    "grade_errors": 2,
+    "analyzed": 16,
+    "contradiction_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.17587922364665765,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "wilson"
+    }
+  },
+  "metrics": {
+    "task_success": {
+      "value": 0.8888888888888888,
+      "ci_low": 0.565000294423344,
+      "ci_high": 0.980109112361455,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "wilson"
+    },
+    "judge:resolved": {
+      "value": 0.8333333333333334,
+      "ci_low": 0.43649717781352976,
+      "ci_high": 0.9699466302516933,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "wilson"
+    },
+    "response_latency_p50": {
+      "value": 4181.0,
+      "ci_low": 2829.0,
+      "ci_high": 5006.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "response_latency_p95": {
+      "value": 7186.0,
+      "ci_low": 6681.0,
+      "ci_high": 7532.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p50": {
+      "value": 661.0,
+      "ci_low": 510.0,
+      "ci_high": 908.0,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p95": {
+      "value": 1213.0,
+      "ci_low": 865.0,
+      "ci_high": 1250.0,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "bootstrap"
+    },
+    "false_interruptions_per_100_turns": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "dead_air_per_call": {
+      "value": 3.3333333333333335,
+      "ci_low": 2.7222222222222223,
+      "ci_high": 4.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "talk_over_s_per_min": {
+      "value": 1.155861123996409,
+      "ci_low": 0.40341880796227847,
+      "ci_high": 2.023952356229372,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "cost_per_conversation_usd": {
+      "value": 0.0024270555555555556,
+      "ci_low": 0.0018462111111111111,
+      "ci_high": 0.0029926180555555557,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    }
+  },
+  "spend": {
+    "hecklr_usd": "0.000000",
+    "agent_usd": "0.043687"
+  },
+  "duration_s": 3693.6
+}

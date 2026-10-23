@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "benchmark_version": "1.0",
+  "suite_digest": "3ab42ad9d89994cd8919da9f7b63836cbb36c0b21be52b0150007cda0c500528",
+  "stack": {
+    "id": "loopback-reference",
+    "name": "Loopback agent, 600 ms / 150 ms",
+    "track": "calibration",
+    "description": "Hecklr's calibration agent in its own process: it answers exactly 600 ms after the caller's last speech sample and stops talking 150 ms after a caller barges in.",
+    "why": "The ruler: with the truth known, it shows what the harness measures for a perfectly timed agent (SC4: within 20 ms), so the voice rows' latencies can be read as the agent's own time.",
+    "components": {
+      "transport": "WebSocket, raw 16 kHz PCM",
+      "timing": "reply 600 ms after speech ends (400 ms endpoint), stop 150 ms after a barge-in"
+    },
+    "command": [
+      "{python}",
+      "{repo}/examples/voice-loopback/serve.py",
+      "--port",
+      "{port}",
+      "--reply-after-ms",
+      "600",
+      "--barge-in-reaction-ms",
+      "150",
+      "--endpoint-ms",
+      "400"
+    ],
+    "env": {},
+    "requires_env": [],
+    "ready": {
+      "http": null,
+      "line": "listening on ws://",
+      "timeout_s": 120.0
+    },
+    "adapter": {
+      "type": "websocket",
+      "url": "ws://127.0.0.1:{port}/",
+      "protocol": "pcm"
+    },
+    "spend_url": null,
+    "budget_usd": "0",
+    "agent_budget_usd": "0",
+    "reference": true
+  },
+  "run_id": "01M5KJ2J83Y3TE06DN1572EP56",
+  "created_at": "2026-10-23T04:59:57.059695Z",
+  "seed": 20261023,
+  "trials_per_scenario": 3,
+  "scenarios": 3,
+  "models": {
+    "simulator": "ollama/hecklr-bench-qwen3-4b",
+    "judge": "ollama/hecklr-bench-qwen3-4b",
+    "asr": "fake/tag"
+  },
+  "environment": {
+    "hecklr": "0.1.0",
+    "python": "3.12.13",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "git_sha": "181ce7f199f6e9f8c58be9ecde3c71c3c9faafea",
+    "packages": {
+      "pipecat-ai": "1.13.0",
+      "livekit": "1.1.21",
+      "faster-whisper": "1.2.1",
+      "kokoro-onnx": "0.6.1",
+      "onnxruntime": "1.24.4",
+      "aiortc": "1.15.0",
+      "websockets": "17.3"
+    },
+    "load_average": [
+      6.03,
+      4.07
+    ]
+  },
+  "counts": {
+    "total": 9,
+    "ok": 9,
+    "agent_error": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "undecided": 0,
+    "grade_errors": 0,
+    "analyzed": 9,
+    "contradiction_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.29914504841954404,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "wilson"
+    }
+  },
+  "metrics": {
+    "task_success": {
+      "value": 1.0,
+      "ci_low": 0.4385029682449546,
+      "ci_high": 1.0,
+      "confidence": 0.95,
+      "n": 3,
+      "method": "wilson"
+    },
+    "response_latency_p50": {
+      "value": 550.0,
+      "ci_low": 511.0,
+      "ci_high": 562.0,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "bootstrap"
+    },
+    "response_latency_p95": {
+      "value": 599.0,
+      "ci_low": 578.0,
+      "ci_high": 609.0,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p50": {
+      "value": 180.0,
+      "ci_low": 167.0,
+      "ci_high": 183.0,
+      "confidence": 0.95,
+      "n": 3,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p95": {
+      "value": 189.0,
+      "ci_low": 180.0,
+      "ci_high": 189.0,
+      "confidence": 0.95,
+      "n": 3,
+      "method": "bootstrap"
+    },
+    "false_interruptions_per_100_turns": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "bootstrap"
+    },
+    "dead_air_per_call": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "bootstrap"
+    },
+    "talk_over_s_per_min": {
+      "value": 0.40187734237203826,
+      "ci_low": 0.0,
+      "ci_high": 0.845240331133416,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "bootstrap"
+    },
+    "cost_per_conversation_usd": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "bootstrap"
+    }
+  },
+  "spend": {
+    "hecklr_usd": "0",
+    "agent_usd": "0"
+  },
+  "duration_s": 234.9
+}

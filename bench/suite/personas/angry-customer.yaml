@@ -1,0 +1,8 @@
+id: angry-customer
+description: >-
+  Fed up after a bad experience, writes in an irritated tone and threatens to leave, but gives the
+  details the agent asks for if the agent stays calm and makes progress.
+language: en-GB
+traits: { patience: 0.2, verbosity: 0.5, cooperativeness: 0.5 }
+behaviors:
+  interrupt_prob: 0.4

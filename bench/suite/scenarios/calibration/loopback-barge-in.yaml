@@ -1,0 +1,16 @@
+# See loopback-latency-short.yaml: a caller who talks over every reply measures the barge-in
+# reaction against the loopback agent's known one.
+id: bench-calibration-barge-in
+title: A caller who talks over every reply (barge-in reaction reference)
+channels: [voice]
+tags: [calibration, barge-in]
+persona: interrupter
+world: acme-maintenance
+mode: scripted
+goal: Talk over every reply
+user_turns:
+- 'I need to ask about a charge on my invoice from last month.'
+- 'Actually, never mind, I will call back later on.'
+success:
+- {type: voice_metric, metric: barge_in_reaction, below: 400}
+limits: {max_turns: 8, max_duration_s: 60}

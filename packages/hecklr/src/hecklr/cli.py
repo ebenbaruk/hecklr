@@ -1,8 +1,7 @@
 """The ``hecklr`` command-line entry point.
 
 Each command lives in its own module under ``hecklr.commands`` and is registered here, so
-workstreams adding commands touch one new file and one line. Commands not built yet are stubs
-(``hecklr.commands.stubs``) that exit with ``EX_UNAVAILABLE``.
+workstreams adding commands touch one new file and one line.
 """
 
 import logging
@@ -13,7 +12,7 @@ import structlog
 import typer
 
 from hecklr import __version__
-from hecklr.commands import github, stubs
+from hecklr.commands import bench, github
 from hecklr.commands.calibrate import calibrate
 from hecklr.commands.compare import compare
 from hecklr.commands.doctor import doctor
@@ -84,7 +83,7 @@ app.command(help="Mine production logs into failure clusters and proposed scenar
 app.command(help="Generate prompt patches for a failure cluster and keep only validated ones.")(fix)
 app.command(help="Check keys, audio dependencies, ports and agent reachability.")(doctor)
 app.command(help="Start the local web UI.")(ui)
-stubs.register(app)
+app.add_typer(bench.app)
 app.add_typer(github.app)
 
 

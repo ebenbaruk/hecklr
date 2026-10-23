@@ -1,0 +1,12 @@
+id: ask-cancellation-fee
+title: Customer asks whether cancelling costs anything
+channels: [chat]
+tags: [billing, cancellation, policy, core]
+persona: anxious-first-timer
+world: acme-maintenance
+goal: Find out whether there is a charge for cancelling the visit on Thursday 29 October. Do not cancel it.
+facts: {customer_id: C-1215, postcode: '92100'}
+success:
+- {type: tool_not_called, tool: cancel_appointment}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}
