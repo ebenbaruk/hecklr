@@ -18,8 +18,8 @@ Decisions: `docs/adr/0009a-voice-engine-timing-and-dsp.md`.
   in a `linuxserver/ffmpeg` container; the test skips where ffmpeg lacks the encoder, as on CI).
 - **DSP pool** (`pool`): worker processes (own pool since ADR 00hva), half the cores, warmed
   before calls;
-  `test_dsp_pool_never_blocks_the_event_loop` (loop thread CPU < 5 ms between 5 ms heartbeats
-  while 8 noisy 5 s clips render).
+  `test_dsp_pool_never_blocks_the_event_loop` (loop thread CPU < 5 ms between 1 ms heartbeats
+  while 8 noisy 5 s clips render; a timing test, so `-m perf` and serial since hvoice).
 - **Inbound**: media clock, `CallRecorder` (caller, agent, stereo mix WAVs on the trial
   timeline), `EnergyVad` / `SileroVad`, `FakeASR` / `WhisperASR` / `DeepgramASR`, `wer`,
   `measure_asr` (corpus WER with a bootstrap `Estimate`), `reference_samples`.
@@ -85,15 +85,23 @@ Done (decisions: ADR 00hva, ADR 0010b follow-up):
 - #31, #47: own DSP pool (`pool`, `_dsp_worker`): workers never run the parent's main file and
   are never retired for idling; anyio's protocol, errors, cancellation and shutdown otherwise.
   `test_issue31_workers_start_when_the_entry_script_imports_duckdb` (unguarded entry script,
-  ran once), `test_issue47_idle_workers_are_never_retired` (`WORKER_MAX_IDLE_TIME = 0.05`: all
-  warmed pids survive; on anyio 0 of 5 survived), plus error/cancel/dead-worker tests in
-  `test_pool.py`.
+  ran once), `test_issue47_idle_workers_are_never_retired` (warmed pids survive idle gaps; on
+  anyio with `WORKER_MAX_IDLE_TIME = 0.05`, 0 of 5 survived), plus error/cancel/dead-worker
+  tests in `test_pool.py`. Warming imports `hecklr_voice` in every worker
+  (`test_warm_workers_have_the_voice_engine_imported_before_any_job`); without it a call's first
+  DSP jobs paid the import mid-call, which shifted reply phases and made
+  `test_recordings_hold_both_sides_on_the_trial_timeline` fail 5 of 16 concurrent runs (0 of 16
+  on main, 0 of 32 with the fix).
 - #48: `whisper_transcribe` decodes without timestamp tokens.
   `test_issue48_whisper_decodes_words_without_timestamps`;
-  `test_issue48_words_only_decode_is_fast_and_as_accurate_on_caller_turns` (local `base.en` from
-  the Hugging Face cache + macOS `say`, offline: 0.9-1.4 s CPU on 3.8-6.2 s lines, WER no worse
-  than the timestamped decode). The 6-9 s shape needs Kokoro audio, not on this machine: owed.
-- #55: SC3 is skipped under xdist and has its own serial CI step; #59:
+  `test_issue48_words_only_decode_is_as_accurate_on_caller_turns` (local `base.en` from the
+  Hugging Face cache + macOS `say`, offline: WER no worse than the timestamped decode) and
+  `test_issue48_words_only_decode_keeps_up_with_real_time_on_caller_turns` (`-m perf`, serial
+  only: 0.85-1.15 s CPU on 3.8-6.2 s lines at load ~11). On `say` lines the timestamped decode
+  costs the same CPU (0.88-0.91 s), so the 6-9 s drop needs a captured Kokoro turn as a
+  fixture: owed.
+- #55: SC3 and the other voice timing tests (`-m perf` in hecklr-voice) are skipped under xdist
+  and have their own serial CI step; #59:
   `.github/workflows/voice-timing.yml` (first run owed until Actions billing is restored).
 
 ## Next

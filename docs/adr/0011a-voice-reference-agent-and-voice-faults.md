@@ -2,6 +2,8 @@
 
 Date: 2026-10-22 · Status: proposed · Workstream: WS11
 
+> Superseded in part by [00hva](00hva-own-dsp-worker-pool.md): Hecklr's DSP pool never retires idle workers, so the agent's keep-warm job no longer prevents mid-call model loads.
+
 ## Context
 
 SC8 needs a voice agent with four planted faults (F7 +700 ms before TTS, F8 barge-in off, F9 a
