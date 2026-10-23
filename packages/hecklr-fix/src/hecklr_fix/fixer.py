@@ -75,7 +75,8 @@ class PassRequest:
     budget_usd: Decimal | None
     """What is left of the session's budget."""
     output_dir: Path
-    """Shared by every run of the session: one result store and one response cache."""
+    """Shared by every run of every session: one result store and one response cache, kept
+    apart from the project's own runs so ``hecklr gate`` never picks a candidate's run."""
 
 
 class SuiteRunner(Protocol):
@@ -131,6 +132,8 @@ class FixResult:
     guard_baseline: RunId | None
     spent_usd: Decimal
     """Hecklr's spend: generation plus every run. The agent's own model calls are not in it."""
+    winner_files: Mapping[str, str] = field(default_factory=dict)
+    """The winner's new text of each file it changes (what ``--pr`` commits)."""
 
 
 class _BudgetExhaustedError(Exception):
@@ -141,6 +144,8 @@ class _BudgetExhaustedError(Exception):
 class _Session:
     spent: Decimal = Decimal(0)
     patches: dict[int, Patch] = field(default_factory=dict)
+    files: dict[int, dict[str, str]] = field(default_factory=dict)
+    """Each candidate's changed files, by candidate index."""
 
 
 class Fixer:
@@ -157,10 +162,16 @@ class Fixer:
         runner: SuiteRunner,
         launcher: AgentLauncher,
         session_dir: Path,
+        runs_output_dir: Path,
         fix_id: str | None = None,
         ports: Callable[[], int] = free_port,
     ) -> None:
-        """Set up a session; ``ports`` picks the port of each agent launch."""
+        """Set up a session.
+
+        ``session_dir`` holds the session's workspaces and agent logs; ``runs_output_dir`` its
+        runs and response cache (``PassRequest.output_dir``); ``ports`` picks the port of each
+        agent launch.
+        """
         if settings.candidates < 1 or settings.targeted_trials < 1:
             raise FixError("the fixer needs at least one candidate and one trial per scenario")
         self.ports = ports
@@ -172,6 +183,7 @@ class Fixer:
         self.runner = runner
         self.launcher = launcher
         self.session_dir = session_dir
+        self.runs_output_dir = runs_output_dir
         self.fix_id = fix_id or new_id()
         self._session = _Session()
 
@@ -280,7 +292,7 @@ class Fixer:
             trials=self.settings.targeted_trials if targeted else self.settings.guard_trials,
             seed=self.settings.seed,
             budget_usd=left,
-            output_dir=self.session_dir,
+            output_dir=self.runs_output_dir,
         )
         try:
             log = self.session_dir / "logs" / f"{label}.log"
@@ -300,6 +312,7 @@ class Fixer:
         return run
 
     def _propose(self, candidate: Candidate) -> None:
+        self._session.files[candidate.index] = candidate.files
         self._session.patches[candidate.index] = Patch(
             id=PatchId(new_id()),
             cluster_id=self.target.cluster.id,
@@ -360,6 +373,7 @@ class Fixer:
             targeted_baseline=baseline.results.run.id if baseline is not None else None,
             guard_baseline=guard_baseline.results.run.id if guard_baseline is not None else None,
             spent_usd=self._session.spent,
+            winner_files=self._session.files[winner.candidate_index] if winner else {},
         )
 
 

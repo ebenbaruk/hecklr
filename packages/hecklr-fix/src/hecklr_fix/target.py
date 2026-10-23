@@ -32,6 +32,8 @@ from hecklr_schemas import (
     new_id,
 )
 
+MINE_DIR: Final = "mine"
+"""Mining runs live in ``<output_dir>/mine/<mine id>/`` (ADR 0013a, ``hecklr_mine.MINE_DIR``)."""
 CLUSTERS_FILE: Final = "clusters.jsonl"
 PROPOSALS_FILE: Final = "proposals.jsonl"
 

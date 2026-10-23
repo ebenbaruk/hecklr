@@ -143,6 +143,7 @@ def _fixer(
         runner=runner,
         launcher=launcher,
         session_dir=project.parent / ".hecklr" / "fix" / "s1",
+        runs_output_dir=project.parent / ".hecklr" / "fix",
         ports=itertools.count(40_000).__next__,
     )
     return fixer, runner, launcher, llm
@@ -167,6 +168,10 @@ async def test_ws15_good_patch_wins_and_the_planted_bad_patch_is_rejected_by_the
     assert result.winner.candidate_index == 0
     winner = result.winner
     assert winner.files == ["prompts/system.md"]
+    assert result.winner_files == {
+        "prompts/system.md": "Rules:\n- Before booking, confirm the exact slot.\n"
+        "- Verify before refunds.\n"
+    }
     assert winner.targeted[0].verdict.value == "improvement"
     assert winner.guard
     assert all(c.verdict.value != "regression" for c in winner.guard)
@@ -183,7 +188,7 @@ async def test_ws15_good_patch_wins_and_the_planted_bad_patch_is_rejected_by_the
     ]
     assert len({port for _, _, port in launcher.launches}) == len(launcher.launches)
     assert {r.seed for r in runner.requests} == {11}
-    assert {r.output_dir for r in runner.requests} == {fixer.session_dir}
+    assert {r.output_dir for r in runner.requests} == {fixer.runs_output_dir}
     assert [r.trials for r in runner.requests] == [3, 3, 3, 3, None, None, None]
     assert result.targeted_baseline == result.patches[0].targeted[0].baseline
     assert result.guard_baseline == result.patches[0].guard[0].baseline

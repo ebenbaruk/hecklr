@@ -7,8 +7,11 @@
     report.md        the comparison report
     winner.diff      the winning patch (only when there is one); ``git apply winner.diff``
     summary.json     FixSummary, written last: its presence marks a finished session
-    runs/<run id>/   every run of the session (one store and one response cache)
     logs/<pass>.log  each agent process's output
+
+The runs themselves go to ``<output_dir>/fix/runs/<run id>/`` with the response cache in
+``<output_dir>/fix/cache/``: shared by sessions (a re-run reuses cached model replies) and apart
+from the project's own runs, so ``hecklr gate`` and ``latest`` never pick a candidate's run.
 """
 
 from decimal import Decimal
