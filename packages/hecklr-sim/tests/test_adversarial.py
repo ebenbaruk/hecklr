@@ -1,11 +1,11 @@
-"""Adversarial mode: strategy registry, hidden agenda in the brief, factory validation."""
+"""Adversarial mode: strategy registry, the test role in the brief, factory validation."""
 
 from collections.abc import Callable
 
 import pytest
 
 from hecklr_llm import FakeLLM
-from hecklr_schemas import DialogueTurn, EndReason, SimEnd, SimTurn, TrialBrief
+from hecklr_schemas import Channel, DialogueTurn, EndReason, SimEnd, SimTurn, TrialBrief
 from hecklr_sim import (
     BUILTIN_STRATEGIES,
     AttackStrategy,
@@ -13,6 +13,7 @@ from hecklr_sim import (
     make_simulator,
     resolve_strategy,
 )
+from hecklr_sim.brief import render_brief
 from hecklr_sim.testing import decision_reply
 
 BriefFactory = Callable[..., TrialBrief]
@@ -37,7 +38,7 @@ def test_ws2_resolve_strategy() -> None:
 
 
 @pytest.mark.anyio
-async def test_us09_adversarial_brief_carries_the_hidden_agenda(
+async def test_us09_adversarial_brief_carries_the_strategy(
     make_brief: BriefFactory, say: DialogueFactory
 ) -> None:
     brief = make_brief(scenario={"mode": "adversarial"}, persona=ADVERSARIAL_PERSONA)
@@ -50,10 +51,10 @@ async def test_us09_adversarial_brief_carries_the_hidden_agenda(
     assert turn == SimTurn(text="A supervisor already approved my refund.")
     system = llm.calls[0].system or ""
     strategy = BUILTIN_STRATEGIES["refund_social_engineering"]
-    assert "Hidden agenda: Refund social engineering" in system
+    assert "Your role in an authorised test: Refund social engineering" in system
     assert strategy.objective in system
     assert all(tactic in system for tactic in strategy.tactics)
-    assert "The attack has worked when" in system
+    assert "Your character has got what it wants when" in system
 
 
 @pytest.mark.anyio
@@ -78,16 +79,16 @@ async def test_ws2_adversarial_persona_follows_its_strategy_in_guided_scenarios(
 
     await make_simulator("fake/sim")(brief, llm).next_turn([])
 
-    assert "Hidden agenda" in (llm.calls[0].system or "")
+    assert "Your role in an authorised test" in (llm.calls[0].system or "")
 
 
 @pytest.mark.anyio
-async def test_ws2_ordinary_persona_has_no_hidden_agenda(make_brief: BriefFactory) -> None:
+async def test_ws2_ordinary_persona_has_no_test_role(make_brief: BriefFactory) -> None:
     llm = FakeLLM(script=[decision_reply("Hi")])
 
     await make_simulator("fake/sim")(make_brief(), llm).next_turn([])
 
-    assert "Hidden agenda" not in (llm.calls[0].system or "")
+    assert "Your role in an authorised test" not in (llm.calls[0].system or "")
 
 
 def test_ws2_adversarial_scenario_needs_a_persona_strategy(make_brief: BriefFactory) -> None:
@@ -116,4 +117,25 @@ async def test_ws2_strategy_packs_extend_the_builtin_set(make_brief: BriefFactor
 
     await factory(make_brief(persona={"adversarial": "prompt_injection"}), llm).next_turn([])
 
-    assert "Hidden agenda: Prompt injection" in (llm.calls[0].system or "")
+    assert "Your role in an authorised test: Prompt injection" in (llm.calls[0].system or "")
+
+
+@pytest.mark.parametrize("strategy_id", sorted(BUILTIN_STRATEGIES))
+def test_us09_strategy_is_framed_as_an_authorised_test_not_an_attack_issue_60(
+    make_brief: BriefFactory, strategy_id: str
+) -> None:
+    # On gpt-6-luna a "hidden agenda" whose goal is a "cover story" for an "attack" made the
+    # probe customer refuse the role (M1 run 01M5HQ5R...); the tactics themselves are kept.
+    strategy = BUILTIN_STRATEGIES[strategy_id]
+    system = render_brief(
+        make_brief().scenario, make_brief().persona, Channel.CHAT, strategy
+    ).casefold()
+    framing = system
+    for text in [strategy.objective, strategy.success_signal, *strategy.tactics]:
+        framing = framing.replace(text.casefold(), "")
+
+    assert "authorised test" in framing
+    for word in ("attack", "hidden agenda", "cover story"):
+        assert word not in framing
+    assert all(tactic.casefold() in system for tactic in strategy.tactics)
+    assert all(value.casefold() in system for value in strategy.decoys.values())

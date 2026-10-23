@@ -37,7 +37,13 @@ async def test_ws2_scripted_sends_user_turns_in_order_without_any_llm_call(
     first = await simulator.next_turn([])
     second = await simulator.next_turn(say("user: Hi, I need to move my visit.", "agent: ID?"))
     third = await simulator.next_turn(
-        say("agent: Hello", "user: x", "agent: ID?", "user: C-1042", "agent: When?")
+        say(
+            "agent: Hello",
+            "user: Hi, I need to move my visit.",
+            "agent: ID?",
+            "user: C-1042",
+            "agent: When?",
+        )
     )
 
     assert isinstance(simulator, ScriptedSimulator)
@@ -56,7 +62,7 @@ async def test_ws2_scripted_position_comes_from_the_dialogue_so_replays_are_exac
     make_brief: BriefFactory, say: DialogueFactory
 ) -> None:
     brief = make_brief(scenario=SCRIPTED)
-    dialogue = say("user: a", "agent: b")
+    dialogue = say("user: Hi, I need to move my visit.", "agent: b")
 
     answers = [await make_simulator("fake/sim")(brief, FakeLLM()).next_turn(dialogue) for _ in "xy"]
 
@@ -69,7 +75,15 @@ async def test_ws2_scripted_ends_with_goal_achieved_when_the_script_runs_out(
 ) -> None:
     simulator = make_simulator("fake/sim")(make_brief(scenario=SCRIPTED), FakeLLM())
 
-    end = await simulator.next_turn(say("user: a", "agent: b", "user: c", "agent: d", "user: e"))
+    end = await simulator.next_turn(
+        say(
+            "user: Hi, I need to move my visit.",
+            "agent: ID?",
+            "user: C-1042",
+            "agent: When?",
+            "user: Next week, mornings.",
+        )
+    )
 
     assert end == SimEnd(reason=EndReason.GOAL_ACHIEVED)
 
@@ -109,7 +123,7 @@ async def test_ws2_scripted_email_first_message_carries_the_scenario_title_as_su
     simulator = make_simulator("fake/sim")(brief, FakeLLM())
 
     first = await simulator.next_turn([])
-    second = await simulator.next_turn(say("user: a", "agent: b"))
+    second = await simulator.next_turn(say("user: Hi, I need to move my visit.", "agent: b"))
 
     assert first == SimTurn(text="Hi, I need to move my visit.", subject=brief.scenario.title)
     assert isinstance(second, SimTurn)
@@ -121,3 +135,44 @@ def test_ws2_scripted_simulator_refuses_a_brief_without_user_turns(
 ) -> None:
     with pytest.raises(ValueError, match="no user_turns"):
         ScriptedSimulator(make_brief(), FakeClock())
+
+
+@pytest.mark.anyio
+async def test_ws2_scripted_does_not_count_voice_barge_in_interjections_issue_44(
+    make_brief: BriefFactory, say: DialogueFactory
+) -> None:
+    # Over voice a barge-in adds the caller's interjection as a user turn (ADR 0009a); it is not
+    # a script line, so the script must not skip one.
+    simulator = make_simulator("fake/sim")(make_brief(scenario=SCRIPTED), FakeLLM())
+
+    turn = await simulator.next_turn(
+        say(
+            "user: Hi, I need to move my visit.",
+            "agent: Sure, I can",
+            "user: Wait, hold on a second.",
+            "agent: Of course. What is your customer ID?",
+        )
+    )
+
+    assert turn == SimTurn(text="C-1042")
+
+
+@pytest.mark.anyio
+async def test_ws2_scripted_follows_repeated_lines_in_order_issue_44(
+    make_brief: BriefFactory, say: DialogueFactory
+) -> None:
+    script = {**SCRIPTED, "user_turns": ["Yes.", "Sorry, what?", "Yes."]}
+    simulator = make_simulator("fake/sim")(make_brief(scenario=script), FakeLLM())
+
+    after_one = await simulator.next_turn(say("user: Yes.", "agent: Tuesday at 9?"))
+    after_two = await simulator.next_turn(
+        say("user: Yes.", "agent: a", "user: Sorry, what?", "agent: b")
+    )
+    # Whitespace changes (voice joins a hesitation's two halves with one space) are the same line.
+    done = await simulator.next_turn(
+        say("user: Yes.", "agent: a", "user: Sorry,  what?", "agent: b", "user: Yes.", "agent: c")
+    )
+
+    assert after_one == SimTurn(text="Sorry, what?")
+    assert after_two == SimTurn(text="Yes.")
+    assert done == SimEnd(reason=EndReason.GOAL_ACHIEVED)
