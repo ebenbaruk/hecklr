@@ -5,6 +5,23 @@ report, calibrate, model defaults, the GitHub Action in `action/`). Spec: `docs/
 "Developer experience", "Run lifecycle", "Agent adapters", "Statistics and reporting".
 Decisions: ADR 0007a, ADR 0007c.
 
+## WShrun (Wave 4): run/gate/report hardening (ADR 00hra)
+
+Plan, one test-first commit per issue (test names cite the issue):
+- #33 a run where no trial got through (every trial an agent error or timeout) is an
+  `Analysis.problem` (gate exits 3, `--missing-baseline pass` refuses it) and `hecklr run`
+  exits 3; ADR 00hra records the exit code.
+- #34 per-turn agent reply cap (`--max-reply-bytes`, default 256 KiB) wrapped around every chat
+  target: the head is kept, the trial is an agent error; HTML report text capped with a marker;
+  proven with the issue's 20 MB stub agent.
+- #36 regression tests only (fixed by #51): `--budget-usd 0` runs a scripted, judge-free suite.
+- #63 `hecklr replay` skips adversarial personas by default, as `hecklr mine` does.
+- #35 Ctrl-C: one "Interrupted" line, exit 130, no uvicorn lifespan traceback.
+- #38 a non-boolean state result is described without `repr` of a huge int.
+- #37 one seeded, corrective judge retry on an unusable answer; its cost is counted.
+- #67 acme-email budget validation and soft-cap docs, examples in `scripts/mypy-all.sh`,
+  mixed scripted + guided estimate test.
+
 ## WS-wire (Wave 2b): voice and email in `hecklr run` (ADR 0007e, ADR 0005c, RFC 0010a)
 
 Plan: (1) world URLs over every voice/email adapter; (2) issues #14 and #19; (3) compose voice

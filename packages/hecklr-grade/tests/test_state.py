@@ -268,6 +268,19 @@ def test_token_soup_only_yields_a_bool_or_a_state_error(tokens: list[str]) -> No
     assert isinstance(result, bool)
 
 
+def test_issue38_a_huge_non_boolean_integer_is_a_state_error() -> None:
+    # Hypothesis found `12**121212`: its repr exceeds Python's 4300-digit int-to-str limit.
+    with pytest.raises(StateExpressionError, match="must be a boolean, got int") as caught:
+        run("12**121212")
+    assert len(str(caught.value)) < 200
+
+
+def test_issue38_a_long_non_boolean_result_is_described_briefly() -> None:
+    with pytest.raises(StateExpressionError, match="got str 'xxx") as caught:
+        run("'x' * 50000")
+    assert len(str(caught.value)) < 200
+
+
 def test_huge_powers_and_comprehensions_are_capped() -> None:
     with pytest.raises((StateExpressionError, StateLookupError)):
         run("9 ** 9 ** 9 ** 9 > 0")
