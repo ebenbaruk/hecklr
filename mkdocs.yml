@@ -1,0 +1,103 @@
+# Hecklr documentation site. Build locally: uv run --group docs mkdocs build --strict
+# (serve with `mkdocs serve`). CI builds it on every PR (.github/workflows/docs.yml); it is not
+# deployed anywhere yet.
+site_name: Hecklr
+site_description: The crash-test lab for conversational AI agents (voice, chat, email).
+site_url: https://hecklr.dev/
+repo_url: https://github.com/ebenbaruk/hecklr
+repo_name: ebenbaruk/hecklr
+edit_uri: edit/main/docs/
+copyright: Apache-2.0 · Hecklr contributors
+
+docs_dir: docs
+strict: true
+
+# The spec, ADRs, RFCs and milestone reports live in docs/ next to the site's pages but are
+# repository documents: they link into packages/ and examples/, which a site cannot serve. The
+# site links to them on GitHub instead.
+exclude_docs: |
+  SPEC.md
+  adr/
+  rfc/
+  milestones/
+  scripts/
+  PROGRESS.md
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  # No web fonts: the site renders offline and makes no third-party requests.
+  font: false
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - content.code.copy
+    - content.tabs.link
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Concepts:
+      - concepts/index.md
+      - Scenarios, personas and worlds: concepts/scenarios.md
+      - Runs and trials: concepts/runs.md
+      - Graders and judges: concepts/graders.md
+      - Statistics: concepts/statistics.md
+  - Guides:
+      - Connect your agent: adapters.md
+      - Voice: guides/voice.md
+      - CI and the GitHub Action: guides/ci.md
+      - Red-team pack: guides/red-team.md
+      - Miner: guides/miner.md
+      - Fixer: guides/fixer.md
+      - Local UI: guides/ui.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Configuration: reference/configuration.md
+  - Comparison: comparison.md
+  - FAQ: faq.md
+  - Roadmap: roadmap.md

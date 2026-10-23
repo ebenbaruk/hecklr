@@ -1,0 +1,61 @@
+name: Bug report
+description: Hecklr did something wrong, crashed, or reported a number you do not trust.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems go through private reporting instead (SECURITY.md).
+        Please remove API keys and customer data from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead.
+      placeholder: |
+        I ran `hecklr gate --suite ci` and expected a pass, but it exited 3 with ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest hecklr.yaml, scenario and command that show it. A failing run on the reference agent (examples/acme-maintenance, rules brain) is ideal.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The command's output, run with `hecklr -vv ...` if you can.
+      render: text
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - run / orchestrator
+        - simulator
+        - world sandbox
+        - chat adapter or driver
+        - voice engine or voice adapter
+        - email
+        - graders or judges
+        - statistics or verdicts
+        - reports, gate or GitHub Action
+        - miner
+        - fixer
+        - UI
+        - docs
+        - other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Hecklr version and platform
+      description: Output of `hecklr version`, your OS and Python version.
+      placeholder: 0.1.0, macOS 15 arm64, Python 3.12.7
+    validations:
+      required: true

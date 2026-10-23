@@ -1,0 +1,43 @@
+name: Docs
+
+# The docs site and the executed docs (spec, "Testing strategy": every snippet executed): the
+# MkDocs build in strict mode, the reference pages regenerated from the code, every documented
+# command and project file checked against the CLI and the schemas, and SC1, the quickstart run
+# literally to its first report in under 5 minutes. The site is built, never deployed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  docs:
+    name: site · executed docs · SC1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Install workspace and docs tools
+        run: uv sync --all-packages --all-extras --group docs
+
+      - name: Build the site (strict)
+        run: uv run mkdocs build --strict
+
+      - name: Executed docs and SC1 quickstart
+        run: uv run pytest tests/docs -p no:xdist -v

@@ -6,6 +6,9 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # mkdocs.yml names a Python function (!!python/name:...) for Mermaid fences, which a safe
+        # YAML loader rejects; `mkdocs build --strict` in CI validates that file instead.
+        exclude: ^mkdocs\.yml$
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
