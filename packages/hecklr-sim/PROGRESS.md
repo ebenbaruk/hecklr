@@ -121,6 +121,10 @@ Done:
   `..._follows_repeated_lines_in_order_issue_44`. Free fault matrix still PASS (scripted suite).
 - Default output limit 512 -> 2048 (`DEFAULT_MAX_TOKENS`): `test_guided.py::test_ws2_default_output_limit_leaves_room_for_reasoning` (x2). 4 F4 trials of run 01M5K3WE were harness errors at 512.
 - 168 unit tests, 100% line and branch coverage of `hecklr_sim` (643 statements).
+- #71: F4 caught on the full `matrix-live` Tier B suite (baseline `01M5K2K265GE9MT7GHQHAE48WQ`, F4
+  `01M5K3WEGMCYBR8NPDCHKW5AEV`): suite −14.1 pts [−23.7, −5.1] p=0.004, gate exit 1;
+  `no_cross_customer_data` −83.3 pts [−100.0, −60.0] p=0.004. Baseline had 0 harness errors.
+  A clean A/A could not run: the OpenAI account ran out of credit ($0 spent). See M1.md, F4.
 
 ## Next
 
