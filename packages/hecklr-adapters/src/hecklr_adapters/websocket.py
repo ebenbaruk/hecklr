@@ -8,6 +8,11 @@ Each user message is sent as the rendered ``send_template`` (default
   without it, e.g. an end marker, adds no text);
 - ``final_path`` (needs ``receive_path``): a boolean at that path marks the last message of the
   agent's turn; until it is true, messages are streamed deltas. Without it each message is a turn.
+
+``timeout_s`` bounds the wait for each reply message. The opening handshake has its own bound,
+``connect_timeout_s`` (10 s by default, as for voice WebSocket agents): accepting a connection is
+the agent's server at work, not the agent thinking, and a short reply deadline must not fail a
+call whose handshake was merely slow on a busy machine (issue #56).
 """
 
 import json
@@ -31,6 +36,8 @@ from hecklr_schemas import (
     new_id,
 )
 
+DEFAULT_CONNECT_TIMEOUT_S: Final = 10.0
+"""Bound on the opening handshake; the frozen config has no field for it (ADR 00hfa)."""
 DEFAULT_SEND_TEMPLATE: Final[dict[str, JsonValue]] = {
     "message": "{{message}}",
     "session_id": "{{session_id}}",
@@ -40,8 +47,16 @@ DEFAULT_SEND_TEMPLATE: Final[dict[str, JsonValue]] = {
 class WebSocketChatTarget:
     """Opens one WebSocket connection per conversation."""
 
-    def __init__(self, config: WebSocketAdapterConfig) -> None:
+    def __init__(
+        self,
+        config: WebSocketAdapterConfig,
+        *,
+        connect_timeout_s: float = DEFAULT_CONNECT_TIMEOUT_S,
+    ) -> None:
         """Validate the template and paths up front, so a bad config fails before any trial."""
+        if connect_timeout_s <= 0:
+            raise AdapterConfigError(f"connect_timeout_s must be positive, got {connect_timeout_s}")
+        self._connect_timeout_s = connect_timeout_s
         self._template = config.send_template or DEFAULT_SEND_TEMPLATE
         check_template(self._template)
         if config.final_path is not None and config.receive_path is None:
@@ -57,7 +72,7 @@ class WebSocketChatTarget:
             socket = await connect(
                 self._config.url,
                 additional_headers={**self._config.headers, **session_headers(ctx)},
-                open_timeout=self._config.timeout_s,
+                open_timeout=self._connect_timeout_s,
             )
         except TimeoutError as exc:
             raise AgentTimeoutError(f"agent at {self._config.url} did not accept in time") from exc
