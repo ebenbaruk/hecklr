@@ -1,0 +1,17 @@
+id: loopback-reference
+name: Loopback agent, 600 ms / 150 ms
+track: calibration
+reference: true
+description: >-
+  Hecklr's calibration agent in its own process: it answers exactly 600 ms after the caller's
+  last speech sample and stops talking 150 ms after a caller barges in.
+why: >-
+  The ruler: with the truth known, it shows what the harness measures for a perfectly timed agent
+  (SC4: within 20 ms), so the voice rows' latencies can be read as the agent's own time.
+components:
+  transport: WebSocket, raw 16 kHz PCM
+  timing: reply 600 ms after speech ends (400 ms endpoint), stop 150 ms after a barge-in
+command: ["{python}", "{repo}/examples/voice-loopback/serve.py", "--port", "{port}", "--reply-after-ms", "600", "--barge-in-reaction-ms", "150", "--endpoint-ms", "400"]
+ready: { line: "listening on ws://", timeout_s: 120 }
+adapter: { type: websocket, url: "ws://127.0.0.1:{port}/", protocol: pcm }
+budget_usd: 0

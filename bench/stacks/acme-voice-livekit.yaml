@@ -1,0 +1,32 @@
+id: acme-voice-livekit
+name: Acme voice cascade over LiveKit
+track: voice
+description: >-
+  The acme-voice reference pipeline, unchanged, run as a LiveKit agent worker: the caller and the
+  agent meet in a room of a local livekit-server (Docker, v1.13.10) and talk over WebRTC (Opus).
+why: >-
+  Same models, same brain, same endpointing as the local cascade; only the transport differs.
+  Isolates what an SFU and WebRTC's jitter buffer and codec add to what callers hear.
+components:
+  transport: LiveKit SFU, WebRTC (Opus), livekit-server 1.13.10
+  vad: Silero, 800 ms end of speech
+  asr: faster-whisper base.en (local, CPU)
+  brain: acme rules
+  tts: Kokoro af_heart (local)
+command: ["{python}", "{repo}/bench/stacks/agents/livekit_acme.py", "--port", "{port}", "--tcp-port", "{port1}", "--udp-port", "{port2}", "--room-prefix", "bench"]
+# Credentials of the throwaway server the agent starts on 127.0.0.1 for this run only; Hecklr's
+# livekit adapter signs its caller tokens with them.
+env:
+  ACME_SEED: "{seed}"
+  HECKLR_BENCH_LIVEKIT_KEY: bench-local
+  HECKLR_BENCH_LIVEKIT_SECRET: bench-local-secret-for-a-throwaway-server-on-localhost
+ready: { line: "listening on ws://", timeout_s: 900 }
+adapter:
+  type: livekit
+  url: "ws://127.0.0.1:{port}"
+  room_prefix: bench
+  api_key_env: HECKLR_BENCH_LIVEKIT_KEY
+  api_secret_env: HECKLR_BENCH_LIVEKIT_SECRET
+# The resolved judge runs on gpt-6-luna; the agent needs Docker.
+requires_env: [OPENAI_API_KEY]
+budget_usd: 0.03

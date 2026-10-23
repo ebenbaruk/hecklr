@@ -1,0 +1,20 @@
+id: acme-chat-luna
+name: Acme chat, gpt-6-luna brain
+track: chat
+description: >-
+  The acme-maintenance reference agent's LLM brain: a tool-calling loop on OpenAI's gpt-6-luna at
+  its default settings (reasoning on), served over HTTP with server-sent events.
+why: >-
+  A small hosted model as most teams would ship it: what a real LLM adds over the rules floor in
+  task success and judge scores, and what it costs in time to first token and dollars.
+components:
+  transport: HTTP + SSE
+  brain: openai/gpt-6-luna (tool-calling loop, default reasoning)
+command: ["{python}", "{repo}/examples/acme-maintenance/agent/serve.py", "--brain", "llm", "--model", "openai/gpt-6-luna", "--budget-usd", "{agent_budget_usd}", "--port", "{port}"]
+env: { ACME_SEED: "{seed}" }
+ready: { http: "http://127.0.0.1:{port}/healthz", timeout_s: 120 }
+adapter: { type: http, url: "http://127.0.0.1:{port}/chat/stream", stream: sse, timeout_s: 300 }
+spend_url: "http://127.0.0.1:{port}/healthz"
+requires_env: [OPENAI_API_KEY]
+budget_usd: 0.12
+agent_budget_usd: 0.15

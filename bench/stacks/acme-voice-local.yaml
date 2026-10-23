@@ -1,0 +1,23 @@
+id: acme-voice-local
+name: Acme voice, local cascade
+track: voice
+description: >-
+  The acme-voice reference pipeline as shipped: Silero VAD, 800 ms endpointing with speculative
+  transcription, faster-whisper base.en, the acme rules brain and Kokoro TTS, all on this
+  machine, over a raw PCM WebSocket.
+why: >-
+  The hand-built baseline the other voice rows are compared with: free, local, and tuned for
+  turn-taking (speculative ASR keeps the recognizer off the response path).
+components:
+  transport: WebSocket, raw 16 kHz PCM
+  vad: Silero, 800 ms end of speech
+  asr: faster-whisper base.en (local, CPU)
+  brain: acme rules
+  tts: Kokoro af_heart (local)
+command: ["{python}", "{repo}/examples/acme-voice/agent/serve.py", "--brain", "rules", "--port", "{port}"]
+env: { ACME_SEED: "{seed}" }
+ready: { line: "listening on ws://", timeout_s: 900 }
+adapter: { type: websocket, url: "ws://127.0.0.1:{port}/", protocol: pcm }
+# The resolved judge runs on gpt-6-luna.
+requires_env: [OPENAI_API_KEY]
+budget_usd: 0.03

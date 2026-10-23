@@ -1,0 +1,25 @@
+id: pipecat-local
+name: Pipecat 1.13, local models
+track: voice
+description: >-
+  A stock Pipecat 1.13 pipeline over SmallWebRTC (WebRTC, Opus) with Pipecat's defaults: Silero
+  VAD and the smart-turn v3 end-of-turn model, interruptions on, Pipecat's faster-whisper base.en
+  service and its Kokoro service. The acme rules brain stands in for the LLM service.
+why: >-
+  The framework most open-source voice agents are built on, out of the box, against the
+  hand-tuned cascade with the same recognizer, voice and brain: what Pipecat's turn detection
+  and WebRTC transport do to latency, barge-in and false interruptions.
+components:
+  transport: SmallWebRTC (WebRTC, Opus)
+  vad: Silero + smart-turn v3 (Pipecat defaults)
+  asr: faster-whisper base.en (Pipecat WhisperSTTService, local)
+  brain: acme rules
+  tts: Kokoro af_heart (Pipecat KokoroTTSService, local)
+command: ["{python}", "{repo}/bench/stacks/agents/pipecat_acme.py", "--stt", "whisper", "--tts", "kokoro", "--port", "{port}"]
+env: { ACME_SEED: "{seed}" }
+ready: { http: "http://127.0.0.1:{port}/healthz", timeout_s: 900 }
+adapter: { type: pipecat, url: "http://127.0.0.1:{port}/api/offer" }
+spend_url: "http://127.0.0.1:{port}/healthz"
+# The resolved judge runs on gpt-6-luna.
+requires_env: [OPENAI_API_KEY]
+budget_usd: 0.03
