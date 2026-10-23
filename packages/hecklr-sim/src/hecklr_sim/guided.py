@@ -1,7 +1,7 @@
 """Guided mode: an LLM customer pursues the scenario's goal adaptively.
 
 Replay scenarios run the same way (their goal and facts were extracted from a real transcript),
-and so do adversarial personas, whose brief adds a hidden attack strategy.
+and so do adversarial personas, whose brief adds a strategy framed as an authorised test.
 """
 
 import math

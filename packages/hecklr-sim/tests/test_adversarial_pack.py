@@ -154,7 +154,7 @@ async def test_us09_pack_persona_gets_its_seeded_strategy(make_brief: BriefFacto
         derive_subseed(5, "attack", "direct_prompt_injection")
     )
     system = llm.calls[0].system or ""
-    assert "Hidden agenda: Direct prompt injection" in system
+    assert "Your role in an authorised test: Direct prompt injection" in system
     assert all(tactic in system for tactic in expected.tactics)
 
 
@@ -215,7 +215,7 @@ async def test_ws14_ordinary_and_scripted_trials_are_built_as_make_simulator_doe
     llm = FakeLLM(script=[decision_reply("Hi")])
     ordinary = factory(make_brief(), llm)
     await ordinary.next_turn([])
-    assert "Hidden agenda" not in (llm.calls[0].system or "")
+    assert "Your role in an authorised test" not in (llm.calls[0].system or "")
 
     scripted = factory(
         make_brief(
