@@ -32,7 +32,9 @@ The spec fixes the gate's exit codes (0 pass, 1 regression, 2 inconclusive, 3 ha
   1 would claim a regression the run cannot show. Exit 1 stays for real regressions: a single
   `ok` trial makes the run a measurement again, and a candidate that breaks most conversations
   regresses against its baseline as before. The run's status stays `completed` (the harness did
-  finish; `RunStatus` is frozen).
+  finish; `RunStatus` is frozen). The `baseline` alias skips such runs (their recorded counts
+  show finished trials and none `ok`), so once the agent is fixed, a local `hecklr gate`
+  compares with the last real measurement instead of refusing to gate.
 - **Agent reply cap.** Every chat target is wrapped by `hecklr_adapters.cap_reply_size`: one
   agent turn may carry at most `max_reply_bytes` of UTF-8 text (`hecklr run --max-reply-bytes`,
   `RunRequest.max_reply_bytes`, default 256 KiB, far above any model's output limit). Past it the

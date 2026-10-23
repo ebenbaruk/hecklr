@@ -29,6 +29,7 @@ from hecklr_schemas import (
     Grade,
     GradeId,
     Run,
+    RunCounts,
     RunId,
     RunStatus,
     Trial,
@@ -135,6 +136,7 @@ def store_run(
     status: RunStatus = RunStatus.COMPLETED,
     baseline_id: str | None = None,
     grader: str = "tool_called",
+    counts: RunCounts | None = None,
 ) -> Run:
     """Store a run whose scenario ``s`` passes each of ``trials`` trials with ``pass_rates[s]``.
 
@@ -152,6 +154,7 @@ def store_run(
         matrix=[],
         budget=Budget(usd=Decimal(5)),
         status=status,
+        counts=counts or RunCounts(),
     )
 
     async def write() -> None:

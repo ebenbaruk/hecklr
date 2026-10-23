@@ -13,7 +13,7 @@ import hecklr.commands.gate
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr_report import EXIT_HARNESS_ERROR, EXIT_INCONCLUSIVE, EXIT_PASS, EXIT_REGRESSION
-from hecklr_schemas import Run, RunStatus
+from hecklr_schemas import Run, RunCounts, RunStatus
 
 Edit = Callable[[Path, str, str], None]
 StoreRun = Callable[..., Run]
@@ -124,6 +124,20 @@ def test_gate_uses_the_recorded_baseline_over_the_previous_run(
     good = store(rates(1.0), order=0)
     store(rates(1.0, failing_share=0.5), order=1)
     candidate = store(rates(1.0), order=2, baseline_id=good.id)
+
+    code, output = invoke(config_path, "gate")
+
+    assert code == EXIT_PASS, output
+    report = json.loads((runs_dir / candidate.id / "report.json").read_text("utf-8"))
+    assert report["baseline"]["id"] == good.id
+
+
+def test_issue33_the_baseline_alias_skips_a_run_where_no_trial_got_through(
+    config_path: Path, store: StoreRun, runs_dir: Path
+) -> None:
+    good = store(rates(1.0), order=0, counts=RunCounts(planned=60, ok=60))
+    store(rates(0.0), order=1, counts=RunCounts(planned=60, agent_error=50, timeout=10))
+    candidate = store(rates(1.0), order=2, counts=RunCounts(planned=60, ok=60))
 
     code, output = invoke(config_path, "gate")
 
