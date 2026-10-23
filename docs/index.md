@@ -29,7 +29,7 @@ plain noise in model outputs that makes a 3-point drop meaningless without error
 - **Gates CI** with a GitHub Action, a sticky PR comment under 30 lines, JUnit and a
   self-contained HTML report.
 - **Closes the loop:** mines production logs into failure clusters and proposed regression
-  scenarios, and (in development) proposes validated prompt fixes.
+  scenarios, and proposes prompt fixes that are kept only when the suite validates them.
 
 ## Start here
 

@@ -26,4 +26,5 @@ uv run --script demo/screenshots.py --ui http://127.0.0.1:8484   # UI screenshot
 The UI screenshots need the UI built into the package (`cd ui && npm ci && npm run build`); that
 build output is not committed.
 
-`hecklr fix` (the demo's fifth beat) is still in development, so the demo stops at the report.
+`hecklr fix` (the demo's fifth beat) is built but not recorded: it needs a real model to write the
+patches, and the OpenAI credit ran out. The demo stops at the report until then.

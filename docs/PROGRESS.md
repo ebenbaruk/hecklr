@@ -68,12 +68,11 @@ other workstreams' ADRs or milestone reports), `mkdocs.yml`, `CONTRIBUTING.md`,
 
 ## Next
 
-- Reconcile `docs/guides/fixer.md` and the demo's fifth beat with WS15's `hecklr fix` when it lands.
-- Link the benchmark (WS17) from the README and roadmap when it lands.
-- `scripts/mypy-all.sh` does not cover `tests/docs`, `docs/scripts` or `demo/` (checked by hand,
-  clean); the integrator may add them (the script is not WS18's). `demo/screenshots.py` imports
-  Playwright, which is not a workspace dependency: it is type-checked only through its inline
-  script metadata (`uv run --script`), not with `uv run mypy`.
+- Done at integration: `docs/guides/fixer.md`, README, index and roadmap describe the merged
+  `hecklr fix` and `hecklr bench`; the CLI reference is regenerated; `scripts/mypy-all.sh` covers
+  `tests/docs`, `docs/scripts` and `demo/` (`demo/screenshots.py` with Playwright added for that
+  one call).
+- The demo's fifth beat (`hecklr fix`) needs a real patch-writing model (OpenAI credit exhausted).
 - `.pre-commit-config.yaml` is outside WS18's paths; this PR's change to it is disclosed in the PR
   for the integrator to acknowledge.
 - Launch-day items in LAUNCH.md (public repo, domain, PyPI, hosting the site, the video).

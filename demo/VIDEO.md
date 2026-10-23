@@ -36,14 +36,14 @@ Shot 5 needs the judged run (about $0.02 of `gpt-6-luna`, see RESULTS.md section
 show the deterministic grader's evidence ("the visit is booked at the slot asked for: False")
 instead and change the narration to match.
 
-## The fifth beat (after `hecklr fix` lands)
+## The fifth beat (`hecklr fix`, not recorded yet)
 
 The spec's cut ends with `hecklr fix` proposing a patch, re-running, and the check turning green.
-The fixer is still in development (WS15). When it lands, record it on the same edited agent:
+`hecklr fix` is built, but recording it needs a real model to write the patches (the OpenAI credit
+ran out). Record it on the same edited agent:
 
 ```bash
-hecklr mine ...                  # or the failed trials of the candidate run
-hecklr fix <cluster id> --pr     # the winning diff restores the confirmation rule
+hecklr fix --from-run latest --agent-cmd '{python} agent/serve.py --brain rules --port {port}' --pr
 ```
 
 Replace shot 7's first half with the fix (about 12 s): "Hecklr proposes a fix, validates it on the

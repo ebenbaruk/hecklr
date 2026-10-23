@@ -15,14 +15,20 @@ milestone report with evidence for every criterion.
   Pipecat and LiveKit transports, the loopback calibration (SC4), email over SMTP/IMAP and webhooks,
   and faults F7-F12, each caught.
 - **Production loop (M3):** the miner, the adversarial pack with safety graders, and the local UI.
+- **Fixer** (`hecklr fix`): candidate prompt patches validated against the suite (targeted and
+  guard passes), with `--pr`.
+- **Benchmark** (`hecklr bench`): a pinned suite, eight stacks, `reproduce`, and a static
+  leaderboard.
+- **Hardening:** robustness of run, gate and report; simulator guard fixes (F4 caught on the full
+  `matrix-live` suite).
 
 ## In progress (toward v1.0)
 
-- **Fixer** (`hecklr fix`): candidate prompt patches validated against the suite.
-- **Public benchmark** (`hecklr bench`): voice support stacks compared on equal footing, with a
-  static leaderboard.
+- **Benchmark numbers:** the measured rows are preliminary (a shared, loaded laptop; local qwen3
+  customers and judges; the gpt-6-luna stack missing). Re-measure on an idle machine before
+  publishing the leaderboard.
 - **Docs and launch:** this site, the demo, the launch posts.
-- **Hardening:** robustness of run, gate and report; simulator guard fixes.
+- `agent.command` in `hecklr.yaml` instead of `hecklr fix --agent-cmd` (RFC 0015a, v1.1).
 
 ## Open items on the way to v1.0
 

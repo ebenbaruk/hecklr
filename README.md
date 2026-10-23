@@ -58,8 +58,14 @@ Point it at your own agent with `hecklr init --agent-url http://localhost:8000/c
   probing, refund fraud, policy pressure, PII elicitation) with safety graders.
 - **Local UI.** Runs, comparisons, a trial viewer with transcript, tool timeline, world diff and
   waveform, the miner's review queue, and judge labeling.
-- **Fixer** *(in development)*. `hecklr fix` proposes prompt patches and keeps one only if it wins
-  on the full suite.
+- **Fixer.** `hecklr fix` takes a mined failure cluster or what failed in a run, asks a model for
+  prompt patches, and keeps one only if it significantly fixes the cluster's scenarios without a
+  significant regression on the guard suite or any tag; `--pr` opens a pull request for a human to
+  merge ([guide](docs/guides/fixer.md)).
+- **Benchmark.** `hecklr bench` runs a pinned suite against support-agent stacks (chat, voice and a
+  calibration ruler), reproduces a published row and builds a static leaderboard
+  ([bench/](bench/README.md)). The current rows are preliminary: measured on a shared laptop, not
+  for publication.
 
 ## How it works
 
@@ -118,8 +124,9 @@ The specification is [`docs/SPEC.md`](docs/SPEC.md); architecture decisions are 
 
 Pre-release. Chat, voice, email, the graders, statistics, CI gate, miner, red-team pack and UI
 work and are tested against a reference agent with twelve seeded faults, each one caught
-([M1](docs/milestones/M1.md), [M2](docs/milestones/M2.md)). The fixer and the public voice
-benchmark are in development; see the [roadmap](docs/roadmap.md).
+([M1](docs/milestones/M1.md), [M2](docs/milestones/M2.md)). The fixer (`hecklr fix`) and the
+benchmark (`hecklr bench`) are built; the benchmark's measured rows are preliminary and are to be
+re-measured on an idle machine before publication. See the [roadmap](docs/roadmap.md).
 
 ## Contributing
 

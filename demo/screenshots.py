@@ -17,14 +17,14 @@ import argparse
 import json
 from pathlib import Path
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Page, ViewportSize, sync_playwright
 
 REPO = Path(__file__).resolve().parents[1]
 ASSETS = REPO / "docs" / "assets"
 CHAT_GATE = REPO / "demo" / "out" / "chat" / "gate" / "report.html"
 VOICE_RUNS = REPO / "demo" / "out" / "voice" / "acme-voice" / ".hecklr" / "runs"
 VOICE_RUN_IDS = REPO / "demo" / "out" / "voice" / "runs.json"
-VIEWPORT = {"width": 1280, "height": 860}
+VIEWPORT: ViewportSize = {"width": 1280, "height": 860}
 
 
 def main() -> int:
