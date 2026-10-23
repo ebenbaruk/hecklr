@@ -12,6 +12,7 @@ import subprocess
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final
@@ -107,14 +108,53 @@ def _answers(url: str) -> bool:
         return False  # not listening yet
 
 
-def read_spend(url: str) -> Decimal:
-    """The agent's own spend so far, from the ``spent_usd`` field of ``GET url``.
+@dataclass(frozen=True, slots=True)
+class AgentStatus:
+    """What the agent reports about itself at its ``spend_url``."""
+
+    spent_usd: Decimal
+    """Its own model and speech spend so far."""
+    failed_turns: Mapping[str, int]
+    """Turns that failed, by cause (optional field, e.g. ``LLMProviderError[429]``)."""
+
+    @property
+    def outages(self) -> dict[str, int]:
+        """Failures that are not the agent's own.
+
+        Its provider was down or refused it, or it hit its own budget. A provider error carries
+        its HTTP status; a 400 is one request the provider rejected (the agent's own failure), as
+        the fault matrix counts it (ADR 0020a).
+        """
+        return {
+            cause: count
+            for cause, count in self.failed_turns.items()
+            if count
+            and (
+                cause == "AgentBudgetError"
+                or (cause.startswith("LLMProviderError") and cause != "LLMProviderError[400]")
+            )
+        }
+
+
+def read_status(url: str) -> AgentStatus:
+    """The agent's spend (``spent_usd``) and failed turns (``failed_turns``) from ``GET url``.
 
     Raises:
-        StackError: the agent did not answer, or answered without a number.
+        StackError: the agent did not answer, or answered without a spend.
     """
     try:
         body = httpx2.get(url, timeout=10).raise_for_status().json()
-        return Decimal(str(body["spent_usd"]))
-    except (httpx2.HTTPError, ValueError, KeyError, TypeError, InvalidOperation) as exc:
+        failed = body.get("failed_turns") or {}
+        return AgentStatus(
+            spent_usd=Decimal(str(body["spent_usd"])),
+            failed_turns={str(k): int(v) for k, v in failed.items()},
+        )
+    except (
+        httpx2.HTTPError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        InvalidOperation,
+    ) as exc:
         raise StackError(f"cannot read the agent's spend from {url}: {exc!r}") from exc

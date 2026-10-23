@@ -24,7 +24,13 @@ import anyio
 import yaml
 
 from hecklr import __version__
-from hecklr.commands.bench.process import StackError, agent_process, free_port, read_spend
+from hecklr.commands.bench.process import (
+    AgentStatus,
+    StackError,
+    agent_process,
+    free_port,
+    read_status,
+)
 from hecklr.commands.bench.result import Environment, Spend, StackResult, stack_metrics
 from hecklr.commands.bench.spec import (
     MANIFEST,
@@ -178,17 +184,37 @@ class _SpendTracker:
 
     def start(self) -> None:
         if self.url is not None:
-            self.first = self.last = read_spend(self.url)
+            self.first = self.last = read_status(self.url).spent_usd
 
     def after(self, trial: Trial) -> Decimal:
         if self.url is None:
             return Decimal(0)
-        now = read_spend(self.url)
+        now = read_status(self.url).spent_usd
         self.per_trial[trial.id], self.last = now - self.last, now
         return self.per_trial[trial.id]
 
-    def total(self) -> Decimal:
-        return (read_spend(self.url) - self.first) if self.url is not None else Decimal(0)
+    def finish(self) -> AgentStatus:
+        """The agent's final status, its spend counted from the start of the run.
+
+        Raises:
+            StackError: the agent's provider failed during the run (an outage or an exhausted
+                quota): its agent errors would pass for the stack's own failures.
+        """
+        if self.url is None:
+            return AgentStatus(spent_usd=Decimal(0), failed_turns={})
+        status = read_status(self.url)
+        if status.outages:
+            raise StackError(
+                f"the agent's provider failed during the run ({status.outages}): it measured "
+                "an outage or an exhausted quota, not the stack; see the agent log"
+            )
+        return AgentStatus(
+            spent_usd=status.spent_usd - self.first, failed_turns=status.failed_turns
+        )
+
+
+QUOTA_ERRORS: Final = ("429", "insufficient_quota", "credit")
+"""Provider errors that make a harness error an outage of Hecklr's own models."""
 
 
 def run_stack(
@@ -230,7 +256,7 @@ def run_stack(
         spend = _SpendTracker(fill(stack.spend_url, values) if stack.spend_url else None)
         spend.start()
         project, results = _execute(config_path, stack, llm_providers, spend, on_trial)
-        agent_usd = spend.total()
+        agent_usd = spend.finish().spent_usd
     measured = Measured(
         results,
         spend.per_trial,
@@ -278,6 +304,12 @@ def _execute(
     if all(trial.status == "harness_error" for trial in results.trials):
         first = results.trials[0].error if results.trials else "no trial ran"
         raise StackError(f"every trial of run {results.run.id} failed to run: {first}")
+    quota = [t.id for t in results.trials if any(e in (t.error or "") for e in QUOTA_ERRORS)]
+    if quota:
+        raise StackError(
+            f"{len(quota)} trials of run {results.run.id} hit a model provider's rate or credit "
+            "limit; the run measured an outage, not the stack"
+        )
     return prepared.project, results
 
 

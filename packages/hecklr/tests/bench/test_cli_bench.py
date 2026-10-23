@@ -13,7 +13,8 @@ from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
 from hecklr.commands.bench.result import StackResult
 from hecklr.testing import scripted_models
-from hecklr_schemas import Estimate, IntervalMethod
+from hecklr_llm import LLMOutputError
+from hecklr_schemas import Estimate, IntervalMethod, LLMRequest, LLMResponse
 
 from .conftest import write_stack
 
@@ -228,3 +229,30 @@ def test_commands_name_a_missing_manifest(tmp_path: Path) -> None:
 
     assert code == exit_codes.CONFIG_ERROR
     assert "no benchmark manifest here" in output
+
+
+class _BrokenJudge:
+    """The scripted customer, and a judge whose every answer is malformed."""
+
+    def __init__(self) -> None:
+        self._scripted = scripted_models()["fake"]
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        if request.schema_name == "JudgeVerdict":
+            raise LLMOutputError("the judge answered something that is not a verdict")
+        return await self._scripted.complete(request)
+
+
+def test_a_row_with_conversations_left_without_a_verdict_is_flagged(
+    bench_dir: Path, tmp_path: Path
+) -> None:
+    result = runner.invoke(
+        app,
+        ["bench", "run", "--stack", "acme-rules", "--bench-dir", str(bench_dir),
+         "--work-dir", str(tmp_path / "work")],
+        obj=CliOverrides({"fake": _BrokenJudge()}),
+    )  # fmt: skip
+
+    output = click.unstyle(result.output)
+    assert result.exit_code == exit_codes.OK, output
+    assert re.search(r"warning: \d of 4 conversations have no verdict \(\d+ grade errors", output)

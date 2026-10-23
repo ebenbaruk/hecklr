@@ -1,15 +1,19 @@
 """The benchmark's parts on their own: placeholders, processes, metrics, reproduction, the site."""
 
+import json
 import os
 import sys
+import threading
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
 from pydantic import JsonValue
 
-from hecklr.commands.bench.process import StackError, agent_process, read_spend
+from hecklr.commands.bench.process import AgentStatus, StackError, agent_process, read_status
 from hecklr.commands.bench.result import (
     Environment,
     Spend,
@@ -18,7 +22,7 @@ from hecklr.commands.bench.result import (
     judge_scores,
     missing_metrics,
 )
-from hecklr.commands.bench.runner import patched_environ, suite_digest
+from hecklr.commands.bench.runner import _SpendTracker, patched_environ, suite_digest
 from hecklr.commands.bench.site import build_site, load_results
 from hecklr.commands.bench.spec import (
     Ready,
@@ -155,7 +159,82 @@ def test_an_agent_that_never_gets_ready_is_stopped(tmp_path: Path) -> None:
 
 def test_reading_spend_from_a_silent_agent_fails_loudly() -> None:
     with pytest.raises(StackError, match="cannot read the agent's spend"):
-        read_spend("http://127.0.0.1:9/healthz")
+        read_status("http://127.0.0.1:9/healthz")
+
+
+def test_provider_failures_are_outages_but_a_rejected_request_is_not() -> None:
+    status = AgentStatus(
+        spent_usd=Decimal(0),
+        failed_turns={
+            "LLMProviderError[429]": 2,
+            "LLMProviderError[400]": 1,
+            "LLMProviderError": 1,
+            "AgentBudgetError": 1,
+            "LLMOutputError": 3,
+            "LLMProviderError[503]": 0,
+        },
+    )
+
+    assert status.outages == {
+        "LLMProviderError[429]": 2,
+        "LLMProviderError": 1,
+        "AgentBudgetError": 1,
+    }
+
+
+@pytest.fixture
+def status_url() -> Iterator[Callable[[dict[str, object]], str]]:
+    """Serve a fixed ``/healthz`` body on 127.0.0.1; returns a function that sets it."""
+    body: dict[str, object] = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            data = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def serve(new: dict[str, object]) -> str:
+        body.clear()
+        body.update(new)
+        return f"http://127.0.0.1:{server.server_port}/healthz"
+
+    yield serve
+    server.shutdown()
+    server.server_close()
+
+
+def test_a_run_whose_agent_hit_a_quota_is_refused(
+    status_url: Callable[[dict[str, object]], str],
+) -> None:
+    url = status_url({"spent_usd": "0.01"})
+    tracker = _SpendTracker(url)
+    tracker.start()
+    status_url({"spent_usd": "0.03", "failed_turns": {"LLMProviderError[429]": 4}})
+
+    with pytest.raises(StackError, match="measured an outage"):
+        tracker.finish()
+
+
+def test_the_agent_spend_is_counted_per_conversation(
+    status_url: Callable[[dict[str, object]], str],
+) -> None:
+    trial = _results(["ok"], [None]).trials[0]
+    url = status_url({"spent_usd": "1.5"})
+    tracker = _SpendTracker(url)
+    tracker.start()
+    status_url({"spent_usd": "1.75", "failed_turns": {"LLMProviderError[400]": 1}})
+
+    assert tracker.after(trial) == Decimal("0.25")
+    assert tracker.finish().spent_usd == Decimal("0.25")
 
 
 # --- metrics -----------------------------------------------------------------------------------

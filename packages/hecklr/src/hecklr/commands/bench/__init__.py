@@ -106,6 +106,15 @@ def run(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
         stdout.print(row_table(result))
+        if excluded := result.counts.total - result.counts.analyzed:
+            # Usually a judge that could not answer (see the run's grades): the row is thinner
+            # than the suite, and readers should know before they compare it.
+            stderr.print(
+                f"[bold yellow]warning:[/] {excluded} of {result.counts.total} conversations "
+                f"have no verdict ({result.counts.grade_errors} grade errors, "
+                f"{result.counts.harness_error} harness errors)",
+                soft_wrap=True,
+            )
         stdout.print(f"Wrote {escape(str(path))}", soft_wrap=True)
     if failed:
         raise typer.Exit(code=exit_codes.HARNESS_ERROR)

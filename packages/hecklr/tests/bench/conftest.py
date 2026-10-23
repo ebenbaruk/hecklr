@@ -37,7 +37,7 @@ why: A free, exactly repeatable floor.
 components: {{transport: HTTP SSE, brain: rules}}
 command: ["{{python}}", "{ACME_SERVE}", "--brain", "rules", "--port", "{{port}}"]
 env: {{ACME_SEED: "{{seed}}"}}
-ready: {{http: "http://127.0.0.1:{{port}}/healthz", timeout_s: 60}}
+ready: {{http: "http://127.0.0.1:{{port}}/healthz", timeout_s: 240}}
 adapter: {{type: http, url: "http://127.0.0.1:{{port}}/chat/stream", stream: sse}}
 spend_url: "http://127.0.0.1:{{port}}/healthz"
 budget_usd: 0.01
