@@ -48,9 +48,19 @@ stored run, or letting `calibrate` judge a labeled transcript file directly.
 - SC7 can be measured with one command and one live test (`tests/calibration/
   test_live_sc7_judges.py`, about $0.33 per run on `openai/gpt-6-luna`), but it is **not proven**
   until people label the set and that test passes; the drafts prove only the pipeline.
-- Editing any rubric, the judge system prompt or the transcript format invalidates its labels;
-  `test_sc7_labels_pin_the_current_rubric_versions` makes that visible in CI, and the rubric must
-  be re-reviewed. This is intended: agreement must never be computed across rubric changes.
+- Editing any rubric, the judge system prompt or the transcript format invalidates its labels.
+  The file stays append-only: old-version rows remain as history and simply stop counting. The
+  invariant CI checks is "every labeled pair has a label of its rubric's current version, and at
+  most one AI draft per rubric version". When a rubric changes, the test
+  `test_sc7_every_labeled_pair_has_a_label_of_its_current_rubric_version`
+  fails and names it, and re-reviewing it with `review.py`
+  (which appends `human:` labels of the current version) restores green without editing a row
+  (`test_sc7_after_a_rubric_change_appending_a_review_restores_the_invariants`). This is
+  intended: agreement must never be computed across rubric changes. A shared change (judge
+  prompt, transcript format) therefore asks for a re-review of all eight rubrics.
+- `calibrate --judges --set` judges only pairs with a usable label (chosen labelers, current
+  version) and refuses to start when there is none, so a filter that matches nothing costs
+  nothing.
 - The set depends on the acme-maintenance world file; changing its records can change tool
   results under the labels. `test_sc7_every_case_replays_against_the_world` catches refused
   calls, not changed facts, so world edits need a look at the affected cases.

@@ -83,14 +83,18 @@ Verdicts are not in the case files: they live in `calibration/judges/labels.json
     hecklr calibrate --judges --set calibration/judges --labeler human: -c hecklr.yaml
     ```
 
-    Every pair is judged now (responses are cached, so reruns are free), then each rubric gets
-    κ, precision and recall with 95% intervals. The command exits 1 if any rubric is untrusted or
-    has no usable labels of its current version, and says so when the labels it used are not
-    from `human:` labelers.
+    Every pair with a usable label is judged now (responses are cached, so reruns are free),
+    then each rubric gets κ, precision and recall with 95% intervals. Keep `--labeler human:`:
+    agreement is counted per pair and labeler, so without it the AI draft of a reviewed pair
+    counts as well and inflates n with labels that are not evidence. The command exits 1 if any
+    rubric is untrusted or has no usable labels of its current version, and says so when the
+    labels it used are not from `human:` labelers.
 
 3. **Keep it current.** A label pins the rubric version (a hash of the rubric text, the judge
-    prompt and the transcript format). Edit a rubric and its old labels stop counting: re-review
-    that rubric, then re-run step 2. Changing the judge model needs only step 2.
+    prompt and the transcript format). Edit a rubric and its old labels stop counting (they stay
+    in the append-only file as history): CI names the changed rubric, and re-reviewing it with
+    `review.py --rubric <name>` appends labels of the new version. Then re-run step 2.
+    Changing the judge model needs only step 2.
 
 A full run on `openai/gpt-6-luna` is 434 judge calls, about 2.7 million input tokens and
 110,000 output tokens: about $0.33.
@@ -101,13 +105,13 @@ A full run on `openai/gpt-6-luna` is 434 judge calls, about 2.7 million input to
     The labels shipped with the set were drafted by an AI following the labeling guide; every row
     says `labeler: "claude-draft"`. They are a starting point for review, **not human labels**,
     and agreement with them proves nothing about agreement with people. SC7 is met only when
-    people have reviewed the set (`human:` labels for every rubric) and the live acceptance test,
-    `tests/calibration/test_live_sc7_judges.py`, shows κ ≥ 0.70 per rubric on the real judge
-    model. Neither has happened yet.
+    people have reviewed the set (`human:` labels on at least 40 pairs of every rubric) and the
+    live acceptance test, `tests/calibration/test_live_sc7_judges.py`, shows κ ≥ 0.70 per rubric
+    on the real judge model. Neither has happened yet.
 
 What is proven offline, on every commit (`tests/calibration/`): the set loads and every
 conversation replays against the world; each rubric has at least 40 balanced labels with
-borderline cases; the labels pin the current rubric versions; and the whole pipeline (case,
+borderline cases; every labeled pair has a label of its rubric's current version; and the whole pipeline (case,
 judge prompt, grade, κ with an interval, the `hecklr calibrate` table and exit code) gives κ = 1
 for a judge that agrees with every label, κ ≈ 0 for a coin flip, and an intermediate κ for a
 judge that is wrong exactly on the borderline cases.

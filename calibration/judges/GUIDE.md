@@ -25,7 +25,9 @@ in [docs/guides/judge-calibration.md](../../docs/guides/judge-calibration.md).
 
 Conversations: 118 chat, 48 voice, 27 e-mail. `tests/calibration/test_calibration_set.py` keeps
 the set honest: at least 40 labeled pairs per rubric, a pass share between 40% and 60%, at least
-10% borderline cases, all three channels, and labels pinned to the current rubric versions.
+10% borderline cases, all three channels, and a label of the current rubric version for every
+labeled pair (balance and size are checked on the label that counts now: a person's newest label
+of the current version, else the AI draft).
 
 | Path | What it is |
 | --- | --- |
@@ -57,10 +59,17 @@ rubric's current version hash, `passed`, `labeler` and a one-line `note` with th
   labeler for a pair is the one that counts.
 - Each person is a separate labeler. `hecklr calibrate --judges --set calibration/judges
   --labeler human:` uses every person's labels; `--labeler human:ada` uses one person's.
+  Agreement is counted per (pair, labeler), so a pair labeled by two people counts twice. Always
+  run the SC7 calibration with `--labeler human:`: without it the AI draft of a reviewed pair
+  counts too, which inflates n (and narrows the interval) with labels that are not evidence.
 - A label pins the rubric version. When a rubric's text, the shared judge prompt or the transcript
-  format changes, the version changes and old labels stop counting (the calibrate command and
-  `test_sc7_labels_pin_the_current_rubric_versions` say so). Re-review the affected rubric with
-  `review.py --rubric <name>`.
+  format changes, the version changes and the old labels stop counting; they stay in the file as
+  history. `test_sc7_every_labeled_pair_has_a_label_of_its_current_rubric_version` then fails
+  and names each changed rubric, and `hecklr calibrate` reports it as not calibrated. To recover,
+  re-review the rubric with `review.py --rubric <name>`: the new `human:` labels pin the current
+  version and CI is green again, without touching an existing row. There is at most one
+  `claude-draft` label per pair and rubric version; a changed rubric gets no new draft unless
+  someone deliberately re-drafts it.
 
 ## Labeling rules
 
@@ -121,8 +130,8 @@ changed in the world (the full world is the file named in `set.yaml`). Answer `p
 (fail), `s` (skip) or `q` (quit), then a one-line rationale; pressing Enter after agreeing with the
 draft keeps the draft's rationale. Your labels are appended as `human:<name>`. Pairs you already
 labeled for the current rubric version are skipped, so you can stop and resume. Blind review (the
-default) shows the draft only after you answer, so the draft does not steer you. Commit
-`labels.jsonl` when done.
+default) shows the draft, and whether the pair is marked borderline, only after you answer, so
+neither steers you. Commit `labels.jsonl` when done.
 
 Plan about 30 seconds per pair: roughly 3.5 hours for the whole set, or 25 minutes per rubric.
 Two independent reviewers per rubric give the most trustworthy result; their disagreements are
@@ -136,8 +145,11 @@ hecklr calibrate --judges --set calibration/judges -c examples/acme-maintenance/
   --labeler human:
 ```
 
-It prints, per rubric, κ, precision and recall (fail is the positive class), each with a 95%
-interval, and exits 1 if any rubric is below κ 0.70 or has no usable labels. Responses are cached
+It judges only the pairs that have a usable label (one of the chosen labelers, of the rubric's
+current version), so no call is paid for a pair that cannot count; with no such pair at all it
+stops before judging anything. It prints, per rubric, κ, precision and recall (fail is the
+positive class), each with a 95% interval, and exits 1 if any rubric is below κ 0.70 or has no
+usable labels. Responses are cached
 in the project's output directory, so a rerun with the same model and rubrics costs nothing.
 
 **Cost of a full run** on `openai/gpt-6-luna` ($0.10 / $0.50 per million input / output tokens):
@@ -152,7 +164,9 @@ The SC7 acceptance test runs the same judges and asserts κ ≥ 0.70 per rubric:
 HECKLR_TEST_BUDGET_USD=1 OPENAI_API_KEY=... uv run pytest -m live tests/calibration -s
 ```
 
-It skips until every rubric has human labels (`HECKLR_SC7_LABELERS`, default `human:`).
+It judges only the pairs people labeled, and skips until people have labeled at least 40 pairs
+of every rubric at its current version (`HECKLR_SC7_LABELERS`, default `human:`): κ on a partial
+review would rest on too few labels to be evidence.
 
 ## Adding cases
 
