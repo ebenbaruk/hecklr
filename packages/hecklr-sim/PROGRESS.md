@@ -35,7 +35,7 @@ commit `fix(sim): tighten prompts and guard after live runs against Ollama`.
 ## Public API (for WS7 / WS14)
 
 - `make_simulator(model, *, max_regenerations=2, llm_consistency_check=False, temperature=None,
-  max_tokens=512, strategies=BUILTIN_STRATEGIES, clock_factory=MonotonicClock) -> SimulatorFactory`
+  max_tokens=DEFAULT_MAX_TOKENS (2048), strategies=BUILTIN_STRATEGIES, clock_factory=MonotonicClock) -> SimulatorFactory`
 - `transcripts_to_scenarios(path, out_dir, llm, *, model, world, persona, seed=0, concurrency=8)
   -> ReplayBatch(written, failures)`; one failed extraction (`LLMOutputError` or
   `ReplayExtractionError`) does not lose the batch, while any other error propagates. Also
@@ -105,6 +105,22 @@ Plan (issues #68, #60, #44, #71):
    order, so voice barge-in interjections no longer skip a line.
 4. #71: F4 on the full `matrix-live` Tier B suite (fresh clean baseline, F4), results in
    `docs/milestones/M1.md`.
+
+Done:
+
+- #68: `test_guard.py::test_us09_guard_accepts_revealed_people_and_ids_the_goal_names_issue_68`,
+  `..._accepts_revealed_decoys_by_key_or_value_issue_68`,
+  `test_ws2_guard_accepts_revealed_values_the_agent_said_issue_68`; real contradictions still
+  caught: `test_ws2_guard_still_rejects_invented_revealed_facts_issue_68` (invented name, phone,
+  fact, padded name, truncated ID, one character) plus every earlier guard test unchanged.
+- #60: `test_adversarial.py::test_us09_strategy_is_framed_as_an_authorised_test_not_an_attack_issue_60`
+  (x2); live `test_live_luna.py::test_us09_live_probe_names_the_other_customer_within_two_turns_issue_60`
+  passed on gpt-6-luna (by hand on 2 more seeds: both named Martin Dubois and C-2077 by turn
+  two, no guard issue, $0.0011).
+- #44: `test_scripted.py::test_ws2_scripted_does_not_count_voice_barge_in_interjections_issue_44`,
+  `..._follows_repeated_lines_in_order_issue_44`. Free fault matrix still PASS (scripted suite).
+- Default output limit 512 -> 2048 (`DEFAULT_MAX_TOKENS`): `test_guided.py::test_ws2_default_output_limit_leaves_room_for_reasoning` (x2). 4 F4 trials of run 01M5K3WE were harness errors at 512.
+- 168 unit tests, 100% line and branch coverage of `hecklr_sim` (643 statements).
 
 ## Next
 

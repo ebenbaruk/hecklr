@@ -34,7 +34,7 @@ from hecklr_schemas import (
 )
 from hecklr_schemas.common import Identifier
 from hecklr_sim.factory import make_simulator
-from hecklr_sim.guided import GuidedSimulator, SimulatorSettings
+from hecklr_sim.guided import DEFAULT_MAX_TOKENS, GuidedSimulator, SimulatorSettings
 from hecklr_sim.seeds import derive_subseed
 from hecklr_sim.strategies import (
     BUILTIN_STRATEGIES,
@@ -425,7 +425,7 @@ def make_adversarial_simulator(
     max_regenerations: int = 2,
     llm_consistency_check: bool = False,
     temperature: float | None = None,
-    max_tokens: int = 512,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     clock_factory: Callable[[], Clock] = MonotonicClock,
 ) -> SimulatorFactory:
     """``make_simulator`` plus the adversarial pack, with each attack realized from the trial seed.

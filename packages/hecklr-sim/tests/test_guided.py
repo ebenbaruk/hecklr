@@ -13,11 +13,20 @@ from hecklr_schemas import (
     FakeClock,
     SimEnd,
     SimTurn,
+    SimulatorFactory,
     Traits,
     TrialBrief,
 )
-from hecklr_sim import GuidedSimulator, Patience, SimulatorError, derive_subseed, make_simulator
+from hecklr_sim import (
+    GuidedSimulator,
+    Patience,
+    SimulatorError,
+    derive_subseed,
+    make_adversarial_simulator,
+    make_simulator,
+)
 from hecklr_sim.decision import LLMEndReason
+from hecklr_sim.guided import DEFAULT_MAX_TOKENS
 from hecklr_sim.testing import decision_reply
 
 BriefFactory = Callable[..., TrialBrief]
@@ -254,3 +263,18 @@ async def test_ws2_guided_raises_simulator_error_when_no_attempt_is_usable(
 def test_ws2_settings_reject_negative_regenerations() -> None:
     with pytest.raises(ValueError, match="max_regenerations"):
         make_simulator("fake/sim", max_regenerations=-1)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("factory", [make_simulator, make_adversarial_simulator])
+async def test_ws2_default_output_limit_leaves_room_for_reasoning(
+    make_brief: BriefFactory, factory: Callable[[str], SimulatorFactory]
+) -> None:
+    # A reasoning model counts its reasoning against the output limit. At 512 tokens,
+    # gpt-6-luna cut off 4 opening probe turns of M1 run 01M5K3WE (a provider 400 or truncated
+    # JSON), and each became a harness error.
+    llm = FakeLLM(script=[decision_reply("Hi")])
+
+    await factory("fake/sim")(make_brief(), llm).next_turn([])
+
+    assert llm.calls[0].max_tokens >= DEFAULT_MAX_TOKENS >= 2048
