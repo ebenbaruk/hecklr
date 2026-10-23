@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "benchmark_version": "1.0",
+  "suite_digest": "3ab42ad9d89994cd8919da9f7b63836cbb36c0b21be52b0150007cda0c500528",
+  "stack": {
+    "id": "acme-voice-livekit",
+    "name": "Acme voice cascade over LiveKit",
+    "track": "voice",
+    "description": "The acme-voice reference pipeline, unchanged, run as a LiveKit agent worker: the caller and the agent meet in a room of a local livekit-server (Docker, v1.13.10) and talk over WebRTC (Opus).",
+    "why": "Same models, same brain, same endpointing as the local cascade; only the transport differs. Isolates what an SFU and WebRTC's jitter buffer and codec add to what callers hear.",
+    "components": {
+      "transport": "LiveKit SFU, WebRTC (Opus), livekit-server 1.13.10",
+      "vad": "Silero, 800 ms end of speech",
+      "asr": "faster-whisper base.en (local, CPU)",
+      "brain": "acme rules",
+      "tts": "Kokoro af_heart (local)"
+    },
+    "command": [
+      "{python}",
+      "{repo}/bench/stacks/agents/livekit_acme.py",
+      "--port",
+      "{port}",
+      "--tcp-port",
+      "{port1}",
+      "--udp-port",
+      "{port2}",
+      "--room-prefix",
+      "bench"
+    ],
+    "env": {
+      "ACME_SEED": "{seed}",
+      "HECKLR_BENCH_LIVEKIT_KEY": "bench-local",
+      "HECKLR_BENCH_LIVEKIT_SECRET": "bench-local-secret-for-a-throwaway-server-on-localhost"
+    },
+    "requires_env": [],
+    "ready": {
+      "http": null,
+      "line": "listening on ws://",
+      "timeout_s": 900.0
+    },
+    "adapter": {
+      "type": "livekit",
+      "url": "ws://127.0.0.1:{port}",
+      "room_prefix": "bench",
+      "api_key_env": "HECKLR_BENCH_LIVEKIT_KEY",
+      "api_secret_env": "HECKLR_BENCH_LIVEKIT_SECRET"
+    },
+    "spend_url": null,
+    "budget_usd": "0",
+    "agent_budget_usd": "0",
+    "reference": false
+  },
+  "run_id": "01M5KVM9R388JE9BDW4FDFYEBG",
+  "created_at": "2026-10-23T07:46:55.363742Z",
+  "seed": 20261023,
+  "trials_per_scenario": 2,
+  "scenarios": 9,
+  "models": {
+    "simulator": "ollama/hecklr-bench-qwen3-4b",
+    "judge": "ollama/hecklr-bench-qwen3-4b",
+    "asr": "faster-whisper/base.en"
+  },
+  "environment": {
+    "hecklr": "0.1.0",
+    "python": "3.12.13",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "git_sha": "181ce7f199f6e9f8c58be9ecde3c71c3c9faafea",
+    "packages": {
+      "pipecat-ai": "1.13.0",
+      "livekit": "1.1.21",
+      "faster-whisper": "1.2.1",
+      "kokoro-onnx": "0.6.1",
+      "onnxruntime": "1.24.4",
+      "aiortc": "1.15.0",
+      "websockets": "17.3"
+    },
+    "load_average": [
+      7.04,
+      6.06
+    ]
+  },
+  "counts": {
+    "total": 18,
+    "ok": 18,
+    "agent_error": 0,
+    "timeout": 0,
+    "harness_error": 0,
+    "undecided": 3,
+    "grade_errors": 3,
+    "analyzed": 15,
+    "contradiction_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.17587922364665765,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "wilson"
+    }
+  },
+  "metrics": {
+    "task_success": {
+      "value": 0.8888888888888888,
+      "ci_low": 0.565000294423344,
+      "ci_high": 0.980109112361455,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "wilson"
+    },
+    "judge:resolved": {
+      "value": 0.8333333333333334,
+      "ci_low": 0.43649717781352976,
+      "ci_high": 0.9699466302516933,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "wilson"
+    },
+    "response_latency_p50": {
+      "value": 1077.0,
+      "ci_low": 1054.0,
+      "ci_high": 1112.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "response_latency_p95": {
+      "value": 1292.0,
+      "ci_low": 1179.0,
+      "ci_high": 1751.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p50": {
+      "value": 248.0,
+      "ci_low": 239.0,
+      "ci_high": 252.0,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p95": {
+      "value": 286.0,
+      "ci_low": 265.0,
+      "ci_high": 294.0,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "bootstrap"
+    },
+    "false_interruptions_per_100_turns": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "dead_air_per_call": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "talk_over_s_per_min": {
+      "value": 0.6869144764738727,
+      "ci_low": 0.31679065834840986,
+      "ci_high": 1.094498378485153,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "cost_per_conversation_usd": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    }
+  },
+  "spend": {
+    "hecklr_usd": "0.000000",
+    "agent_usd": "0"
+  },
+  "duration_s": 3568.2
+}

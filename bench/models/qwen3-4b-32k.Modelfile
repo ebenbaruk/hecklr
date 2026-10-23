@@ -1,0 +1,5 @@
+# The benchmark's customer and judge model: qwen3 4B (instruct, no thinking) with a 32k context.
+# Ollama serves 4,096 tokens by default, and a judge prompt (transcript, tool calls and the world
+# snapshot) is 15-19k tokens. Create it once:  ollama create hecklr-bench-qwen3-4b -f bench/models/qwen3-4b-32k.Modelfile
+FROM qwen3:4b-instruct
+PARAMETER num_ctx 32768

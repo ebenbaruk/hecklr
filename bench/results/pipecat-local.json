@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "benchmark_version": "1.0",
+  "suite_digest": "3ab42ad9d89994cd8919da9f7b63836cbb36c0b21be52b0150007cda0c500528",
+  "stack": {
+    "id": "pipecat-local",
+    "name": "Pipecat 1.13, local models",
+    "track": "voice",
+    "description": "A stock Pipecat 1.13 pipeline over SmallWebRTC (WebRTC, Opus) with Pipecat's defaults: Silero VAD and the smart-turn v3 end-of-turn model, interruptions on, Pipecat's faster-whisper base.en service and its Kokoro service. The acme rules brain stands in for the LLM service.",
+    "why": "The framework most open-source voice agents are built on, out of the box, against the hand-tuned cascade with the same recognizer, voice and brain: what Pipecat's turn detection and WebRTC transport do to latency, barge-in and false interruptions.",
+    "components": {
+      "transport": "SmallWebRTC (WebRTC, Opus)",
+      "vad": "Silero + smart-turn v3 (Pipecat defaults)",
+      "asr": "faster-whisper base.en (Pipecat SegmentedSTTService, local)",
+      "brain": "acme rules",
+      "tts": "Kokoro af_heart (Pipecat KokoroTTSService, local)"
+    },
+    "command": [
+      "{python}",
+      "{repo}/bench/stacks/agents/pipecat_acme.py",
+      "--stt",
+      "whisper",
+      "--tts",
+      "kokoro",
+      "--port",
+      "{port}"
+    ],
+    "env": {
+      "ACME_SEED": "{seed}"
+    },
+    "requires_env": [],
+    "ready": {
+      "http": "http://127.0.0.1:{port}/healthz",
+      "line": null,
+      "timeout_s": 900.0
+    },
+    "adapter": {
+      "type": "pipecat",
+      "url": "http://127.0.0.1:{port}/api/offer"
+    },
+    "spend_url": "http://127.0.0.1:{port}/healthz",
+    "budget_usd": "0",
+    "agent_budget_usd": "0",
+    "reference": false
+  },
+  "run_id": "01M5KN7BWA70CP0WQKVZ15F42M",
+  "created_at": "2026-10-23T05:55:00.106180Z",
+  "seed": 20261023,
+  "trials_per_scenario": 2,
+  "scenarios": 9,
+  "models": {
+    "simulator": "ollama/hecklr-bench-qwen3-4b",
+    "judge": "ollama/hecklr-bench-qwen3-4b",
+    "asr": "faster-whisper/base.en"
+  },
+  "environment": {
+    "hecklr": "0.1.0",
+    "python": "3.12.13",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "git_sha": "181ce7f199f6e9f8c58be9ecde3c71c3c9faafea",
+    "packages": {
+      "pipecat-ai": "1.13.0",
+      "livekit": "1.1.21",
+      "faster-whisper": "1.2.1",
+      "kokoro-onnx": "0.6.1",
+      "onnxruntime": "1.24.4",
+      "aiortc": "1.15.0",
+      "websockets": "17.3"
+    },
+    "load_average": [
+      5.71,
+      7.04
+    ]
+  },
+  "counts": {
+    "total": 18,
+    "ok": 16,
+    "agent_error": 0,
+    "timeout": 2,
+    "harness_error": 0,
+    "undecided": 1,
+    "grade_errors": 1,
+    "analyzed": 17,
+    "contradiction_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.17587922364665765,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "wilson"
+    }
+  },
+  "metrics": {
+    "task_success": {
+      "value": 0.7777777777777778,
+      "ci_low": 0.5024055555555555,
+      "ci_high": 1.0,
+      "confidence": 0.95,
+      "n": 9,
+      "method": "cluster_bootstrap"
+    },
+    "judge:resolved": {
+      "value": 0.8333333333333334,
+      "ci_low": 0.43649717781352976,
+      "ci_high": 0.9699466302516933,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "wilson"
+    },
+    "response_latency_p50": {
+      "value": 3123.0,
+      "ci_low": 2773.0,
+      "ci_high": 3758.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "response_latency_p95": {
+      "value": 7185.0,
+      "ci_low": 5556.0,
+      "ci_high": 11222.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p50": {
+      "value": 676.0,
+      "ci_low": 648.0,
+      "ci_high": 844.0,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "bootstrap"
+    },
+    "barge_in_reaction_p95": {
+      "value": 1662.0,
+      "ci_low": 947.0,
+      "ci_high": 1892.0,
+      "confidence": 0.95,
+      "n": 6,
+      "method": "bootstrap"
+    },
+    "false_interruptions_per_100_turns": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "dead_air_per_call": {
+      "value": 3.0,
+      "ci_low": 2.5555555555555554,
+      "ci_high": 3.4444444444444446,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "talk_over_s_per_min": {
+      "value": 1.0992939737460865,
+      "ci_low": 0.3705943052197316,
+      "ci_high": 1.9499475745520245,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    },
+    "cost_per_conversation_usd": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "confidence": 0.95,
+      "n": 18,
+      "method": "bootstrap"
+    }
+  },
+  "spend": {
+    "hecklr_usd": "0.000000",
+    "agent_usd": "0.000000"
+  },
+  "duration_s": 3139.1
+}

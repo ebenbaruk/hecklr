@@ -1,0 +1,17 @@
+# See loopback-latency-short.yaml: a reference call with longer caller turns.
+id: bench-calibration-latency-long
+title: Three long caller turns (response latency reference)
+channels: [voice]
+tags: [calibration, latency]
+persona: steady-caller
+world: acme-maintenance
+mode: scripted
+goal: Say three longer things and wait for each answer
+user_turns:
+# No commas: the loopback agent would take a comma's pause for the end of the turn.
+- "I would like to move my boiler service visit from Friday to some time next week."
+- 'My customer number is C-1042 and my postcode is 92000 and mornings would be best.'
+- 'That is everything for today and thank you very much for your help.'
+success:
+- {type: voice_metric, metric: response_latency, below: 1000}
+limits: {max_turns: 8, max_duration_s: 60}

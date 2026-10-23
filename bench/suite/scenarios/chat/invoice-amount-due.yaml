@@ -1,0 +1,16 @@
+id: invoice-amount-due
+title: Customer asks what they owe
+channels: [chat]
+tags: [billing, invoice, core]
+persona: angry-customer
+world: acme-maintenance
+goal: Find out how much invoice INV-20590 is for and when it must be paid.
+facts:
+  customer_id: C-1351
+  postcode: '75020'
+  invoice_id: INV-20590
+success:
+- {type: regex, pattern: '312[.,]4'}
+- {type: judge, rubric: resolved}
+- {type: judge, rubric: no_hallucination}
+limits: {max_turns: 20, max_duration_s: 600}
