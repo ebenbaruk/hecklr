@@ -2,23 +2,35 @@
 
 import asyncio
 import json
+import socket
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
+import anyio
 import av
 import numpy as np
 import pytest
-from aiortc import MediaStreamTrack, RTCPeerConnection
+from aioice import stun
+from aiortc import MediaStreamTrack, RTCConfiguration, RTCIceServer, RTCPeerConnection
 from aiortc.mediastreams import MediaStreamError
 
 from hecklr_adapters import AgentError
-from hecklr_adapters.voice.pipecat import CallerTrack, PipecatAudioLink, PipecatVoiceTarget
+from hecklr_adapters.voice.pipecat import (
+    CallerTrack,
+    PipecatAudioLink,
+    PipecatVoiceTarget,
+    peer_configuration,
+)
 from hecklr_schemas import PipecatAdapterConfig, SessionContext, TrialId, new_id
 from hecklr_voice.audio import speech_edges
 from hecklr_voice.testing import synthetic_reply
 
 pytestmark = [pytest.mark.anyio, pytest.mark.enable_socket, pytest.mark.allow_hosts(["127.0.0.1"])]
+
+
+LOCAL = RTCConfiguration(iceServers=[])
+"""Peers on this machine need no STUN server (and unit tests never touch the network)."""
 
 
 def ctx() -> SessionContext:
@@ -30,7 +42,7 @@ async def test_caller_audio_crosses_webrtc_with_its_speech_edges_in_place() -> N
     clip = np.concatenate(
         [np.zeros(8000, np.int16), synthetic_reply("sure I can help"), np.zeros(8000, np.int16)]
     )
-    sender, receiver = RTCPeerConnection(), RTCPeerConnection()
+    sender, receiver = RTCPeerConnection(LOCAL), RTCPeerConnection(LOCAL)
     track = CallerTrack()
     sender.addTransceiver(track, direction="sendonly")
     arrived: asyncio.Future[MediaStreamTrack] = asyncio.get_running_loop().create_future()
@@ -155,3 +167,86 @@ async def test_hangup_closes_the_peer_connection_even_when_a_step_fails(
         await link.hangup()
     assert link._pc.connectionState == "closed"
     assert link._caller.readyState == "ended"
+
+
+async def answered_link() -> tuple[PipecatAudioLink, RTCPeerConnection]:
+    """A link whose call a plain aiortc peer has answered, with ICE completed."""
+    link, agent = (
+        PipecatAudioLink(peer_configuration("http://127.0.0.1/api/offer")),
+        RTCPeerConnection(LOCAL),
+    )
+    agent.addTrack(CallerTrack())
+    await agent.setRemoteDescription(await link.offer())
+    await agent.setLocalDescription(await agent.createAnswer())
+    with anyio.fail_after(10):
+        await link.answer(agent.localDescription)
+    return link, agent
+
+
+async def test_issue73_hangup_leaves_no_ice_check_retrying_on_a_closed_socket() -> None:
+    """A connectivity check the agent triggers after ICE completed dies with the call.
+
+    The agent's checks can reach the caller after ICE has completed (from another interface,
+    such as a link-local one), and each starts a triggered check back that retries every
+    0.5 s, 1 s, ... until answered. aioice does not stop it on close, so its retry fired on the
+    closed socket and raised inside the event loop, failing whatever test was running.
+    """
+    link, agent = await answered_link()
+    silent = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # a peer that never answers
+    try:
+        [ice] = {
+            transceiver.receiver.transport.transport for transceiver in link._pc.getTransceivers()
+        }
+        connection = ice.iceGatherer._connection
+        local = next(  # an IPv4 host candidate the silent peer can sit beside
+            pair for pair in connection._check_list if "." in pair.local_candidate.host
+        )
+        silent.bind((local.local_candidate.host, 0))
+        check = stun.Message(stun.Method.BINDING, stun.Class.REQUEST)
+        check.attributes["PRIORITY"] = 1
+        connection.check_incoming(check, silent.getsockname(), local.protocol)
+        assert any(pair.task is not None for pair in connection._check_list)
+        await link.hangup()
+        await anyio.sleep(stun.RETRY_RTO * 1.5)  # past the first retry
+    finally:
+        silent.close()
+        await agent.close()
+    assert all(pair.task is None or pair.task.done() for pair in connection._check_list)
+
+
+@pytest.mark.parametrize(
+    ("url", "stun"),
+    [
+        ("http://127.0.0.1:7860/api/offer", False),
+        ("http://localhost:7860/api/offer", False),
+        ("http://[::1]:7860/api/offer", False),
+        ("https://bot.example.com/api/offer", True),
+        ("http://10.0.0.7:7860/api/offer", True),
+    ],
+)
+def test_issue73_only_an_agent_off_this_machine_is_called_with_a_stun_server(
+    url: str, stun: bool
+) -> None:
+    configuration = peer_configuration(url)
+    # None is aiortc's default STUN server; an empty list is none at all.
+    assert (configuration.iceServers is None) is stun
+    assert configuration.bundlePolicy.value == "max-bundle"
+
+
+async def test_issue73_hangup_during_gathering_leaves_no_stun_query_behind() -> None:
+    """A call given up while its STUN query is unanswered closes only once gathering ended.
+
+    Cancelling gathering left aioice's STUN query retrying on a socket that hang-up closed.
+    """
+    silent = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # a STUN server that never answers
+    silent.bind(("127.0.0.1", 0))
+    stun_url = f"stun:127.0.0.1:{silent.getsockname()[1]}"
+    link = PipecatAudioLink(RTCConfiguration(iceServers=[RTCIceServer(stun_url)]))
+    try:
+        with anyio.move_on_after(0.2):
+            await link.offer()
+        await link.hangup()
+        await anyio.sleep(stun.RETRY_RTO * 1.5)  # past the next retry
+    finally:
+        silent.close()
+    assert link._pc.connectionState == "closed"
