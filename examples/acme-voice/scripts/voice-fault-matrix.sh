@@ -2,24 +2,30 @@
 # SC8 for voice through the real CLI: `hecklr run` + `hecklr compare` on the clean acme voice agent
 # (twice: the A/A check) and on each voice fault F7-F10, against the first clean run.
 #
-#   examples/acme-voice/scripts/voice-fault-matrix.sh [timing|snr|all]
+#   examples/acme-voice/scripts/voice-fault-matrix.sh [timing|snr|all|smoke]
+#
+# `smoke` runs the clean agent once through the timing suite and checks that its trials got
+# through, without the comparisons. HECKLR_VOICE_PORT (default 8765) moves the agent and the
+# adapter URL with it: on another port the runs use a generated copy of hecklr.yaml next to it.
 #
 # Free: the agent runs the rules brain and local models (faster-whisper hears the callers; it
 # speaks tagged synthetic audio that Hecklr's fake/tag ASR reads exactly), the callers speak with
 # Kokoro, and the scripted suites call no LLM. Needs `uv sync --all-packages --all-extras`; the
 # first run downloads the local models (~400 MB). Each agent run takes 3-5 minutes.
 # Exit status: 0 when the clean agent shows no regression against itself and every fault is a
-# regression, 1 otherwise.
+# regression, 1 otherwise (and as soon as a run fails or no trial of it got through).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
 CONFIG=examples/acme-voice/hecklr.yaml
+DEFAULT_URL="ws://127.0.0.1:8765/"
 PORT=${HECKLR_VOICE_PORT:-8765}
 MODELS=${HECKLR_VOICE_MODELS:-examples/acme-voice/.hecklr/models}
 OUT=${HECKLR_MATRIX_OUT:-examples/acme-voice/.hecklr/matrix}
 WHICH=${1:-all}
 mkdir -p "$OUT"
 agent_pid=""
+generated=""
 failures=0
 
 stop_agent() {
@@ -29,7 +35,24 @@ stop_agent() {
     agent_pid=""
   fi
 }
-trap stop_agent EXIT
+# shellcheck disable=SC2329 # run by the EXIT trap below
+cleanup() {
+  stop_agent
+  [[ -z "$generated" ]] || rm -f "$generated"
+}
+trap cleanup EXIT
+
+# hecklr.yaml resolves its world, scenarios and run store relative to its own directory, so the
+# copy that points the adapter at another port lives next to it (and is removed on exit).
+if [[ "$PORT" != 8765 ]]; then
+  generated="examples/acme-voice/.hecklr-matrix-$PORT.yaml"
+  grep -qF "\"$DEFAULT_URL\"" "$CONFIG" || {
+    echo "$CONFIG no longer names $DEFAULT_URL; cannot move it to port $PORT" >&2
+    exit 1
+  }
+  sed "s|\"$DEFAULT_URL\"|\"ws://127.0.0.1:$PORT/\"|" "$CONFIG" >"$generated"
+  CONFIG=$generated
+fi
 
 start_agent() { # variant (clean or F7..F10), suite, label
   local args=(--brain rules --tts synthetic --port "$PORT" --models-dir "$MODELS")
@@ -53,8 +76,17 @@ start_agent() { # variant (clean or F7..F10), suite, label
 
 run_suite() { # variant suite label -> prints the run id
   start_agent "$1" "$2" "$3"
-  uv run hecklr run --config "$CONFIG" --suite "$2" --budget-usd 0.5 >"$OUT/run-$3.log" 2>&1 || true
+  local status=0
+  uv run hecklr run --config "$CONFIG" --suite "$2" --budget-usd 0.5 >"$OUT/run-$3.log" 2>&1 \
+    || status=$?
   stop_agent
+  # A run that exits non-zero measured nothing to compare (exit 3: no trial got through, e.g. an
+  # agent that could not be reached), so the matrix stops instead of comparing empty runs.
+  if [[ "$status" != 0 ]]; then
+    echo "hecklr run for $3 exited $status; see $OUT/run-$3.log:" >&2
+    tail -5 "$OUT/run-$3.log" >&2
+    exit 1
+  fi
   local run_id
   run_id=$(grep -Eo 'Run [0-9A-Z]{26}' "$OUT/run-$3.log" | tail -1 | cut -d' ' -f2)
   if [[ -z "$run_id" ]]; then
@@ -95,7 +127,21 @@ matrix() { # suite faults...
   done
 }
 
-[[ "$WHICH" == snr ]] || matrix voice-timing F7 F8 F9
-[[ "$WHICH" == timing ]] || matrix voice-snr-10db F10
+case "$WHICH" in
+  smoke)
+    smoke_run=$(run_suite clean voice-timing smoke)
+    echo "smoke: the clean agent on port $PORT answered run $smoke_run"
+    ;;
+  timing) matrix voice-timing F7 F8 F9 ;;
+  snr) matrix voice-snr-10db F10 ;;
+  all)
+    matrix voice-timing F7 F8 F9
+    matrix voice-snr-10db F10
+    ;;
+  *)
+    echo "usage: $0 [timing|snr|all|smoke]" >&2
+    exit 2
+    ;;
+esac
 echo "reports and logs: $OUT"
 exit $((failures > 0))
