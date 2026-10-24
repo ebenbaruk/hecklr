@@ -21,14 +21,22 @@ highest, which the boundaries do not model, so the whole procedure, allocation i
 simulated instead of assumed: `adaptive_verdict_rate`, 400 seeded A/A replicates, both verdict
 directions counted. Measured: 60 × 5: 4.5% [2.9%, 7.0%]; 20 × 3: 3.3% [1.9%, 5.5%] (α = 5%);
 power for a 10-point drop at 60 × 5: 98% [93%, 99%]. With `min_effect = 0` the bare test rejects
-5.4% [4.5%, 6.5%] over 2,000 replicates (5.6% with the final look alone, 4.0% fixed): the looks
-cost nothing, the variance-targeted batch about 1.5 points, which the minimum effect absorbs.
+4.9% [4.0%, 5.9%] over 2,000 seeded replicates at 60 × 5, an interval that covers α
+(`test_issue103_the_test_alone_across_looks_is_consistent_with_alpha`). The simulation gives each
+scenario one cell; `extend_matrix` spreads a scenario's extra trials over its persona × channel
+cells, which changes which conversations run, not the pass/fail counts the test sees. Its extra
+share is `hecklr_stats.validation.ADAPTIVE_EXTRA_SHARE`, which a test pins equal to the one
+`hecklr run --adaptive` spends (`hecklr.compose`).
 
-**Identical runs.** Flakiness is measured only on runs of the same suite, agent (name and version)
-and recorded commit (`is_identical`). Runs without a commit are not identical: pooling a real
-100% → 0% change would read as a 50% "flaky" scenario. `hecklr calibrate --aa` declares its two
-runs identical (`analyze(..., identical_runs=True)`), since they are the same agent by
-construction or by the `--runs` contract.
+**Identical runs.** Flakiness is measured only on runs the caller declares identical
+(`analyze(..., identical_runs=True)`); it is never inferred. A shared suite, agent and commit is
+not enough: the recorded `git_sha` is HEAD and does not see uncommitted edits, so in the everyday
+loop (edit the prompt, `hecklr run`, `hecklr compare`) both runs share a commit, and pooling a real
+100% → 0% regression would read as a 50% "flaky" scenario and tell the author to dismiss it. The
+same holds for fault-matrix and fixer validation runs. `hecklr calibrate --aa` declares its two
+runs identical, since they are the same agent by construction or by the `--runs` contract.
+`compare`, `gate`, `report` and the PR comment render the flag whenever an analysis carries it.
+Inferring it would need a dirty-tree marker on `Run`, a schema change left for an RFC if wanted.
 
 **Judge drift.** Hecklr keeps no history of judge models, so "changing the judge model triggers a
 re-score" is split in two. Reports (`compare`, `gate`, `report`, the PR comment) warn when the

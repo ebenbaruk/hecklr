@@ -32,7 +32,6 @@ from hecklr_schemas import (
     Event,
     MetricSummary,
     Persona,
-    Run,
     RunId,
     RunStatus,
     Scenario,
@@ -69,7 +68,7 @@ def analyze(
     *,
     personas: Mapping[str, Persona] | None = None,
     judge_calibrations: Sequence[JudgeCalibration] = (),
-    identical_runs: bool | None = None,
+    identical_runs: bool = False,
 ) -> Analysis:
     """Analyze ``candidate``, compared with ``baseline`` when one is given.
 
@@ -84,9 +83,10 @@ def analyze(
             when their persona is given.
         judge_calibrations: Agreement of judge rubrics with human labels, when available; rubrics
             below κ 0.70 are flagged untrusted.
-        identical_runs: Whether the two runs test the same agent and code, so scenarios between
-            20% and 80% pooled pass rate are flagged flaky. ``None`` decides it from the runs'
-            suite, agent and commit (``is_identical``); an A/A self-test declares it ``True``.
+        identical_runs: The caller vouches that both runs test the same agent and code, so
+            scenarios between 20% and 80% pooled pass rate are flagged flaky; an A/A self-test
+            declares it. It is never inferred: a shared commit says nothing about uncommitted
+            edits, and pooling a real regression would label it flaky (ADR 0024-hstats).
     """
     known_personas = personas or {}
     seed = stats.seed if stats.seed is not None else candidate.run.seed
@@ -111,9 +111,7 @@ def analyze(
                 config=stats,
                 seed=seed,
             )
-    identical = baseline is not None and (
-        is_identical(candidate.run, baseline.run) if identical_runs is None else identical_runs
-    )
+    identical = baseline is not None and identical_runs
     flaky = (
         {f.scenario_id: f.pass_rate for f in flaky_scenarios([*base.outcomes, *cand.outcomes])}
         if identical and base is not None
@@ -288,16 +286,6 @@ def _summaries(
             )
         )
     return summaries
-
-
-def is_identical(a: Run, b: Run) -> bool:
-    """Runs of the same suite, agent and commit: the spec's "identical runs" for flakiness.
-
-    Seeds may differ (``hecklr calibrate --aa`` runs with seed and seed + 1). A run that recorded
-    no commit cannot be shown to test the same code, so it is never identical.
-    """
-    same = (a.suite, a.agent, a.git_sha) == (b.suite, b.agent, b.git_sha)
-    return a.git_sha is not None and same
 
 
 def _scenario_results(

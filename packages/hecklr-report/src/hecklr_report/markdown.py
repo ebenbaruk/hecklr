@@ -18,7 +18,6 @@ MAX_CAUSES: Final = {"pass_to_fail": 5, "fail_to_pass": 2}
 MAX_SCENARIOS_PER_CAUSE: Final = 4
 MAX_SLICES: Final = 3
 MAX_LATENCY_LINES: Final = 3
-MAX_FLAKY: Final = 4
 RATIONALE_CHARS: Final = 90
 
 _TITLES: Final = {
@@ -200,21 +199,16 @@ def _health(analysis: Analysis) -> list[str]:
     if counts.undecided:
         parts.append(f"{counts.undecided} undecided (grade errors)")
     if counts.contradiction_rate is not None:
-        abandoned = f", {fmt.abandoned(counts.guard_abandoned)}" if counts.guard_abandoned else ""
+        errored = counts.errors_after_contradiction
+        after = f", {fmt.errors_after_contradiction(errored)}" if errored else ""
         parts.append(
-            f"simulator contradictions {fmt.estimate(counts.contradiction_rate, 'percent')}"
-            + abandoned
+            f"simulator contradictions {fmt.estimate(counts.contradiction_rate, 'percent')}" + after
         )
     lines = ["**Run** " + " · ".join(parts)]
     flaky = [(s.scenario_id, s.flaky) for s in analysis.scenarios if s.flaky is not None]
     if flaky:
-        more = f" +{len(flaky) - MAX_FLAKY} more" if len(flaky) > MAX_FLAKY else ""
         lines.append(
-            "**Flaky across identical runs** (pass rate 20-80%): "
-            + ", ".join(
-                f"{_code(sid)} {fmt.estimate(rate, 'percent')}" for sid, rate in flaky[:MAX_FLAKY]
-            )
-            + more
+            "**Flaky across identical runs** (pass rate 20-80%): " + fmt.flaky_list(flaky, _code)
         )
     if (change := analysis.judge_model_change) is not None:
         before, after = change

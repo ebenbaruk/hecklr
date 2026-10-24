@@ -219,12 +219,12 @@ def _health(analysis: Analysis) -> Text:
         text.append(
             f"\nSimulator contradiction rate {fmt.estimate(counts.contradiction_rate, 'percent')}"
         )
-        if counts.guard_abandoned:
-            text.append(f" · {fmt.abandoned(counts.guard_abandoned)}")
+        if counts.errors_after_contradiction:
+            text.append(f" · {fmt.errors_after_contradiction(counts.errors_after_contradiction)}")
     flaky = [(s.scenario_id, s.flaky) for s in analysis.scenarios if s.flaky is not None]
     if flaky:
         text.append("\nFlaky across identical runs (pass rate 20-80%): ", "yellow")
-        text.append(", ".join(f"{sid} {fmt.estimate(rate, 'percent')}" for sid, rate in flaky))
+        text.append(fmt.flaky_list(flaky))
     if (change := analysis.judge_model_change) is not None:
         before, after = change
         text.append(f"\nJudge model changed: {before} → {after}; ", "yellow")

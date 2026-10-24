@@ -1,10 +1,13 @@
 """Number formatting shared by the text renderers: every value prints with its interval."""
 
-from typing import Literal
+from collections.abc import Callable, Sequence
+from typing import Final, Literal
 
 from hecklr_schemas import Comparison, Estimate, Slice
 
 Unit = Literal["percent", "ms", "usd", "number"]
+
+MAX_FLAKY: Final = 4
 
 
 def unit_of(metric: str) -> Unit:
@@ -76,10 +79,21 @@ def look(c: Comparison) -> str:
     return f" · adaptive look {c.look}, \N{GREEK SMALL LETTER ALPHA} spent {c.alpha_spent:.3f}"
 
 
-def abandoned(conversations: int) -> str:
-    """How many conversations the simulator's consistency guard gave up on (issue #101)."""
-    plural = "s" if conversations != 1 else ""
-    return f"{conversations} conversation{plural} abandoned by the consistency guard"
+def flaky_list(flaky: Sequence[tuple[str, Estimate]], code: Callable[[str], str] = str) -> str:
+    """The first few flaky scenarios with their pooled pass rate, then how many more (#102)."""
+    shown = ", ".join(f"{code(sid)} {estimate(rate, 'percent')}" for sid, rate in flaky[:MAX_FLAKY])
+    more = f" +{len(flaky) - MAX_FLAKY} more" if len(flaky) > MAX_FLAKY else ""
+    return shown + more
+
+
+def errors_after_contradiction(trials: int) -> str:
+    """Harness errors in conversations the simulator had contradicted itself in (issue #101).
+
+    Usually the consistency guard gave up on a turn, but any later harness error counts too, so
+    the label does not claim the guard was the cause.
+    """
+    plural = "s" if trials != 1 else ""
+    return f"{trials} harness error{plural} after a simulator contradiction"
 
 
 def rescore_advice(earlier_judge_model: str) -> str:

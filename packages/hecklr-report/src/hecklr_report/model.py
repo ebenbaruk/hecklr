@@ -85,8 +85,9 @@ class TrialCounts(FrozenModel):
     contradiction_rate: Estimate | None
     """Share of conversations where the simulator contradicted its brief at least once,
     counting those the consistency guard gave up on (ADR 0024-hstats)."""
-    guard_abandoned: Count = 0
-    """Harness errors because the consistency guard rejected every draft of a turn."""
+    errors_after_contradiction: Count = 0
+    """Harness errors in trials whose simulator contradicted its brief: mostly the consistency
+    guard giving up on a turn, though a later failure of another kind is counted too."""
 
 
 class FailureCause(FrozenModel):
@@ -134,7 +135,7 @@ class ScenarioResult(FrozenModel):
     cause: FailureCause | None = None
     """The most common failure cause on the failing side, for failed or flipped scenarios."""
     flaky: Estimate | None = None
-    """Pass rate pooled over both runs when they are identical runs and it lies in 20-80%: the
+    """Pass rate pooled over both runs when they are declared identical and it lies in 20-80%: the
     scenario is flaky (spec, "Validating the statistics"); ``None`` otherwise."""
 
 
@@ -202,8 +203,8 @@ class Analysis(FrozenModel):
     """The suite pass-rate verdict; ``None`` without a usable baseline."""
     scenarios: list[ScenarioResult] = Field(default_factory=list)
     identical_runs: bool = False
-    """Baseline and candidate are runs of the same suite, agent and commit, so scenarios were
-    checked for flakiness (``ScenarioResult.flaky``)."""
+    """The caller declared baseline and candidate the same agent and code (``hecklr calibrate
+    --aa``), so scenarios were checked for flakiness (``ScenarioResult.flaky``)."""
     flips: list[FlipGroup] = Field(default_factory=list)
     voice: VoiceSection | None = None
     judges: list[JudgeTrust] = Field(default_factory=list)

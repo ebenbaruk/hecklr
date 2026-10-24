@@ -191,9 +191,10 @@ def convert(
 
 def _counts(results: RunResults, rows: Sequence[TrialRow]) -> TrialCounts:
     statuses = Counter(trial.status for trial in results.trials)
-    # A harness error whose simulator counted a contradiction is a conversation the consistency
-    # guard gave up on (issue #101): it belongs in the rate, or the worst simulations vanish.
-    abandoned = sum(
+    # A harness error whose simulator counted a contradiction is usually a conversation the
+    # consistency guard gave up on (issue #101): it belongs in the rate, or the worst simulations
+    # vanish. A trial does not record why the harness failed, so the label claims no cause.
+    after_contradiction = sum(
         1 for t in results.trials if t.status == "harness_error" and t.contradictions > 0
     )
     conversations = [
@@ -209,7 +210,7 @@ def _counts(results: RunResults, rows: Sequence[TrialRow]) -> TrialCounts:
         undecided=sum(1 for row in rows if row.excluded == "grade_error"),
         grade_errors=sum(1 for grade in results.grades if grade.status == "error"),
         analyzed=sum(1 for row in rows if row.passed is not None),
-        guard_abandoned=abandoned,
+        errors_after_contradiction=after_contradiction,
         contradiction_rate=(
             wilson_estimate(contradicted, len(conversations)) if conversations else None
         ),

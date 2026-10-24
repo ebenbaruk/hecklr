@@ -204,5 +204,5 @@ def test_issue101_terminal_and_html_name_conversations_the_guard_gave_up_on(
     page = render_html(analysis, results, tmp_path / "r.html").read_text(encoding="utf-8")
 
     assert "Simulator contradiction rate 50.0% [" in text
-    assert "1 conversation abandoned by the consistency guard" in text
-    assert "1 conversation abandoned by the consistency guard" in page
+    assert "1 harness error after a simulator contradiction" in text
+    assert "1 harness error after a simulator contradiction" in page

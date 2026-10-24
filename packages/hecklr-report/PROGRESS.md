@@ -60,9 +60,11 @@ US-03, US-04, US-05, US-06, US-07, "Voice simulation engine > Metrics". Decision
     `test_machine_and_terminal.py`).
   - #103: adaptive runs are compared at O'Brien-Fleming looks, first pass then everything
     (`test_adaptive.py`: `test_issue103_*`, 6 tests).
-  - #102: scenarios flaky across identical runs (`is_identical`, or `identical_runs=True` from
-    `calibrate --aa`) carry `ScenarioResult.flaky` with its Wilson interval, shown in the
-    terminal, PR comment and HTML (`test_flaky.py`, 5 tests); `Analysis.judge_model_change`
+  - #102: scenarios flaky across runs declared identical (`identical_runs=True`, only from
+    `calibrate --aa`; a shared commit is not enough because it misses uncommitted edits) carry
+    `ScenarioResult.flaky` with its Wilson interval, shown in the terminal, PR comment and HTML,
+    capped at 4 plus "+N more" (`test_flaky.py`, 5 tests, incl.
+    `test_issue102_runs_sharing_a_commit_are_not_assumed_identical`); `Analysis.judge_model_change`
     warns in every format when baseline and candidate were graded by different judge models
     (`test_judge_model_change.py`, 3 tests). The UI reads the report JSON: `scenarios[].flaky`
     and both runs' `judge_model` are in it; rendering them there is left to the UI owner.

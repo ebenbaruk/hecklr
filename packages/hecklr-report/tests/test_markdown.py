@@ -279,10 +279,10 @@ def test_issue101_comment_names_conversations_the_guard_gave_up_on(
 ) -> None:
     analysis = regression[0]
     counts = analysis.counts.model_copy(
-        update={"guard_abandoned": 3, "contradiction_rate": wilson_estimate(3, 200)}
+        update={"errors_after_contradiction": 3, "contradiction_rate": wilson_estimate(3, 200)}
     )
 
     comment = render_markdown(analysis.model_copy(update={"counts": counts}))
 
     rate = "simulator contradictions 1.5% [0.5%, 4.3%]"
-    assert f"{rate}, 3 conversations abandoned by the consistency guard" in comment
+    assert f"{rate}, 3 harness errors after a simulator contradiction" in comment
