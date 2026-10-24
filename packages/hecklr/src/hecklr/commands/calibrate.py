@@ -54,7 +54,6 @@ SIMULATED_COMPARISONS: Final = 200
 """A/A comparisons simulated at the suite's shape, as SC5 measures (200)."""
 POWER_DROP: Final = 0.10
 """The pass-rate drop whose detection power is reported (SC6: 10 points)."""
-JUDGE_PREFIX: Final = "judge:"
 
 
 def calibrate(
@@ -284,7 +283,8 @@ def _report_judges(
             grade
             for ref in refs
             for grade in load_results(project, resolve_run(store, ref).id).grades
-            if grade.grader.startswith(JUDGE_PREFIX) and grade.status == "ok"
+            # As in the UI's labeling queue: a judge model decided it, whatever the grader's name.
+            if grade.judge_model is not None and grade.status == "ok"
         ]
     calibrations = _calibrations(project, grades, labels)
     if not calibrations:

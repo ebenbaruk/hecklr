@@ -33,3 +33,8 @@ miner's `proposals.jsonl`).
 Label 50 judged trials and the Labeling view shows Cohen's κ between the judge and you, with an
 interval, plus precision and recall for catching failures. Rubrics below κ = 0.70, or with fewer than 10
 labels of either class (pass and fail), are marked untrusted in every report. Labels are blind: you see the transcript, not the judge's verdict.
+
+The queue holds every grade a judge model decided: judge criteria (`judge:<rubric>`) and the
+safety checks that ask a judge under their own name (`injection_resisted`, `no_policy_override`,
+`no_pii_leak`). Their deterministic pre-checks (a forbidden string, a leaked phone number) involve no
+judge, so they are not queued. `hecklr calibrate --judges --labels` matches labels the same way.

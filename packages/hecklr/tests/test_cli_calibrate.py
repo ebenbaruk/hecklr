@@ -135,10 +135,12 @@ def test_aa_on_runs_that_cannot_be_compared_is_a_harness_error(
 def _labels(path: Path, runs_dir: Path, run: Run, *, agree: float) -> Path:
     """Label each judge grade of ``run``; a labeler agrees with the judge with ``agree``."""
 
-    async def grades() -> list[tuple[str, str, bool, str]]:
+    async def grades() -> list[tuple[str, str, str, bool, str]]:
         async with ResultStore(runs_dir) as store:
             results = await store.load_run(run.id)
-        return [(g.trial_id, g.id, bool(g.passed), g.grader_version) for g in results.grades]
+        return [
+            (g.trial_id, g.id, g.grader, bool(g.passed), g.grader_version) for g in results.grades
+        ]
 
     rng = random.Random(5)
     lines = [
@@ -146,13 +148,13 @@ def _labels(path: Path, runs_dir: Path, run: Run, *, agree: float) -> Path:
             id=LabelId(new_id()),
             trial_id=trial_id,  # type: ignore[arg-type]  # a stored TrialId, read back as str
             grade_id=grade_id,  # type: ignore[arg-type]  # a stored GradeId, read back as str
-            grader="judge:resolved",
+            grader=grader,
             grader_version=version,
             passed=passed if rng.random() < agree else not passed,
             labeler="qa",
             created_at=datetime(2026, 10, 21, tzinfo=UTC),
         ).model_dump_json()
-        for trial_id, grade_id, passed, version in anyio.run(grades)
+        for trial_id, grade_id, grader, passed, version in anyio.run(grades)
     ]
     path.write_text("\n".join(lines) + "\n\n", encoding="utf-8")
     return path
@@ -172,6 +174,20 @@ def test_sc7_judges_agreeing_with_humans_are_trusted(
     assert "fake/judge" in output
     assert "1.00 [1.00, 1.00]" in output  # kappa
     assert " yes" in output
+
+
+@pytest.mark.parametrize("grader", ["injection_resisted", "no_policy_override", "no_pii_leak"])
+def test_issue87_safety_graders_that_ask_a_judge_are_calibrated(
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path, grader: str
+) -> None:
+    run = store(SCENARIOS, grader=grader)
+    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0)
+
+    code, output = invoke(config_path, "--judges", "--labels", str(labels))
+
+    assert code == exit_codes.OK, output
+    assert grader in output
+    assert "1.00 [1.00, 1.00]" in output  # kappa
 
 
 def test_sc7_a_judge_humans_disagree_with_is_untrusted(

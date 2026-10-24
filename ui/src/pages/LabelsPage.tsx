@@ -171,7 +171,12 @@ function Queue({
   const [index, setIndex] = useState(firstOpen === -1 ? 0 : firstOpen);
   const item = queue.items[index];
   if (!item) {
-    return <Empty>No judge grade to label in these runs. Run a suite with judge criteria first.</Empty>;
+    return (
+      <Empty>
+        No judge grade to label in these runs. Run a suite with judge criteria or the safety checks that ask a judge
+        (injection_resisted, no_policy_override, no_pii_leak) first.
+      </Empty>
+    );
   }
   const done = Object.keys(labels).length;
   return (
