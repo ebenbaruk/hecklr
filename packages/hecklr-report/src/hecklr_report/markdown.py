@@ -199,8 +199,10 @@ def _health(analysis: Analysis) -> list[str]:
     if counts.undecided:
         parts.append(f"{counts.undecided} undecided (grade errors)")
     if counts.contradiction_rate is not None:
+        abandoned = f", {fmt.abandoned(counts.guard_abandoned)}" if counts.guard_abandoned else ""
         parts.append(
             f"simulator contradictions {fmt.estimate(counts.contradiction_rate, 'percent')}"
+            + abandoned
         )
     lines = ["**Run** " + " · ".join(parts)]
     untrusted = [j for j in analysis.judges if not j.trusted]
@@ -208,7 +210,8 @@ def _health(analysis: Analysis) -> list[str]:
         lines.append(
             "**Untrusted judges**: "
             + ", ".join(
-                f"{_code(j.grader)} κ={j.kappa.value:.2f} ({escape(j.reason or 'kappa < 0.70')})"
+                f"{_code(j.grader)} κ={fmt.estimate(j.kappa, 'number')} "
+                f"({escape(j.reason or 'kappa < 0.70')})"
                 for j in untrusted[:4]
             )
         )

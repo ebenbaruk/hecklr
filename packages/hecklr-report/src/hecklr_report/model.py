@@ -83,7 +83,10 @@ class TrialCounts(FrozenModel):
     analyzed: Count
     """Trials behind every pass-rate statistic: total minus harness errors minus undecided."""
     contradiction_rate: Estimate | None
-    """Share of conversations where the simulator contradicted its brief at least once."""
+    """Share of conversations where the simulator contradicted its brief at least once,
+    counting those the consistency guard gave up on (ADR 0024-hstats)."""
+    guard_abandoned: Count = 0
+    """Harness errors because the consistency guard rejected every draft of a turn."""
 
 
 class FailureCause(FrozenModel):

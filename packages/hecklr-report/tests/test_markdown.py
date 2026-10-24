@@ -251,3 +251,38 @@ def test_escape_breaks_github_mentions() -> None:
     assert "@acme" not in escaped
     assert "@bob" not in escaped
     assert escaped.replace("\N{ZERO WIDTH JOINER}", "") == "ping @acme/oncall and @bob"
+
+
+def test_issue104_untrusted_judges_kappa_carries_its_interval(
+    regression: tuple[Analysis, RunResults],
+) -> None:
+    analysis = crowded(
+        regression[0],
+        causes=0,
+        per_cause=1,
+        fixed=0,
+        slices=0,
+        judges=1,
+        problems=0,
+        rationale="",
+    )
+
+    line = next(
+        x for x in render_markdown(analysis).splitlines() if x.startswith("**Untrusted judges**")
+    )
+
+    assert "`judge:r0` κ=0.60 [0.46, 0.72]" in line
+
+
+def test_issue101_comment_names_conversations_the_guard_gave_up_on(
+    regression: tuple[Analysis, RunResults],
+) -> None:
+    analysis = regression[0]
+    counts = analysis.counts.model_copy(
+        update={"guard_abandoned": 3, "contradiction_rate": wilson_estimate(3, 200)}
+    )
+
+    comment = render_markdown(analysis.model_copy(update={"counts": counts}))
+
+    rate = "simulator contradictions 1.5% [0.5%, 4.3%]"
+    assert f"{rate}, 3 conversations abandoned by the consistency guard" in comment

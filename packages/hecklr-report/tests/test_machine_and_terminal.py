@@ -12,6 +12,7 @@ from hecklr_report import (
     Analysis,
     FailureCause,
     analyze,
+    render_html,
     render_json,
     render_junit,
     render_terminal,
@@ -20,6 +21,8 @@ from hecklr_schemas import Channel, Scenario
 from hecklr_stats import JudgeCalibration, wilson_estimate
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from conftest import Kit
     from hecklr_core import RunResults
 
@@ -186,3 +189,20 @@ def test_terminal_voice_judges_and_problems(kit: type[Kit], scenarios: dict[str,
     assert "Judge agreement with humans" in text
     assert "yes" in text
     assert "Cannot gate: no baseline" in text
+
+
+def test_issue101_terminal_and_html_name_conversations_the_guard_gave_up_on(
+    kit: type[Kit], scenarios: dict[str, Scenario], tmp_path: Path
+) -> None:
+    builder = kit.RunBuilder()
+    builder.trial("s00", status="harness_error", contradictions=1)
+    builder.trial("s01")
+    results = builder.build()
+    analysis = analyze(results, None, kit.stats, scenarios)
+
+    text = record(analysis)
+    page = render_html(analysis, results, tmp_path / "r.html").read_text(encoding="utf-8")
+
+    assert "Simulator contradiction rate 50.0% [" in text
+    assert "1 conversation abandoned by the consistency guard" in text
+    assert "1 conversation abandoned by the consistency guard" in page

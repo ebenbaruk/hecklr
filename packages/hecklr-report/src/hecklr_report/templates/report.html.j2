@@ -128,6 +128,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
       <div class="label">simulator contradiction rate</div>
       <div class="value">{{ fmt.value(a.counts.contradiction_rate.value, "percent") }}</div>
       <div class="ci">{{ fmt.confidence(a.counts.contradiction_rate) }} {{ fmt.interval(a.counts.contradiction_rate, "percent") }}</div>
+      {% if a.counts.guard_abandoned %}<div class="ci">{{ fmt.abandoned(a.counts.guard_abandoned) }}</div>{% endif %}
     </div>
     {% endif %}
     <div class="panel card">

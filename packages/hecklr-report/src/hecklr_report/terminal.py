@@ -217,6 +217,8 @@ def _health(analysis: Analysis) -> Text:
         text.append(
             f"\nSimulator contradiction rate {fmt.estimate(counts.contradiction_rate, 'percent')}"
         )
+        if counts.guard_abandoned:
+            text.append(f" · {fmt.abandoned(counts.guard_abandoned)}")
     for problem in analysis.problems:
         text.append(f"\nCannot gate: {problem}", "bold red")
     return text

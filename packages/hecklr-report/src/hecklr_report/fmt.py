@@ -69,6 +69,12 @@ def p_equals(p: float) -> str:
     return f"p{text}" if text.startswith("<") else f"p={text}"
 
 
+def abandoned(conversations: int) -> str:
+    """How many conversations the simulator's consistency guard gave up on (issue #101)."""
+    plural = "s" if conversations != 1 else ""
+    return f"{conversations} conversation{plural} abandoned by the consistency guard"
+
+
 def slice_label(slice_: Slice) -> str:
     """``suite`` for the whole run, else e.g. ``channel=voice``."""
     return ", ".join(f"{k}={v}" for k, v in sorted(slice_.items())) or "suite"
