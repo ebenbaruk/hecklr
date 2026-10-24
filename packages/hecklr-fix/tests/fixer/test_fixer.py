@@ -274,6 +274,15 @@ async def test_issue118_a_zero_budget_refuses_a_paid_generator_before_any_call(
     assert result.targeted_baseline is not None
 
 
+async def test_issue118_an_unpriced_generator_counts_as_paid(project: Path) -> None:
+    fixer, _, _, llm = _fixer(project, [GOOD], budget="0", model="openai-compatible/llama")
+
+    result = await fixer.run()
+
+    assert result.outcome is FixOutcome.BUDGET_EXHAUSTED
+    assert llm.calls == []
+
+
 async def test_issue118_a_generator_priced_at_zero_in_the_config_is_free(project: Path) -> None:
     local = "openai-compatible/llama"
     free = ModelPrice(input_per_mtok=Decimal(0), output_per_mtok=Decimal(0))
