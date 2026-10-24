@@ -30,13 +30,13 @@ changes and the slices that regressed. A real one, from the [demo](https://githu
 ```markdown
 ### Hecklr · REGRESSION · suite `smoke` · agent `acme-maintenance`
 
-**Pass rate** 100.0% [89.6%, 100.0%] → 72.7% [55.8%, 84.9%]: **−27.3 pts [−42.4, −12.1]** (95% CI), p=0.004 · 33 scenarios, 33 vs 33 trials · δ=3 pts, α=0.05
+**Pass rate** 100.0% [89.6%, 100.0%] → 72.7% [55.8%, 84.9%]: **−27.3 pts [−44.2, −11.2]** (95% CI), p=0.004 · 33 scenarios, 33 vs 33 trials · δ=3 pts, α=0.05
 
 **Flipped pass → fail: 9 scenarios**
 - `state: the visit moved to the slot asked for` (6): `scripted-reschedule-1`, `scripted-reschedule-2`, `scripted-reschedule-3`, `scripted-reschedule-4` +2 more — _the visit moved to the slot asked for: False_
 - `state: the visit is booked at the slot asked for` (3): `scripted-booking-1`, `scripted-booking-2`, `scripted-booking-3` — _the visit is booked at the slot asked for: False_
 
-**Slices regressed** (q < α): `channel=chat` −27.3 pts [−42.4, −12.1], `tag=catches-f1` −100.0 pts [−100.0, −100.0], `tag=scripted` −27.3 pts [−42.4, −12.1]
+**Slices regressed** (q < α): `channel=chat` −27.3 pts [−44.2, −11.2], `tag=catches-f1` −100.0 pts [−100.0, −57.7], `tag=scripted` −27.3 pts [−44.2, −11.2]
 ```
 
 The HTML report of the same gate, with every comparison and its q-value:

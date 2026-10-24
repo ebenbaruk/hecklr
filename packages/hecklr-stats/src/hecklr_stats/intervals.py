@@ -54,6 +54,37 @@ def wilson_estimate(passes: int, trials: int, confidence: float = DEFAULT_CONFID
     )
 
 
+def paired_difference_interval(
+    gained: int, lost: int, pairs: int, confidence: float = DEFAULT_CONFIDENCE
+) -> tuple[float, float]:
+    """Interval for a difference of paired proportions, from its two discordant counts.
+
+    With ``pairs`` paired pass/fail outcomes, the difference is ``(gained - lost) / pairs``, where
+    ``gained`` pairs passed only in the second sample and ``lost`` only in the first. Each
+    discordant share gets its Wilson interval and the two are combined by MOVER ("method of
+    variance estimates recovery"), with the multinomial correlation of the two shares. Unlike a
+    bootstrap, it never collapses to zero width: with no discordant pair the bound is the Wilson
+    bound of ``0 / pairs``.
+    """
+    if pairs < 1 or gained < 0 or lost < 0 or gained + lost > pairs:
+        raise ValueError(f"need 0 <= gained + lost <= pairs, got {gained}, {lost} of {pairs}")
+    gain, loss = gained / pairs, lost / pairs
+    gain_low, gain_high = wilson_interval(gained, pairs, confidence)
+    loss_low, loss_high = wilson_interval(lost, pairs, confidence)
+    corr = 0.0
+    if 0 < gain < 1 and 0 < loss < 1:
+        corr = -math.sqrt(gain * loss / ((1 - gain) * (1 - loss)))
+    point = gain - loss
+    down = _mover_term(gain - gain_low, loss_high - loss, corr)
+    up = _mover_term(gain_high - gain, loss - loss_low, corr)
+    return max(-1.0, point - down), min(1.0, point + up)
+
+
+def _mover_term(first: float, second: float, corr: float) -> float:
+    # Rounding can push the radicand a hair below zero when the two terms nearly cancel.
+    return math.sqrt(max(0.0, first * first + second * second - 2 * corr * first * second))
+
+
 def derive_rng(seed: int, *keys: str) -> np.random.Generator:
     """A generator seeded by ``seed`` and ``keys``, independent of call order.
 

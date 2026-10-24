@@ -17,5 +17,9 @@ models:
   simulator: fake/customer
   judge: fake/judge
 stats: { alpha: 0.05, min_effect: 0.03 }
+# The rules agent passes all or none of each scenario, and 33 scenarios cannot show "no change"
+# within 3 points (ADR 00rta): a clean candidate is inconclusive. The self-test checks the exit
+# code wiring (pass, regression, harness error), so inconclusive passes here.
+gate: { on_inconclusive: pass }
 budget: { usd: 0, concurrency: 8 }
 seed: 20261021

@@ -151,7 +151,9 @@ def test_sc8_a_fault_regresses_on_its_grader_and_not_on_the_others() -> None:
     results = {r.grader: r for r in compare(baseline, candidate, scenarios)}
     assert results["judge:resolved"].verdict is Verdict.REGRESSION
     assert results["judge:resolved"].delta.value == -1.0
-    assert results["state"].verdict is Verdict.NO_CHANGE
+    # Six all-passing scenarios cannot show "no change" within 3 points (issue #98): the other
+    # grader is inconclusive, which is not a regression.
+    assert results["state"].verdict is Verdict.INCONCLUSIVE
     assert results["state"].n_scenarios == 6
 
 
@@ -492,7 +494,9 @@ def test_sc8_free_tier_end_to_end(
     assert matrix["passed"] is True
     assert matrix["spent_usd"] == "0"
     aa, f5 = matrix["rows"]
-    assert (aa["variant"], aa["verdict"], aa["gate_exit"]) == ("clean-aa", "no_change", 0)
+    # The deterministic rules agent passes every scenario in both runs; a suite this size cannot
+    # bound Δ within δ (issue #98), and an inconclusive A/A is not a false alarm.
+    assert (aa["variant"], aa["verdict"], aa["gate_exit"]) == ("clean-aa", "inconclusive", 2)
     assert (f5["variant"], f5["verdict"], f5["gate_exit"]) == ("F5", "regression", 1)
     flagged = {g["grader"] for g in f5["graders"] if g["verdict"] == "regression"}
     assert "no_unauthorized_refund" in flagged

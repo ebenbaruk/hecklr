@@ -4,7 +4,10 @@ Comparisons are paired by scenario (spec, "Comparing baseline and candidate"):
 
 - Δ is the mean over scenarios of (candidate pass rate - baseline pass rate).
 - Its interval is a paired cluster bootstrap: the same resampled scenarios for both runs, then each
-  run's trials resampled within each scenario.
+  run's trials resampled within each scenario. When every scenario of both runs passed all or none
+  of its trials, the bootstrap has no trial-level noise left and would collapse to the point
+  (issue #98); the interval is then a paired-proportion interval on the scenarios
+  (``paired_difference_interval``, ADR 00rta).
 - Its p-value is a two-sided sign-flip permutation test of the per-scenario differences: exact
   enumeration up to ``EXACT_MAX_SCENARIOS`` scenarios, seeded Monte Carlo above.
 - Slices are compared the same way; their p-values are Benjamini-Hochberg adjusted across every
@@ -31,7 +34,13 @@ from hecklr_schemas import (
     Verdict,
     new_id,
 )
-from hecklr_stats.intervals import chunk_sizes, derive_rng, percentile_interval, z_value
+from hecklr_stats.intervals import (
+    chunk_sizes,
+    derive_rng,
+    paired_difference_interval,
+    percentile_interval,
+    z_value,
+)
 from hecklr_stats.outcomes import (
     FloatArray,
     ScenarioCounts,
@@ -112,15 +121,14 @@ def paired_comparison(
     p_value = sign_flip_p_value(differences, rng=rng, resamples=resamples)
     n = baseline.n_scenarios
     run_estimates = [
-        # Each run's own pass rate gets the suite interval's boundary rule (ADR 0005c); Δ keeps
-        # the paired bootstrap the verdicts and their measured error rates are built on.
+        # Each run's own pass rate gets the suite interval's boundary rule (ADR 0005c).
         all_or_nothing_estimate(counts, counts.rates, confidence)
         or _bootstrap_estimate(
             float(np.mean(counts.rates)), reps, n, confidence, IntervalMethod.CLUSTER_BOOTSTRAP
         )
         for counts, reps in ((baseline, base_reps), (candidate, cand_reps))
     ]
-    delta = _bootstrap_estimate(
+    delta = all_or_nothing_delta(baseline, candidate, confidence) or _bootstrap_estimate(
         float(np.mean(differences)),
         delta_reps,
         n,
@@ -135,6 +143,32 @@ def paired_comparison(
         delta_se=float(np.std(delta_reps)),
         n_trials_baseline=int(baseline.trials.sum()),
         n_trials_candidate=int(candidate.trials.sum()),
+    )
+
+
+def all_or_nothing_delta(
+    baseline: ScenarioCounts, candidate: ScenarioCounts, confidence: float
+) -> Estimate | None:
+    """Δ with a paired-proportion interval when every scenario of both runs is all-or-nothing.
+
+    Each scenario is then one pass/fail outcome per run, and Δ is the share of scenarios that
+    only the candidate passed minus the share only the baseline passed (ADR 00rta). ``None``
+    when some scenario of either run is in between, where the paired bootstrap applies.
+    """
+    rates = (baseline.rates, candidate.rates)
+    if not all(np.all((r == 0) | (r == 1)) for r in rates):
+        return None
+    base_pass, cand_pass = (r == 1 for r in rates)
+    gained = int(np.sum(cand_pass & ~base_pass))
+    lost = int(np.sum(base_pass & ~cand_pass))
+    low, high = paired_difference_interval(gained, lost, baseline.n_scenarios, confidence)
+    return Estimate(
+        value=(gained - lost) / baseline.n_scenarios,
+        ci_low=low,
+        ci_high=high,
+        confidence=confidence,
+        n=baseline.n_scenarios,
+        method=IntervalMethod.WILSON,
     )
 
 
