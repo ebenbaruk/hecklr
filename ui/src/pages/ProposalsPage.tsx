@@ -42,7 +42,9 @@ export function ProposalsPage() {
           <>
             Scenarios the miner synthesized from failure clusters. Approved ones are written to{" "}
             <code className="font-mono">{meta.data?.scenarios_dir ?? "scenarios/mined"}</code> and
-            join every suite whose glob matches.
+            join every suite whose glob, tags and channels match them (a new project&apos;s{" "}
+            <code className="font-mono">ci</code> suite runs the <code className="font-mono">mined</code>{" "}
+            tag); approving warns when no suite does.
           </>
         }
       >

@@ -206,8 +206,11 @@ def _health(analysis: Analysis) -> list[str]:
     untrusted = [j for j in analysis.judges if not j.trusted]
     if untrusted:
         lines.append(
-            "**Untrusted judges** (κ < 0.70): "
-            + ", ".join(f"{_code(j.grader)} κ={j.kappa.value:.2f}" for j in untrusted[:4])
+            "**Untrusted judges**: "
+            + ", ".join(
+                f"{_code(j.grader)} κ={j.kappa.value:.2f} ({escape(j.reason or 'kappa < 0.70')})"
+                for j in untrusted[:4]
+            )
         )
     if analysis.problems:
         lines.append("**Cannot gate:** " + "; ".join(escape(p) for p in analysis.problems[:3]))

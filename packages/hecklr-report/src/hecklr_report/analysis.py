@@ -43,6 +43,9 @@ COST_PER_TRIAL = "cost_usd_per_trial"
 _ERROR_CHARS = 200
 """How much of a trial's error a problem quotes."""
 
+_LISTED_SCENARIOS = 5
+"""How many scenario ids a problem names before it says how many more there are."""
+
 _BROKEN_RUN = (RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.PENDING, RunStatus.RUNNING)
 
 
@@ -144,6 +147,33 @@ def _problems(
     shared = {o.scenario_id for o in cand.outcomes} & {o.scenario_id for o in base.outcomes}
     if cand.outcomes and base.outcomes and not shared:
         problems.append("the candidate and baseline runs share no analyzable scenario")
+    if cand.outcomes and base.outcomes:
+        problems.extend(_lost_scenarios(cand, base))
+    return problems
+
+
+def _lost_scenarios(cand: ConvertedRun, base: ConvertedRun) -> list[str]:
+    """Scenarios both runs ran that a run has no analyzable trial of (issue #99, ADR 00rtb).
+
+    Pairing keeps only the scenarios both runs analyzed, so a scenario whose every trial was
+    excluded (harness error or undecided) in one run would silently leave the comparison: a
+    candidate that breaks scenarios in a way that makes their judges error, or the harness fail,
+    would be gated on the scenarios it did not break.
+    """
+    ran = {r.scenario_id for r in cand.rows} & {r.scenario_id for r in base.rows}
+    problems = []
+    for name, run in (("candidate", cand), ("baseline", base)):
+        analyzed = {o.scenario_id for o in run.outcomes}
+        lost = sorted(ran - analyzed)
+        if not lost:
+            continue
+        listed = ", ".join(lost[:_LISTED_SCENARIOS])
+        more = f" and {len(lost) - _LISTED_SCENARIOS} more" if len(lost) > _LISTED_SCENARIOS else ""
+        problems.append(
+            f"{len(lost)} of {len(ran)} scenarios both runs ran have no analyzable trial in the "
+            f"{name} (every trial a harness error or undecided), so they cannot be compared: "
+            f"{listed}{more}"
+        )
     return problems
 
 
@@ -321,4 +351,5 @@ def _trust(calibration: JudgeCalibration) -> JudgeTrust:
         n=calibration.n,
         kappa=calibration.kappa,
         trusted=calibration.trusted,
+        reason=calibration.untrusted_reason,
     )

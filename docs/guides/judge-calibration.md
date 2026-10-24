@@ -3,7 +3,9 @@
 An LLM judge is only useful if it agrees with the people whose standards it stands in for. Hecklr
 measures that agreement as **Cohen's κ** between the judge's verdicts and human labels, with a
 bootstrap interval, plus the judge's precision and recall at catching failures. A rubric whose κ
-is below 0.70 is marked **untrusted** in reports. The release criterion SC7 asks for κ ≥ 0.70 on
+is below 0.70, or that has fewer than 10 human labels of either class (pass and fail), is marked
+**untrusted** in reports: κ says nothing about a class nobody labeled, and a judge that always
+answers "pass" scores κ = 1.00 on all-pass labels. The release criterion SC7 asks for κ ≥ 0.70 on
 every built-in rubric.
 
 There are two ways to get the labels:

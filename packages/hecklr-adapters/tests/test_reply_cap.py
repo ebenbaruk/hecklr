@@ -118,3 +118,58 @@ def test_issue34_the_default_cap_is_256_kib_and_must_be_positive() -> None:
     assert DEFAULT_MAX_REPLY_BYTES == 262_144
     with pytest.raises(ValueError, match="max_bytes must be >= 1"):
         cap_reply_size(ScriptedTarget(ScriptedSession([])), 0)
+
+
+@pytest.mark.anyio
+async def test_issue112_a_lone_surrogate_fails_the_turn_as_the_agents() -> None:
+    # json.loads('"Sure \\ud83d"') gives this: an emoji escape cut in half.
+    session = ScriptedSession([AgentChunk(text="Sure, "), AgentChunk(text="Saturday \ud83d ok")])
+    capped = await cap_reply_size(ScriptedTarget(session)).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert [chunk.text for chunk in received] == ["Sure, ", "Saturday "]
+    assert error is not None
+    assert "not valid Unicode (an unpaired surrogate) '\\ud83d'" in str(error)
+    assert session.streams_closed == 1
+
+
+@pytest.mark.anyio
+async def test_issue112_a_lone_surrogate_in_a_tool_call_fails_the_turn() -> None:
+    call = ToolCallPayload(call_id="c1", tool="book", args={"note": "\udc00"})
+    session = ScriptedSession([AgentChunk(tool_call=call)])
+    capped = await cap_reply_size(ScriptedTarget(session)).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert received == []
+    assert error is not None
+    assert "not valid Unicode" in str(error)
+
+
+@pytest.mark.anyio
+async def test_issue112_a_flood_ending_in_a_lone_surrogate_is_still_capped() -> None:
+    # An HTTP agent sends its whole reply as one chunk: the surrogate must not let it past #34.
+    session = ScriptedSession([AgentChunk(text="a" * 1_000_000 + "\ud83d")])
+    capped = await cap_reply_size(ScriptedTarget(session), 1000).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert [chunk.text for chunk in received] == ["a" * 1000]
+    assert error is not None
+    assert "agent reply over 1000 bytes" in str(error)
+    assert session.streams_closed == 1
+
+
+@pytest.mark.anyio
+async def test_issue112_a_surrogate_after_an_earlier_chunk_counts_that_chunk_against_the_cap() -> (
+    None
+):
+    session = ScriptedSession([AgentChunk(text="abc"), AgentChunk(text="defg\udc00")])
+    capped = await cap_reply_size(ScriptedTarget(session), 5).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert [chunk.text for chunk in received] == ["abc", "de"]
+    assert error is not None
+    assert "agent reply over 5 bytes" in str(error)

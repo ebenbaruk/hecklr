@@ -10,10 +10,13 @@ scenarios a cluster usually has (ADR 0005b: not with 5 or fewer).
 
 - Targeted pass: keep the candidate when the whole-set verdict is ``improvement``.
 - Guard pass: drop it when the whole suite or any tag has a ``regression`` verdict. Slices are
-  tags only, so the Benjamini-Hochberg family is exactly "any tag" (spec, "Fixer").
+  tags only, so the Benjamini-Hochberg family is exactly "any tag" (spec, "Fixer"). A cell the
+  baseline graded but the candidate left without a verdict (harness error, or a judge that
+  errored) counts as a failed cell of the candidate: otherwise a patch that breaks scenarios in a
+  way that makes their judges error would leave the comparison and pass the guard (issue #99).
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from hecklr_core import RunResults
@@ -32,17 +35,29 @@ class SuiteRun:
     personas: Mapping[str, Persona]
 
 
-def cell_outcomes(run: SuiteRun) -> list[TrialOutcome]:
-    """One outcome per analyzed trial, keyed by its cell and sliced by its scenario's tags."""
+def cell_outcomes(
+    run: SuiteRun, *, failed_if_excluded: Collection[str] = frozenset()
+) -> list[TrialOutcome]:
+    """One outcome per analyzed trial, keyed by its cell and sliced by its scenario's tags.
+
+    Args:
+        run: The run.
+        failed_if_excluded: Cells that count as failed when they have no verdict; every other
+            harness error and undecided trial is excluded, as everywhere.
+    """
     outcomes = []
     for row in convert(run.results, run.scenarios, run.personas).rows:
-        if row.passed is None:
-            continue  # harness errors and undecided trials are excluded, as everywhere
+        cell = f"{row.scenario_id}|{row.persona_id}|{row.channel.value}|{row.index}"
+        passed = row.passed
+        if passed is None:
+            if cell not in failed_if_excluded:
+                continue
+            passed = False
         scenario = run.scenarios.get(row.scenario_id)
         outcomes.append(
             TrialOutcome(
-                scenario_id=f"{row.scenario_id}|{row.persona_id}|{row.channel.value}|{row.index}",
-                passed=row.passed,
+                scenario_id=cell,
+                passed=passed,
                 tags=frozenset(scenario.tags) if scenario is not None else frozenset(),
             )
         )
@@ -50,17 +65,27 @@ def cell_outcomes(run: SuiteRun) -> list[TrialOutcome]:
 
 
 def compare_cells(
-    baseline: SuiteRun, candidate: SuiteRun, *, stats: StatsConfig, seed: int
+    baseline: SuiteRun,
+    candidate: SuiteRun,
+    *,
+    stats: StatsConfig,
+    seed: int,
+    guard: bool = False,
 ) -> list[Comparison]:
     """Paired cell-level comparisons: the whole set first, then one per tag.
+
+    With ``guard``, a candidate cell without a verdict whose baseline cell has one counts as a
+    failure (see the module docstring).
 
     Raises:
         FixError: the runs share no analyzed cell (e.g. every trial was a harness error).
     """
+    before = cell_outcomes(baseline)
+    graded = {outcome.scenario_id for outcome in before} if guard else frozenset()
     try:
         return compare_runs(
-            cell_outcomes(baseline),
-            cell_outcomes(candidate),
+            before,
+            cell_outcomes(candidate, failed_if_excluded=graded),
             baseline_run=baseline.results.run.id,
             candidate_run=candidate.results.run.id,
             config=stats,

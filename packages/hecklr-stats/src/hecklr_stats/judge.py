@@ -28,6 +28,13 @@ from hecklr_stats.outcomes import FloatArray
 KAPPA_TRUST_THRESHOLD = 0.70
 """Rubrics whose judge agrees with humans less than this are marked untrusted (SC7)."""
 
+MIN_LABELS_PER_CLASS = 10
+"""Human labels of each class (pass and fail) a rubric needs before it can be trusted.
+
+κ measures agreement beyond chance; on labels of one class it is 0/0, and on a handful it is
+mostly noise. A rubber-stamp judge that always says "pass" scored κ = 1.00 [1.00, 1.00] on any
+number of all-pass labels (issue #100, ADR 00rtc)."""
+
 BoolArray = npt.NDArray[np.bool_]
 _ItemKey = tuple[str, str]
 """(trial id, labeler): one human judgment of one trial."""
@@ -42,6 +49,8 @@ class JudgeCalibration:
         grader_version: Rubric version the labels pin.
         judge_model: Model that produced the grades, if any.
         n: Labeled judgments compared.
+        human_passes: Of those, the ones humans passed.
+        human_fails: Of those, the ones humans failed.
         kappa: Cohen's kappa with a bootstrap interval.
         precision: Of trials the judge failed, the share humans also failed; ``None`` if the judge
             failed none.
@@ -52,14 +61,28 @@ class JudgeCalibration:
     grader_version: str
     judge_model: str | None
     n: int
+    human_passes: int
+    human_fails: int
     kappa: Estimate
     precision: Estimate | None
     recall: Estimate | None
 
     @property
+    def untrusted_reason(self) -> str | None:
+        """Why the rubric is untrusted, or ``None`` when it is trusted."""
+        if min(self.human_passes, self.human_fails) < MIN_LABELS_PER_CLASS:
+            return (
+                f"needs {MIN_LABELS_PER_CLASS}+ human labels of each class, has "
+                f"{self.human_passes} pass and {self.human_fails} fail"
+            )
+        if self.kappa.value < KAPPA_TRUST_THRESHOLD:
+            return f"kappa < {KAPPA_TRUST_THRESHOLD:.2f}"
+        return None
+
+    @property
     def trusted(self) -> bool:
-        """Whether agreement reaches ``KAPPA_TRUST_THRESHOLD``."""
-        return self.kappa.value >= KAPPA_TRUST_THRESHOLD
+        """Enough labels of both classes, and agreement reaches ``KAPPA_TRUST_THRESHOLD``."""
+        return self.untrusted_reason is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +110,9 @@ def cohen_kappa(judge: npt.ArrayLike, human: npt.ArrayLike) -> float:
     """Cohen's kappa of two pass/fail raters.
 
     When both raters give one identical label to everything, chance agreement is 1 and kappa is
-    0/0; it is defined as 1 there, since the raters never disagree.
+    0/0; it is defined as 1 there, since the raters never disagree. Such a value says nothing
+    about the judge, which is why trust also needs labels of both classes
+    (``MIN_LABELS_PER_CLASS``).
     """
     return float(
         _kappa(np.asarray(judge, dtype=bool)[None, :], np.asarray(human, dtype=bool)[None, :])[0]
@@ -239,6 +264,8 @@ def _calibration(
         grader_version=version,
         judge_model=model,
         n=int(judge.size),
+        human_passes=int(human.sum()),
+        human_fails=int(human_fails.sum()),
         kappa=kappa_estimate(judge, human, seed=seed, resamples=resamples, confidence=confidence),
         precision=_share(both, int(judge_fails.sum()), confidence),
         recall=_share(both, int(human_fails.sum()), confidence),

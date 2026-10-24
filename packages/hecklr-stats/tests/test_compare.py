@@ -18,6 +18,7 @@ from hecklr_stats.compare import (
     sign_flip_p_value,
     trials_needed,
 )
+from hecklr_stats.intervals import paired_difference_interval
 from hecklr_stats.outcomes import ScenarioCounts, TrialOutcome
 
 BASE = RunId(new_id())
@@ -279,7 +280,9 @@ def test_us04_compare_runs_flags_a_clear_regression() -> None:
 
 
 def test_compare_runs_on_identical_runs_is_no_change() -> None:
-    outcomes = _outcomes([1.0, 0.0, 1.0, 1.0] * 10, 5)
+    # All-or-nothing scenarios: "no change" needs enough scenarios to bound the share that could
+    # differ by δ (issue #98); 400 identical ones do, 40 do not (see the issue98 tests below).
+    outcomes = _outcomes([1.0, 0.0, 1.0, 1.0] * 100, 5)
     (suite,) = compare_runs(
         outcomes, outcomes, baseline_run=BASE, candidate_run=CAND, config=FAST, seed=0
     )
@@ -333,7 +336,8 @@ def test_compare_runs_slices_with_benjamini_hochberg() -> None:
     ]
     assert by_slice[(("channel", "voice"),)].verdict is Verdict.REGRESSION
     assert by_slice[(("tag", "noisy"),)].verdict is Verdict.REGRESSION
-    assert by_slice[(("channel", "chat"),)].verdict is Verdict.NO_CHANGE
+    # 20 scenarios that passed every trial in both runs cannot bound Δ within δ (issue #98).
+    assert by_slice[(("channel", "chat"),)].verdict is Verdict.INCONCLUSIVE
     assert by_slice[()].delta.value == pytest.approx(-0.2)
     slice_p = [c.p_value for c in comparisons[1:]]
     slice_q = [c.q_value for c in comparisons[1:]]
@@ -488,3 +492,66 @@ def test_each_run_pass_rate_in_a_comparison_avoids_the_collapsed_interval() -> N
     assert result.baseline.ci_low == pytest.approx(0.5655, abs=1e-4)
     assert result.candidate.method is IntervalMethod.CLUSTER_BOOTSTRAP
     assert result.delta.method is IntervalMethod.PAIRED_CLUSTER_BOOTSTRAP
+
+
+# --- issue #98: Δ interval when every scenario is all-or-nothing ---------------------------
+
+
+@pytest.mark.parametrize(("scenarios", "trials"), [(1, 1), (3, 1), (5, 3), (40, 5)])
+def test_issue98_all_pass_runs_are_not_no_change_from_little_evidence(
+    scenarios: int, trials: int
+) -> None:
+    outcomes = _outcomes([1.0] * scenarios, trials)
+    (suite,) = compare_runs(
+        outcomes, outcomes, baseline_run=BASE, candidate_run=CAND, config=FAST, seed=0
+    )
+    assert suite.verdict is Verdict.INCONCLUSIVE
+    assert suite.delta.method is IntervalMethod.WILSON
+    assert suite.delta.ci_low < -FAST.min_effect < FAST.min_effect < suite.delta.ci_high
+
+
+def test_issue98_all_or_nothing_delta_counts_discordant_scenarios() -> None:
+    baseline = ScenarioCounts.from_arrays([1] * 10, [1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
+    candidate = ScenarioCounts.from_arrays([1] * 10, [1, 1, 1, 1, 0, 0, 0, 0, 0, 1])
+    result = paired_comparison(
+        baseline, candidate, rng=np.random.default_rng(0), resamples=500, confidence=0.95
+    )
+    low, high = paired_difference_interval(1, 3, 10)
+    assert result.delta.value == pytest.approx(-0.2)
+    assert (result.delta.ci_low, result.delta.ci_high) == (low, high)
+    assert result.delta.n == 10
+
+
+def test_issue98_false_no_change_rate_on_all_or_nothing_suites() -> None:
+    # The issue's table: a deterministic all-pass baseline against a candidate whose true Δ is
+    # beyond δ. "No change" there is a wrong verdict that passes the gate; it was 0.35 at 10 x 1.
+    rng = np.random.default_rng(98)
+    replicates = 200
+    config = StatsConfig(bootstrap_resamples=1_000)
+    for scenarios, trials, pass_rate in [(10, 1, 0.9), (33, 1, 0.95), (10, 3, 0.9), (20, 3, 0.96)]:
+        baseline = _outcomes([1.0] * scenarios, trials)
+        wrong = 0
+        for seed in range(replicates):
+            candidate = [
+                TrialOutcome(scenario_id=f"s{s:02d}", passed=bool(rng.random() < pass_rate))
+                for s in range(scenarios)
+                for _ in range(trials)
+            ]
+            (suite,) = compare_runs(
+                baseline, candidate, baseline_run=BASE, candidate_run=CAND, config=config, seed=seed
+            )
+            wrong += suite.verdict is Verdict.NO_CHANGE
+        assert wrong / replicates <= 0.05, (scenarios, trials, pass_rate, wrong)
+
+
+def test_issue98_all_or_nothing_inconclusive_asks_for_scenarios_not_trials() -> None:
+    # A deterministic agent repeats itself: more trials per scenario add no information, and the
+    # scenario-level interval narrows only with more scenarios.
+    baseline = _outcomes([1.0] * 33, 3)
+    candidate = _outcomes([1.0] * 31 + [0.0] * 2, 3)
+    (suite,) = compare_runs(
+        baseline, candidate, baseline_run=BASE, candidate_run=CAND, config=FAST, seed=0
+    )
+    assert suite.verdict is Verdict.INCONCLUSIVE
+    assert suite.delta.method is IntervalMethod.WILSON
+    assert suite.trials_needed is None

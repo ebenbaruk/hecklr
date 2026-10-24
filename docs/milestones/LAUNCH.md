@@ -135,7 +135,7 @@ Benjamini-Hochberg across slices, and fails a PR only on a significant regressio
 minimum effect you choose. The A/A false-alarm rate is a test in CI.
 
 In the demo GIF, one line of a support agent's prompt changes ("book the first free slot") and the
-gate reports −27.3 points [−42.4, −12.1], p = 0.004, with the 9 scenarios that flipped grouped by
+gate reports −27.3 points [−44.2, −11.2], p = 0.004, with the 9 scenarios that flipped grouped by
 cause. Agents' tools run against a per-trial sandbox (MCP and HTTP), so "the visit moved to the
 slot the customer asked for" is checked against state, not inferred from text.
 
@@ -159,7 +159,7 @@ your CI.
 loopback agent with known timing, worst error 13 ms over 840 measurements. That check runs in CI.
 
 4/ Change one line of a prompt ("book the first free slot") and the PR check says: −27.3 points
-[−42.4, −12.1], p = 0.004, 9 scenarios flipped, grouped by cause. A regression, with an interval,
+[−44.2, −11.2], p = 0.004, 9 scenarios flipped, grouped by cause. A regression, with an interval,
 not a vibe.
 
 5/ Seeded faults, each caught: +700 ms before speaking (p50 710 → 1,417 ms), barge-in off (91 ms
@@ -184,7 +184,7 @@ calls your agent with simulated customers over voice, chat and email (noisy line
 manipulative callers), grades every conversation against a sandboxed backend, and gates pull
 requests only when a regression is statistically significant.
 
-A one-line prompt change in the demo: pass rate −27.3 points [−42.4, −12.1], p = 0.004, nine
+A one-line prompt change in the demo: pass rate −27.3 points [−44.2, −11.2], p = 0.004, nine
 scenarios flipped, and one click to the judge's explanation of each failure.
 
 Open source under Apache-2.0. The 90-second video is below; feedback from people running voice or

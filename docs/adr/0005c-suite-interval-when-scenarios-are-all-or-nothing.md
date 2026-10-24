@@ -40,5 +40,7 @@ at S = 5 all passing it gives [56.6%, 100%], at S = 33 [89.6%, 100%].
 - The rule is discontinuous: one scenario at 2/3 switches back to the bootstrap. That case has
   real within-scenario variance for the bootstrap to see, and both intervals are valid there.
 - A comparison reports each run's own pass rate by the same rule (`all_or_nothing_estimate`).
-  Δ, p-values and verdicts are unchanged; an all-pass baseline and candidate already
-  yield "no change" through the paired bootstrap's zero-width Δ interval inside [−δ, +δ].
+  ~~Δ, p-values and verdicts are unchanged; an all-pass baseline and candidate already
+  yield "no change" through the paired bootstrap's zero-width Δ interval inside [−δ, +δ].~~
+  Superseded by ADR 00rta (issue #98): that zero-width Δ interval was a false NO CHANGE; Δ now
+  gets its own boundary rule.

@@ -40,9 +40,15 @@ async def check_status(response: httpx2.Response) -> None:
 
 
 def parse_json(text: str) -> JsonValue:
-    """Decode an agent's JSON; malformed JSON is the agent's fault."""
+    """Decode an agent's JSON; malformed JSON is the agent's fault.
+
+    Besides syntax errors (``JSONDecodeError``, a ``ValueError``), ``json.loads`` raises
+    ``ValueError`` for an integer past Python's digit limit and ``RecursionError`` for nesting
+    deeper than the recursion limit: both are what the agent sent, not a harness failure
+    (issue #112).
+    """
     try:
         value: JsonValue = json.loads(text)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         raise AgentError(f"agent sent invalid JSON ({exc}): {text[:_ERROR_BODY_CHARS]}") from exc
     return value

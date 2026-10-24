@@ -74,3 +74,40 @@ def test_runs_with_nothing_in_common_cannot_be_compared() -> None:
 
     with pytest.raises(FixError, match="cannot compare"):
         compare_cells(harness_errors, ok, stats=FAST_STATS, seed=1)
+
+
+def test_issue99_guard_counts_cells_the_patch_left_without_a_verdict_as_failures() -> None:
+    scenarios = [scenario(f"book-{i}", ["booking"]) for i in range(4)] + [
+        scenario(f"refund-{i}", ["refunds"]) for i in range(3)
+    ]
+    before: dict[str, list[bool | None]] = {name.id: [True] * 3 for name in scenarios}
+    # The patch makes every refund conversation ungradeable (None: no verdict).
+    after: dict[str, list[bool | None]] = {
+        **before,
+        **{f"refund-{i}": [None] * 3 for i in range(3)},
+    }
+    baseline = suite_run(make_run(before), scenarios)
+    candidate = suite_run(make_run(after), scenarios)
+
+    targeted = compare_cells(baseline, candidate, stats=FAST_STATS, seed=1)
+    guard = compare_cells(baseline, candidate, stats=FAST_STATS, seed=1, guard=True)
+
+    assert not regressions(targeted)  # the lost cells simply leave a plain comparison
+    assert [c.slice for c in regressions(guard)] == [{}, {"tag": "refunds"}]
+    assert guard[0].n_scenarios == 21
+
+
+def test_issue99_guard_still_excludes_cells_the_baseline_could_not_grade() -> None:
+    before: dict[str, list[bool | None]] = {"book-a": [None, True], "book-b": [True, True]}
+    after = dict(before)
+
+    (suite, *_) = compare_cells(
+        suite_run(make_run(before), BOOK),
+        suite_run(make_run(after), BOOK),
+        stats=FAST_STATS,
+        seed=1,
+        guard=True,
+    )
+
+    assert suite.n_scenarios == 3
+    assert suite.verdict is not Verdict.REGRESSION

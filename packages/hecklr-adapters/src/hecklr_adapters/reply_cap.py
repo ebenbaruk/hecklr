@@ -4,6 +4,11 @@ An agent that floods (a streaming loop, a model that never stops, a debug dump i
 would otherwise fill the result store and the HTML report: 20 MB replies made a 33-trial run
 write 2.9 GB (issue #34). Past the cap the head of the reply is kept, so the transcript shows
 what the agent sent, and the turn fails as an ``AgentError``.
+
+The same wrapper refuses text that cannot be stored: a lone UTF-16 surrogate (what
+``json.loads`` makes of an emoji escape cut in half) has no UTF-8 form, so it would fail later,
+inside the harness, and the agent's fault would be retried and excluded as a harness error
+(issue #112). The valid head is kept and the turn fails as an ``AgentError`` instead.
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -47,7 +52,16 @@ class _CappedSession:
         stream = self._inner.send(text)
         try:
             async for chunk in stream:
-                data = chunk.text.encode("utf-8")
+                unencodable: UnicodeEncodeError | None = None
+                try:
+                    data = chunk.text.encode("utf-8")
+                except UnicodeEncodeError as exc:
+                    # Only the valid head is kept, and it still has to fit the cap (issue #34):
+                    # a flood ending in a lone surrogate must not be stored whole.
+                    unencodable = exc
+                    data = chunk.text[: exc.start].encode("utf-8")
+                else:
+                    _check_storable(chunk)
                 if len(data) > left:
                     # Cut on a character boundary so the kept head is valid text.
                     head = data[:left].decode("utf-8", errors="ignore")
@@ -57,6 +71,11 @@ class _CappedSession:
                         f"agent reply over {self._max_bytes} bytes; the transcript keeps the "
                         "first ones (raise it with --max-reply-bytes)"
                     )
+                if unencodable is not None:
+                    if data:
+                        yield AgentChunk(text=data.decode("utf-8"))
+                    bad = chunk.text[unencodable.start]
+                    raise AgentError(_not_unicode(f"{bad!r} in its reply")) from unencodable
                 left -= len(data)
                 yield chunk
         finally:
@@ -66,3 +85,17 @@ class _CappedSession:
 
     async def close(self) -> SessionSummary:
         return await self._inner.close()
+
+
+def _check_storable(chunk: AgentChunk) -> None:
+    """Fail the turn when a tool call, tool result or handoff holds text with no UTF-8 form."""
+    if chunk.tool_call is None and chunk.tool_result is None and chunk.handoff is None:
+        return
+    try:
+        chunk.model_dump_json()
+    except ValueError as exc:  # pydantic's serialization error wraps the UnicodeEncodeError
+        raise AgentError(_not_unicode(f"in a tool call, tool result or handoff ({exc})")) from exc
+
+
+def _not_unicode(where: str) -> str:
+    return f"agent sent text that is not valid Unicode (an unpaired surrogate) {where}"

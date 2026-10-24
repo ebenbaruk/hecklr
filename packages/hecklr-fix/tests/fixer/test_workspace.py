@@ -83,6 +83,36 @@ def test_guardrail_a_symlinked_editable_file_is_replaced_not_written_through(
     assert (workspace.root / "prompts" / "system.md").read_text() == "patched\n"
 
 
+@pytest.mark.parametrize("absolute", [True, False])
+def test_issue113_a_symlinked_directory_is_copied_not_written_through(
+    project: Path, tmp_path: Path, absolute: bool
+) -> None:
+    # The red team's layout: prompts/ is a link to a real directory of the user's project
+    # (absolute), or to one outside it (relative); both used to receive the candidate's text.
+    root = project.parent
+    real = root / "agent_prompts" if absolute else tmp_path / "shared_prompts"
+    (root / "prompts").rename(real)
+    original = (real / "system.md").read_text()
+    link = real.resolve() if absolute else Path("..") / "shared_prompts"
+    (root / "prompts").symlink_to(link, target_is_directory=True)
+
+    workspace = prepare_workspace(
+        config_path=project,
+        dest=tmp_path / "copy",
+        files={"prompts/system.md": "patched\n"},
+        port=1,
+        target=TARGET,
+        targeted_trials=1,
+    )
+
+    assert (real / "system.md").read_text() == original
+    copied = workspace.root / "prompts"
+    assert copied.is_dir()
+    assert not copied.is_symlink()
+    assert (copied / "system.md").read_text() == "patched\n"
+    assert {p.name for p in copied.iterdir()} == {p.name for p in real.iterdir()}
+
+
 @pytest.mark.parametrize(
     ("url", "expected"),
     [

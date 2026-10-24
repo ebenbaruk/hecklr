@@ -276,7 +276,8 @@ class PipecatAudioLink:
             self._agent = track
 
     def _on_message(self, message: str | bytes) -> None:
-        with contextlib.suppress(ValueError):  # app messages that are not JSON carry nothing
+        # App messages that are not JSON (or nest past the recursion limit) carry nothing.
+        with contextlib.suppress(ValueError, RecursionError):
             data = json.loads(message)
             if isinstance(data, dict) and data.get("type") == "signalling":
                 signal = data.get("message")

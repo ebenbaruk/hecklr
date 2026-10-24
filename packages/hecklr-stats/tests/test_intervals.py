@@ -8,6 +8,7 @@ from hecklr_schemas import IntervalMethod
 from hecklr_stats.intervals import (
     chunk_sizes,
     derive_rng,
+    paired_difference_interval,
     quantile_estimates,
     wilson_estimate,
     wilson_interval,
@@ -157,3 +158,55 @@ def test_quantile_of_extremes_are_min_and_max() -> None:
     assert (low.value, high.value) == (1.0, 5.0)
     assert low.ci_low >= 1.0
     assert high.ci_high <= 5.0
+
+
+# --- paired difference of proportions (issue #98) ----------------------------------------
+
+
+def test_issue98_paired_interval_without_discordant_pairs_is_the_wilson_bound() -> None:
+    for pairs in (1, 3, 40, 400):
+        bound = wilson_interval(0, pairs)[1]
+        low, high = paired_difference_interval(0, 0, pairs)
+        assert (low, high) == pytest.approx((-bound, bound))
+
+
+@given(
+    st.integers(min_value=1, max_value=200).flatmap(
+        lambda n: st.tuples(
+            st.just(n),
+            st.integers(0, n).flatmap(lambda g: st.tuples(st.just(g), st.integers(0, n - g))),
+        )
+    )
+)
+def test_issue98_paired_interval_contains_the_difference_and_is_antisymmetric(
+    case: tuple[int, tuple[int, int]],
+) -> None:
+    pairs, (gained, lost) = case
+    low, high = paired_difference_interval(gained, lost, pairs)
+    assert -1.0 <= low <= (gained - lost) / pairs <= high <= 1.0
+    assert low < high
+    assert paired_difference_interval(lost, gained, pairs) == pytest.approx((-high, -low))
+
+
+@pytest.mark.parametrize("pairs", [10, 40, 150])
+@pytest.mark.parametrize(
+    "cells", [(0.8, 0.05, 0.05, 0.1), (0.9, 0.0, 0.1, 0.0), (0.6, 0.2, 0.0, 0.2), (1, 0, 0, 0)]
+)
+def test_issue98_paired_interval_covers_at_nominal_rate(
+    pairs: int, cells: tuple[float, float, float, float]
+) -> None:
+    rng = np.random.default_rng(pairs)
+    true = cells[1] - cells[2]
+    draws = rng.multinomial(pairs, cells, size=2_000)
+    covered = 0
+    for _, gained, lost, _ in draws:
+        low, high = paired_difference_interval(int(gained), int(lost), pairs)
+        covered += low - 1e-12 <= true <= high + 1e-12
+    assert covered / len(draws) >= 0.94
+
+
+def test_issue98_paired_interval_rejects_impossible_counts() -> None:
+    with pytest.raises(ValueError, match="pairs"):
+        paired_difference_interval(3, 2, 4)
+    with pytest.raises(ValueError, match="pairs"):
+        paired_difference_interval(0, 0, 0)

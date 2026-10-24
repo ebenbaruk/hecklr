@@ -242,7 +242,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
   <h2>Judge agreement with human labels</h2>
   <div class="scroll"><table>
     <thead><tr><th>Rubric</th><th>Version</th><th>Model</th><th>n</th><th>κ (95% CI)</th><th>Trust</th></tr></thead>
-    <tbody>{% for j in a.judges %}<tr><td><code>{{ j.grader }}</code></td><td><code>{{ j.grader_version }}</code></td><td>{{ j.judge_model or "—" }}</td><td class="num">{{ j.n }}</td><td class="num">{{ fmt.estimate(j.kappa, "number") }}</td><td class="{{ 'good' if j.trusted else 'bad' }}">{{ "trusted" if j.trusted else "untrusted (κ < 0.70)" }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for j in a.judges %}<tr><td><code>{{ j.grader }}</code></td><td><code>{{ j.grader_version }}</code></td><td>{{ j.judge_model or "—" }}</td><td class="num">{{ j.n }}</td><td class="num">{{ fmt.estimate(j.kappa, "number") }}</td><td class="{{ 'good' if j.trusted else 'bad' }}">{{ "trusted" if j.trusted else "untrusted (" ~ (j.reason or "kappa < 0.70") ~ ")" }}</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% endif %}

@@ -18,22 +18,25 @@ The edit (`prompts/system.md`, line 11; the same change as seeded fault F1):
 
 | | Run | Pass rate (95% CI) |
 | --- | --- | --- |
-| Baseline (clean) | `01M5K49XTKVANH66JQFM5TCA73` | 100.0% [89.6%, 100.0%] |
-| Candidate (edited) | `01M5K4A6Y4FRWVW2YZ2Y54PWQG` | 72.7% [55.8%, 84.9%] |
+| Baseline (clean) | `01M5NT6RTJ24RY5BRRJQ9MAB6P` | 100.0% [89.6%, 100.0%] |
+| Candidate (edited) | `01M5NT70A16VP71QS19HQHKBR5` | 72.7% [55.8%, 84.9%] |
 
 `hecklr gate --suite smoke` → **REGRESSION, exit 1**:
 
 ```text
-Pass rate 100.0% [89.6%, 100.0%] → 72.7% [55.8%, 84.9%]: −27.3 pts [−42.4, −12.1] (95% CI), p=0.004
+Pass rate 100.0% [89.6%, 100.0%] → 72.7% [55.8%, 84.9%]: −27.3 pts [−44.2, −11.2] (95% CI), p=0.004
 · 33 scenarios, 33 vs 33 trials · δ=3 pts, α=0.05
 Flipped pass → fail: 9 scenarios
 - state: the visit moved to the slot asked for (6): scripted-reschedule-1 ... -6
 - state: the visit is booked at the slot asked for (3): scripted-booking-1 ... -3
-Slices regressed (q < α): channel=chat −27.3 pts [−42.4, −12.1], tag=catches-f1 −100.0 pts
+Slices regressed (q < α): channel=chat −27.3 pts [−44.2, −11.2], tag=catches-f1 −100.0 pts
 ```
 
 The rules brain is deterministic, so every re-run gives the same verdict, Δ, interval and flips
-(the run ids and latencies change). Latency p95 moved by a few ms either way, "inconclusive".
+(the run ids and latencies change). Re-run on 2026-10-24 after ADR 00rta changed Δ's interval for
+all-or-nothing suites (issue #98): the verdict, Δ and flips are the same, the intervals are the
+new ones (they were [−42.4, −12.1] and, for `tag=catches-f1`, a zero-width [−100.0, −100.0]).
+Latency p95 moved by a few ms either way, "inconclusive".
 
 ### With real judges
 

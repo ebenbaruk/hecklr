@@ -18,7 +18,9 @@ async def _mined(client: httpx2.AsyncClient, lab: Lab) -> Mined:
     return write_mine(lab, failed)
 
 
-CI_SUITE = 'ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }'
+CI_SUITE = (
+    'ci: { scenarios: "scenarios/**/*.yaml", tags: [core, mined], trials: 3, channels: [chat] }'
+)
 
 
 def _set_suites(lab: Lab, *suites: str) -> None:
@@ -315,8 +317,8 @@ async def test_us08_approval_warns_when_no_suite_runs_the_written_scenario(lab: 
 
     assert response.status_code == 200, response.text
     assert response.json()["warnings"] == [
-        "no suite runs scenarios/mined/mined-double-address.yaml (suite scenario globs: "
-        "ci: scenarios/*.yaml); add it to a suite's glob in hecklr.yaml"
+        "no suite runs scenarios/mined/mined-double-address.yaml (ci has the glob "
+        "scenarios/*.yaml); add it to a suite in hecklr.yaml"
     ]
     assert (lab.root / "scenarios" / "mined" / "mined-double-address.yaml").is_file()
 
@@ -330,3 +332,57 @@ async def test_approval_into_a_suite_has_no_warning(client: httpx2.AsyncClient, 
     )
 
     assert response.json()["warnings"] == []
+
+
+async def _approve_as_mined(client: httpx2.AsyncClient, lab: Lab) -> dict[str, object]:
+    """Approve the first proposal tagged as the miner tags it: ``mined`` and its own tags."""
+    mined = await _mined(client, lab)
+    text = (await client.get("/api/proposals")).json()[0]["yaml"]
+    assert "- core\n- mined\n" in text
+    response = await client.post(
+        f"/api/proposals/{mined.proposals[0].id}/decision",
+        json={
+            "decision": "approve",
+            "reviewer": USER,
+            "yaml": text.replace("- core\n- mined\n", "- mined\n- scheduling\n"),
+        },
+    )
+    assert response.status_code == 200, response.text
+    result: dict[str, object] = response.json()
+    return result
+
+
+async def test_issue105_an_approved_mined_scenario_runs_in_the_init_projects_ci_suite(
+    client: httpx2.AsyncClient, lab: Lab
+) -> None:
+    result = await _approve_as_mined(client, lab)
+
+    assert result["warnings"] == []
+    suite = resolve_suite(load_run_project(lab.config), "ci")
+    assert "mined-double-address" in suite.scenarios
+
+
+@pytest.mark.parametrize(
+    ("suite", "why"),
+    [
+        (
+            'ci: { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3 }',
+            "ci runs only tags [core], the scenario has [mined, scheduling]",
+        ),
+        (
+            'ci: { scenarios: "scenarios/**/*.yaml", trials: 3, channels: [voice] }',
+            "ci runs only channels [voice], the scenario is on [chat]",
+        ),
+    ],
+)
+async def test_issue105_approval_warns_when_a_suite_filter_drops_the_scenario(
+    lab: Lab, suite: str, why: str
+) -> None:
+    _set_suites(lab, suite)
+    async with _client(lab) as client:
+        result = await _approve_as_mined(client, lab)
+
+    assert result["warnings"] == [
+        f"no suite runs scenarios/mined/mined-double-address.yaml ({why}); add it to a suite in "
+        "hecklr.yaml"
+    ]

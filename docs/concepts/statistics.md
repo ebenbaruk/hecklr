@@ -9,8 +9,9 @@ false-alarm rate is measured, not assumed.
 This page states the exact methods. They live in `hecklr-stats` (numpy and scipy only, every
 resampling call seeded) and are decided in ADRs
 [0005a](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0005a-reference-suite-size-and-power.md),
-[0005b](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0005b-comparison-decisions.md) and
-[0005c](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0005c-suite-interval-when-scenarios-are-all-or-nothing.md).
+[0005b](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0005b-comparison-decisions.md),
+[0005c](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0005c-suite-interval-when-scenarios-are-all-or-nothing.md) and
+[00rta](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/00rta-delta-interval-when-scenarios-are-all-or-nothing.md).
 
 ## Metrics
 
@@ -66,7 +67,12 @@ effect is the mean of the per-scenario differences over the S shared scenarios:
 ```
 
 - **Interval for Δ:** the paired cluster bootstrap above, resampling scenarios with both runs'
-  trials, at level 1 − α (so "p < α" and "the interval excludes 0" tell the same story).
+  trials, at level 1 − α (so "p < α" and "the interval excludes 0" tell the same story). When
+  every scenario of both runs passed all or none of its trials, the bootstrap would collapse to
+  [0, 0] whenever nothing flipped; Δ then gets a paired-proportion interval on the scenarios
+  instead (the Wilson intervals of the shares that only one run passed, combined by MOVER;
+  ADR 00rta). With nothing flipped it is ±10.4 points at 33 scenarios, so "no change" within
+  3 points from all-passing scenarios needs about 125 of them.
 - **p-value:** a two-sided paired permutation test that flips the sign of each scenario's
   difference. It is exact (all 2^S sign patterns) up to 16 scenarios, and a seeded Monte Carlo
   estimate `(1 + hits) / (1 + B)` above, which keeps the test valid. With 5 or fewer scenarios no
@@ -101,7 +107,7 @@ reference agent's prompt and gates the scripted suite (33 scenarios, 1 trial eac
 
 ```text
 Pass rate 100.0% [89.6%, 100.0%] → 72.7% [55.8%, 84.9%]:
-−27.3 pts [−42.4, −12.1] (95% CI), p=0.004 · 33 scenarios · δ=3 pts, α=0.05
+−27.3 pts [−44.2, −11.2] (95% CI), p=0.004 · 33 scenarios · δ=3 pts, α=0.05
 Gate: REGRESSION (exit 1)
 ```
 

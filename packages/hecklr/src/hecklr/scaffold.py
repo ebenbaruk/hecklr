@@ -135,7 +135,8 @@ agent:
     chat: {_adapter_yaml(choice)}
 world: worlds/acme-starter.yaml
 suites:
-  ci: {{ scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }}
+  # `mined`: scenarios you approve from production failures (`hecklr mine`) run here too.
+  ci: {{ scenarios: "scenarios/**/*.yaml", tags: [core, mined], trials: 3, channels: [chat] }}
 models:
   # {models.reason}
   simulator: {models.simulator}

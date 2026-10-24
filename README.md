@@ -8,7 +8,7 @@ customers at your agent over **voice, chat and email**, grades every conversatio
 with statistical confidence whether a change made the agent better or worse. Then it gates your CI
 on it.
 
-![A one-line prompt edit, caught: hecklr gate reports a regression of −27.3 points [−42.4, −12.1], p = 0.004, with the 9 scenarios that flipped](docs/assets/demo.gif)
+![A one-line prompt edit, caught: hecklr gate reports a regression of −27.3 points [−44.2, −11.2], p = 0.004, with the 9 scenarios that flipped](docs/assets/demo.gif)
 
 *Above, recorded from a real run: one line of the reference agent's system prompt changes, and
 `hecklr gate` fails the change with the size of the regression, its 95% confidence interval and

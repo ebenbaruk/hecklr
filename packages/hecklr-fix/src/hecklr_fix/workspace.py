@@ -87,11 +87,7 @@ def prepare_workspace(
 
     shutil.copytree(root, dest, ignore=ignore, symlinks=True)
     for relative, text in files.items():
-        path = dest / relative
-        if path.is_symlink():
-            path.unlink()  # never write through a link into the user's tree
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        _write_into_copy(dest, relative, text)
     targeted = dest / TARGETED_DIR
     targeted.mkdir(parents=True, exist_ok=True)
     for scenario in target.scenarios:
@@ -99,6 +95,28 @@ def prepare_workspace(
     copied_config = dest / config_path.name
     copied_config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     return Workspace(root=dest, config_path=copied_config, agent_host=host)
+
+
+def _write_into_copy(dest: Path, relative: str, text: str) -> None:
+    """Write ``text`` as a regular file under regular directories of the copy.
+
+    The copy keeps symlinks as symlinks, so a link anywhere on the way to an editable file (the
+    file itself, or a directory such as ``prompts -> /abs/path/agent_prompts``) can lead back
+    into the user's tree; writing through it would overwrite the user's file with a candidate,
+    even a rejected one (issue #113). Each such link is replaced by a copy of what it points to.
+    A linked directory is copied whole, so a link to a very large tree makes this slow; the
+    copy is the price of never writing into the user's files.
+    """
+    path = dest
+    for part in PurePosixPath(relative).parts:
+        path = path / part
+        if path.is_symlink():
+            target = path.resolve()
+            path.unlink()
+            if target.is_dir():
+                shutil.copytree(target, path, symlinks=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def _read_config(config_path: Path) -> dict[str, object]:

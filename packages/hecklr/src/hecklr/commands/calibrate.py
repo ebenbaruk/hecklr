@@ -5,7 +5,8 @@
   two stored runs (``--runs A --runs B``), then simulates 200 A/A comparisons of a suite of the
   same shape to measure the false-alarm rate (and the power to see a 10-point drop).
 - ``--judges`` (SC7): agreement of every judge rubric with human labels (Cohen's κ, precision
-  and recall, with intervals); rubrics below κ 0.70 are untrusted. The labels are either of judge
+  and recall, with intervals); rubrics below κ 0.70, or with fewer than 10 human labels of
+  either class (issue #100), are untrusted. The labels are either of judge
   grades in stored runs (``--labels FILE --run ID``, written by the UI's labeling queue) or of a
   labeled transcript set (``--set DIR``, e.g. ``calibration/judges``), which is judged on the
   spot with the project's judge model (ADR 00hja). ``--labeler`` keeps only some labelers' labels.
@@ -455,6 +456,6 @@ def _judge_table(calibrations: Sequence[JudgeCalibration]) -> Table:
             fmt.estimate(c.kappa, "number"),
             fmt.estimate(c.precision, "percent") if c.precision is not None else "-",
             fmt.estimate(c.recall, "percent") if c.recall is not None else "-",
-            Text("yes", "green") if c.trusted else Text("NO (kappa < 0.70)", "bold red"),
+            Text("yes", "green") if c.trusted else Text(f"NO ({c.untrusted_reason})", "bold red"),
         )
     return table

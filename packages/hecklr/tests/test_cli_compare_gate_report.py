@@ -43,6 +43,13 @@ def invoke(config_path: Path, *args: str) -> tuple[int, str]:
     return result.exit_code, click.unstyle(result.output)
 
 
+def unchanged() -> dict[str, float]:
+    """An all-passing suite big enough for "no change": every scenario is all-or-nothing, so Δ's
+    interval is bounded by the share of scenarios that could differ, which needs about 125
+    scenarios to fit inside δ = 3 points (issue #98); 30 all-passing scenarios are inconclusive."""
+    return {f"s{i:03d}": 1.0 for i in range(150)}
+
+
 def flat(output: str) -> str:
     """``output`` with Rich's line wrapping and table borders undone, for substring checks."""
     return " ".join(output.replace("│", " ").split())
@@ -79,8 +86,8 @@ def test_us05_gate_comment_stays_under_30_lines(config_path: Path, store: StoreR
 
 
 def test_us04_gate_passes_an_unchanged_agent(config_path: Path, store: StoreRun) -> None:
-    store(rates(1.0), order=0)
-    store(rates(1.0), order=1)
+    store(unchanged(), order=0)
+    store(unchanged(), order=1)
 
     code, output = invoke(config_path, "gate")
 
@@ -121,9 +128,9 @@ def test_gate_inconclusive_exit_code_is_configurable(
 def test_gate_uses_the_recorded_baseline_over_the_previous_run(
     config_path: Path, store: StoreRun, runs_dir: Path
 ) -> None:
-    good = store(rates(1.0), order=0)
+    good = store(unchanged(), order=0)
     store(rates(1.0, failing_share=0.5), order=1)
-    candidate = store(rates(1.0), order=2, baseline_id=good.id)
+    candidate = store(unchanged(), order=2, baseline_id=good.id)
 
     code, output = invoke(config_path, "gate")
 
@@ -135,9 +142,9 @@ def test_gate_uses_the_recorded_baseline_over_the_previous_run(
 def test_issue33_the_baseline_alias_skips_a_run_where_no_trial_got_through(
     config_path: Path, store: StoreRun, runs_dir: Path
 ) -> None:
-    good = store(rates(1.0), order=0, counts=RunCounts(planned=60, ok=60))
+    good = store(unchanged(), order=0, counts=RunCounts(planned=60, ok=60))
     store(rates(0.0), order=1, counts=RunCounts(planned=60, agent_error=50, timeout=10))
-    candidate = store(rates(1.0), order=2, counts=RunCounts(planned=60, ok=60))
+    candidate = store(unchanged(), order=2, counts=RunCounts(planned=60, ok=60))
 
     code, output = invoke(config_path, "gate")
 
@@ -260,8 +267,8 @@ def test_a_first_run_without_baseline_fails_or_passes_as_asked(
 
 
 def test_gate_links_the_full_report(config_path: Path, store: StoreRun, tmp_path: Path) -> None:
-    store(rates(1.0), order=0)
-    store(rates(1.0), order=1)
+    store(unchanged(), order=0)
+    store(unchanged(), order=1)
     out = tmp_path / "gate"
 
     code, output = invoke(
@@ -289,8 +296,8 @@ def test_compare_prints_the_comparison_with_intervals(config_path: Path, store: 
 
 
 def test_compare_baseline_alias_and_latest_default(config_path: Path, store: StoreRun) -> None:
-    store(rates(1.0), order=0)
-    store(rates(1.0), order=1)
+    store(unchanged(), order=0)
+    store(unchanged(), order=1)
 
     code, output = invoke(config_path, "compare", "baseline")
 

@@ -218,6 +218,36 @@ def test_ws15_fixes_f1_and_the_guard_rejects_a_planted_bad_patch(
 
 @pytest.mark.slow
 @pytest.mark.e2e
+def test_issue113_fix_never_writes_through_a_symlinked_prompt_directory(tmp_path: Path) -> None:
+    # The red team's repro: prompts/ is an absolute link to a directory of the project itself,
+    # which `load_editable` accepts; the rejected candidate's text used to land in that file.
+    project = _copy_project(tmp_path / "acme", fault="F1")
+    real = project.parent / "agent_prompts"
+    (project.parent / "prompts").rename(real)
+    (project.parent / "prompts").symlink_to(real.resolve(), target_is_directory=True)
+    original = (real / "system.md").read_text()
+    with _agent(project):
+        code, output = _invoke(["run", "--config", str(project), "--suite", "smoke"])
+    assert code == exit_codes.OK, output
+    run_id = re.search(r"Run (\S+) \(completed\)", output)
+    assert run_id, output
+
+    code, output = _invoke(
+        [
+            "fix", "--config", str(project), "--from-run", run_id.group(1),
+            "--tag", "catches-f1", "--agent-cmd", AGENT_CMD, "--model", "fake/fixer",
+            "--candidates", "1", "--trials", "1",
+            "--guard-suite", "smoke", "--guard-trials", "1", "--budget-usd", "0.01",
+        ],
+        FakeLLM(script=[IRRELEVANT]),
+    )  # fmt: skip
+
+    assert "rejected: no significant improvement" in output, output
+    assert (real / "system.md").read_text() == original
+
+
+@pytest.mark.slow
+@pytest.mark.e2e
 def test_us10_a_mined_cluster_the_agent_already_handles_is_reported_not_patched(
     tmp_path: Path,
 ) -> None:

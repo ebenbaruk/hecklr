@@ -157,6 +157,20 @@ async def test_http_invalid_json_and_missing_path_are_agent_errors() -> None:
         await _reply(_http(lambda _: httpx2.Response(200, json={"b": 1}), response_path="a"))
 
 
+@pytest.mark.parametrize(
+    ("body", "match"),
+    [
+        ("[" * 100_000 + "]" * 100_000, "maximum recursion depth"),
+        ('{"reply": ' + "1" * 5_000 + "}", "integer string conversion"),
+    ],
+)
+async def test_issue112_json_too_deep_or_too_long_to_decode_is_an_agent_error(
+    body: str, match: str
+) -> None:
+    with pytest.raises(AgentError, match=match):
+        await _reply(_http(lambda _: httpx2.Response(200, text=body), response_path="reply"))
+
+
 async def test_http_unreachable_agent_is_an_agent_error() -> None:
     def refuse(request: httpx2.Request) -> httpx2.Response:
         raise httpx2.ConnectError("connection refused", request=request)

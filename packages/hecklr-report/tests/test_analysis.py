@@ -334,6 +334,8 @@ def test_judge_calibrations_flag_untrusted_rubrics(
         grader_version="abc123",
         judge_model="fake/judge",
         n=10,
+        human_passes=5,
+        human_fails=5,
         kappa=kappa,
         precision=None,
         recall=None,
@@ -478,3 +480,79 @@ def test_criterion_labels_name_what_failed(criterion: dict[str, object], label: 
     parsed: SuccessCriterion = TypeAdapter(SuccessCriterion).validate_python(criterion)
 
     assert criterion_label(parsed) == label
+
+
+# --- issue #99: scenarios whose every trial was excluded ----------------------------------
+
+
+def _broken_by_exclusion(
+    kit: type[Kit], *, exclude: str, base_rate: float = 0.9, deterministic: bool = False
+) -> tuple[RunResults, RunResults]:
+    """40 scenarios x 10 trials; the candidate broke 12 and every trial of those is excluded."""
+    import random
+
+    rng = random.Random(0)
+    base, cand = kit.RunBuilder(seed=1), kit.RunBuilder(seed=2)
+    for i in range(40):
+        for _ in range(10):
+            base.trial(f"s{i:02d}", passed=deterministic or rng.random() < base_rate)
+            if i < 12:
+                if exclude == "judge":
+                    cand.trial(f"s{i:02d}", passed=rng.random() < 0.1, judge_error=True)
+                else:
+                    cand.trial(f"s{i:02d}", status="harness_error")
+            else:
+                cand.trial(f"s{i:02d}", passed=deterministic or rng.random() < base_rate)
+    return base.build(), cand.build()
+
+
+@pytest.mark.parametrize("exclude", ["judge", "harness"])
+@pytest.mark.parametrize("deterministic", [False, True])
+def test_issue99_scenarios_lost_to_exclusions_block_the_gate(
+    kit: type[Kit], scenarios: dict[str, Scenario], exclude: str, deterministic: bool
+) -> None:
+    baseline, candidate = _broken_by_exclusion(kit, exclude=exclude, deterministic=deterministic)
+
+    analysis = analyze(candidate, baseline, kit.stats, scenarios)
+
+    assert analysis.problems == [
+        "12 of 40 scenarios both runs ran have no analyzable trial in the candidate (every trial "
+        "a harness error or undecided), so they cannot be compared: s00, s01, s02, s03, s04 "
+        "and 7 more"
+    ]
+    assert analysis.verdict is None
+    assert gate_exit_code(analysis, GateConfig()) == EXIT_HARNESS_ERROR
+    assert gate_exit_code(analysis, GateConfig(on_inconclusive="pass")) == EXIT_HARNESS_ERROR
+
+
+def test_issue99_a_baseline_scenario_lost_to_exclusions_is_named_too(
+    kit: type[Kit], scenarios: dict[str, Scenario]
+) -> None:
+    base, cand = kit.RunBuilder(seed=1), kit.RunBuilder(seed=2)
+    for sid in ("s00", "s01"):
+        cand.trial(sid)
+    base.trial("s00")
+    base.trial("s01", judge_error=True)
+
+    analysis = analyze(cand.build(), base.build(), kit.stats, scenarios)
+
+    assert analysis.problems == [
+        "1 of 2 scenarios both runs ran have no analyzable trial in the baseline (every trial "
+        "a harness error or undecided), so they cannot be compared: s01"
+    ]
+
+
+def test_issue99_partly_excluded_and_new_scenarios_still_compare(
+    kit: type[Kit], scenarios: dict[str, Scenario]
+) -> None:
+    base, cand = kit.RunBuilder(seed=1), kit.RunBuilder(seed=2)
+    for sid in ("s00", "s01"):
+        base.trial(sid)
+        cand.trial(sid)
+    cand.trial("s01", status="harness_error")  # one of its two trials still counts
+    cand.trial("s02", judge_error=True)  # new in the candidate: never paired anyway
+
+    analysis = analyze(cand.build(), base.build(), kit.stats, scenarios)
+
+    assert analysis.problems == []
+    assert analysis.verdict is not None

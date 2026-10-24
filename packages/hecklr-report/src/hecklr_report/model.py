@@ -171,6 +171,8 @@ class JudgeTrust(FrozenModel):
     n: Count
     kappa: Estimate
     trusted: bool
+    reason: str | None = None
+    """Why the rubric is untrusted (too few labels of a class, or κ below 0.70)."""
 
 
 class Analysis(FrozenModel):
