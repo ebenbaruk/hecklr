@@ -279,10 +279,13 @@ def trials_needed(result: PairedResult, *, alpha: float, min_effect: float) -> i
 
     Returns:
         ``None`` when more trials are unlikely to decide: too few scenarios for the permutation test
-        to ever reach ``alpha`` (add scenarios), no measurable noise, or more than
-        ``MAX_TRIALS_NEEDED`` trials per scenario.
+        to ever reach ``alpha`` (add scenarios), every scenario all-or-nothing in both runs (Δ's
+        interval is then on scenarios, ADR 00rta, and only more scenarios narrow it), no
+        measurable noise, or more than ``MAX_TRIALS_NEEDED`` trials per scenario.
     """
     if 2.0 ** (1 - result.n_scenarios) >= alpha:
+        return None
+    if result.delta.method is IntervalMethod.WILSON:
         return None
     size = abs(result.delta.value)
     z_alpha = z_value(1 - alpha)

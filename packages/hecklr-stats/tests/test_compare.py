@@ -542,3 +542,16 @@ def test_issue98_false_no_change_rate_on_all_or_nothing_suites() -> None:
             )
             wrong += suite.verdict is Verdict.NO_CHANGE
         assert wrong / replicates <= 0.05, (scenarios, trials, pass_rate, wrong)
+
+
+def test_issue98_all_or_nothing_inconclusive_asks_for_scenarios_not_trials() -> None:
+    # A deterministic agent repeats itself: more trials per scenario add no information, and the
+    # scenario-level interval narrows only with more scenarios.
+    baseline = _outcomes([1.0] * 33, 3)
+    candidate = _outcomes([1.0] * 31 + [0.0] * 2, 3)
+    (suite,) = compare_runs(
+        baseline, candidate, baseline_run=BASE, candidate_run=CAND, config=FAST, seed=0
+    )
+    assert suite.verdict is Verdict.INCONCLUSIVE
+    assert suite.delta.method is IntervalMethod.WILSON
+    assert suite.trials_needed is None

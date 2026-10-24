@@ -38,4 +38,7 @@ cannot rule out a 5-point regression.
   sets `gate.on_inconclusive: pass`, since it checks the exit-code wiring, not the suite's size.
 - Mixed suites (some scenarios strictly between 0 and n) keep the bootstrap; the false NO CHANGE
   rate measured there with mostly-boundary scenarios is ≤ 0.4%.
+- On such suites the inconclusive note asks for more scenarios, not "N more trials per
+  scenario": a deterministic agent repeats itself, so extra trials add nothing, and the
+  interval is on scenarios (`trials_needed` returns `None` when Δ's method is Wilson).
 - Supersedes the last consequence of ADR 0005c.
