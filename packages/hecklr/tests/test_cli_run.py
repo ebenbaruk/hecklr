@@ -7,7 +7,7 @@ import re
 import signal
 import subprocess
 import sys
-import time
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -233,7 +233,9 @@ def test_issue34_max_reply_bytes_sets_the_cap(config_path: Path, stub_agent: Stu
 def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     config_path: Path, stub_agent: StubAgent
 ) -> None:
-    stub_agent("slow", 2.0)
+    asked = threading.Event()
+    # Every reply takes longer than the test needs to signal, so the run cannot finish first.
+    stub_agent("slow", 5.0, asked)
     # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal.
     command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
     with subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
@@ -249,18 +251,16 @@ def test_issue35_ctrl_c_prints_one_line_and_exits_130(
             plan = click.unstyle(process.stderr.readline())
             assert plan.startswith("Suite ci:"), plan
             run_id = plan.split("; run ")[1].strip()
-            recorded = config_path.parent / ".hecklr" / "runs" / run_id / "run.json"
-            deadline = time.monotonic() + 30
-            while not recorded.exists() and time.monotonic() < deadline:
-                time.sleep(0.05)
-            time.sleep(0.5)  # trials are in flight: each agent reply takes 2 s
+            # In flight: a trial has reached the agent, so the run loop and its handler are up.
+            assert asked.wait(timeout=60), "no trial reached the agent within 60 s"
+            assert process.poll() is None, "the run ended before it was interrupted"
             process.send_signal(signal.SIGINT)
-            _, rest = process.communicate(timeout=60)
+            out, rest = process.communicate(timeout=60)
         finally:
             if process.poll() is None:
                 process.kill()
 
-    assert process.returncode == exit_codes.INTERRUPTED, rest
+    assert process.returncode == exit_codes.INTERRUPTED, (process.returncode, rest, out)
     assert click.unstyle(rest).strip() == f"Interrupted: run {run_id} recorded as cancelled"
     store = ResultStore(config_path.parent / ".hecklr" / "runs")
     (run,) = store.list_runs()
