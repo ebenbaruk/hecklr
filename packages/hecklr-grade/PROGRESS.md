@@ -82,6 +82,16 @@ Decisions: ADR 0004a (grading semantics).
   passes advice alone with either rubric, so these two use the 8b model). Owed: the same trial on
   luna, where the false fail was seen (no credit now).
 
+## Done (WShrun, #114)
+
+- State expressions are bounded so no single operation runs long: powers past `MAX_POWER_BITS`
+  (4096) are refused before computing; a value a node builds is measured (shared parts counted
+  each time, walked once) and refused past `MAX_VALUE_SIZE` (1,000,000), because `str`,
+  `sorted` or `==` on `[[0]*9999]*9999` is one uninterruptible GIL-holding call; `sum` adds
+  numbers only. A 1 s deadline is checked between nodes, and `StateGrader` evaluates in a worker
+  thread (abandoned on cancel). Tests: `test_issue114_*` (11) in `tests/test_state.py`; the issue's
+  expression is an error grade in 6 ms, every probe tried stops within 1.02 s.
+
 ## Decisions
 
 - See ADR 0004a. Highlights: missing data in a state expression fails (not error); a
