@@ -198,7 +198,9 @@ def _judges(analysis: Analysis) -> Table:
             judge.grader_version,
             str(judge.n),
             _cell(judge.kappa, "number"),
-            Text("yes", "green") if judge.trusted else Text("NO (κ < 0.70)", "bold red"),
+            Text("yes", "green")
+            if judge.trusted
+            else Text(f"NO ({judge.reason or 'kappa < 0.70'})", "bold red"),
         )
     return table
 

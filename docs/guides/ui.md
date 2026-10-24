@@ -31,5 +31,5 @@ miner's `proposals.jsonl`).
 ## Labeling: is the judge trustworthy?
 
 Label 50 judged trials and the Labeling view shows Cohen's κ between the judge and you, with an
-interval, plus precision and recall for catching failures. Rubrics below κ = 0.70 are marked
-untrusted in every report. Labels are blind: you see the transcript, not the judge's verdict.
+interval, plus precision and recall for catching failures. Rubrics below κ = 0.70, or with fewer than 10
+labels of either class (pass and fail), are marked untrusted in every report. Labels are blind: you see the transcript, not the judge's verdict.

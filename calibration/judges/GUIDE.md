@@ -148,8 +148,8 @@ hecklr calibrate --judges --set calibration/judges -c examples/acme-maintenance/
 It judges only the pairs that have a usable label (one of the chosen labelers, of the rubric's
 current version), so no call is paid for a pair that cannot count; with no such pair at all it
 stops before judging anything. It prints, per rubric, κ, precision and recall (fail is the
-positive class), each with a 95% interval, and exits 1 if any rubric is below κ 0.70 or has no
-usable labels. Responses are cached
+positive class), each with a 95% interval, and exits 1 if any rubric is below κ 0.70, has fewer
+than 10 human labels of either class, or has no usable labels. Responses are cached
 in the project's output directory, so a rerun with the same model and rubrics costs nothing.
 
 **Cost of a full run** on `openai/gpt-6-luna` ($0.10 / $0.50 per million input / output tokens):

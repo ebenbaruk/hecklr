@@ -261,24 +261,33 @@ tools:
     op: { kind: find, collection: customers }
 """
 
-SET_CASES = """\
-- id: polite
+_POLITE = """\
+- id: polite-{i}
   channel: chat
   goal: Ask for help.
-  rubrics: {tone: {}, resolved: {}}
+  rubrics: {{tone: {{}}, resolved: {{}}}}
   turns:
     - customer: Can you help? C-1, 75001.
     - tool: verify_customer
-      args: {customer_id: C-1, postcode: "75001"}
+      args: {{customer_id: C-1, postcode: "75001"}}
     - agent: Of course, Ada. What do you need?
-- id: rude
+"""
+_RUDE = """\
+- id: rude-{i}
   channel: chat
   goal: Ask for help.
-  rubrics: {tone: {}}
+  rubrics: {{tone: {{}}, resolved: {{}}}}
   turns:
     - customer: Can you help?
     - agent: Figure it out yourself.
 """
+SET_PER_CLASS = 10
+"""Polite (pass) and rude (fail) cases, each judged on two rubrics: the fewest that a rubric can be
+trusted from (``MIN_LABELS_PER_CLASS`` of each class, issue #100)."""
+SET_PAIRS = 4 * SET_PER_CLASS
+SET_CASES = "".join(
+    template.format(i=i) for template in (_POLITE, _RUDE) for i in range(SET_PER_CLASS)
+)
 
 
 def _labeled_set(root: Path, cases: str = SET_CASES, *, labeler: str = "human:qa") -> Path:
@@ -293,7 +302,7 @@ def _labeled_set(root: Path, cases: str = SET_CASES, *, labeler: str = "human:qa
     calibration_set = judge_calibration.load_set(root)
     when = datetime(2026, 10, 23, tzinfo=UTC)
     for case, rubric in calibration_set.items():
-        passed = case.id == "polite"
+        passed = case.id.startswith("polite")
         label = judge_calibration.make_label(
             case, rubric, passed=passed, labeler=labeler, note=None, created_at=when
         )
@@ -333,7 +342,7 @@ def test_sc7_calibrate_judges_set_judges_the_transcripts_and_trusts_agreement(
     code, output = _invoke_set(config_path, _judge(_agrees), "--set", str(root))
 
     assert code == exit_codes.OK, output
-    assert "Judging 3 labeled (conversation, rubric) pairs" in output
+    assert f"Judging {SET_PAIRS} labeled (conversation, rubric) pairs" in output
     assert "judge:tone" in output
     assert "judge:resolved" in output
     assert "Judge spend: $0.0000" in output
@@ -361,7 +370,9 @@ def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
     code, output = _invoke_set(config_path, _judge(_agrees), "--set", str(root))
 
     assert code == exit_codes.OK, output
-    assert "3 of 3 labels are not from 'human:' labelers (claude-draft)" in output
+    assert (
+        f"{SET_PAIRS} of {SET_PAIRS} labels are not from 'human:' labelers (claude-draft)" in output
+    )
 
     judge = _judge(_agrees)
     code, output = _invoke_set(config_path, judge, "--set", str(root), "--labeler", "human:")
@@ -397,8 +408,8 @@ def test_sc7_calibrate_judges_set_fails_a_rubric_labeled_only_at_an_old_version(
     code, output = _invoke_set(config_path, judge, "--set", str(root))
 
     assert code == exit_codes.CHECK_FAILED, output
-    assert "Judging 2 labeled (conversation, rubric) pairs" in output
-    assert len(judge.calls) == 2  # the stale pair is not judged
+    assert f"Judging {SET_PAIRS // 2} labeled (conversation, rubric) pairs" in output
+    assert len(judge.calls) == SET_PAIRS // 2  # the stale pairs are not judged
     assert "judge:resolved: not calibrated, no label of its current rubric version" in output
     assert "calibration/judges/GUIDE.md" in output
 
@@ -427,7 +438,7 @@ def test_sc7_calibrate_judges_set_reports_a_judge_that_never_answers_usably(
 
     assert code == exit_codes.CHECK_FAILED, output
     assert "judge:tone: not calibrated, every judge answer was unusable" in output
-    assert "judge:tone: 2 judge answer(s) unusable, left out" in output
+    assert f"judge:tone: {SET_PAIRS // 2} judge answer(s) unusable, left out" in output
 
 
 def test_sc7_calibrate_judges_set_takes_an_explicit_labels_file(
@@ -597,3 +608,16 @@ def test_voice_loopback_without_the_engine_names_the_extra(
 
     assert code == exit_codes.CONFIG_ERROR
     assert "pip install 'hecklr[voice]'" in output
+
+
+def test_issue100_a_rubber_stamp_judge_on_all_pass_labels_fails_sc7(
+    config_path: Path, tmp_path: Path
+) -> None:
+    polite_only = "".join(_POLITE.format(i=i) for i in range(SET_PER_CLASS))
+    root = _labeled_set(tmp_path / "set", polite_only)
+
+    code, output = _invoke_set(config_path, _judge(lambda prompt: True), "--set", str(root))
+
+    assert code == exit_codes.CHECK_FAILED, output
+    assert "1.00 [1.00, 1.00]" in output  # agreement never tested on a fail
+    assert "NO (needs 10+ human labels of each class, has 10 pass and 0 fail)" in output

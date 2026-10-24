@@ -9,6 +9,7 @@ from hecklr_schemas import Grade, GradeId, HumanLabel, IntervalMethod, LabelId, 
 from hecklr_stats.flaky import flaky_scenarios
 from hecklr_stats.judge import (
     KAPPA_TRUST_THRESHOLD,
+    MIN_LABELS_PER_CLASS,
     calibrate_judge,
     cohen_kappa,
     judge_drift,
@@ -133,6 +134,47 @@ def test_sc7_a_judge_that_agrees_is_trusted() -> None:
     calibration = calibrate_judge(grades, labels, seed=0, resamples=1_000)
     assert calibration.kappa.value >= KAPPA_TRUST_THRESHOLD
     assert calibration.trusted
+
+
+@pytest.mark.parametrize("n", [1, 2, 5, 20])
+@pytest.mark.parametrize("label", [True, False])
+def test_issue100_a_rubber_stamp_judge_on_one_class_labels_is_not_trusted(
+    n: int, label: bool
+) -> None:
+    grades, labels = _labeled_set([label] * n, [label] * n)
+
+    calibration = calibrate_judge(grades, labels, seed=0, resamples=500)
+
+    assert calibration.kappa.value == 1.0  # the raters never disagreed: 0/0, by convention
+    assert not calibration.trusted
+    passes, fails = (n, 0) if label else (0, n)
+    assert calibration.untrusted_reason == (
+        f"needs {MIN_LABELS_PER_CLASS}+ human labels of each class, has {passes} pass and "
+        f"{fails} fail"
+    )
+
+
+@pytest.mark.parametrize(
+    ("fails", "trusted"), [(MIN_LABELS_PER_CLASS - 1, False), (MIN_LABELS_PER_CLASS, True)]
+)
+def test_issue100_trust_needs_enough_labels_of_each_class(fails: int, trusted: bool) -> None:
+    human = [True] * 30 + [False] * fails
+    grades, labels = _labeled_set(human, human)  # a judge that agrees on every label
+
+    calibration = calibrate_judge(grades, labels, seed=0, resamples=500)
+
+    assert (calibration.human_passes, calibration.human_fails) == (30, fails)
+    assert calibration.kappa.value == 1.0
+    assert calibration.trusted is trusted
+
+
+def test_issue100_low_agreement_says_kappa_is_the_reason() -> None:
+    human = [True] * 20 + [False] * 20
+    grades, labels = _labeled_set([True] * 40, human)  # always "pass"
+
+    calibration = calibrate_judge(grades, labels, seed=0, resamples=500)
+
+    assert calibration.untrusted_reason == "kappa < 0.70"
 
 
 def test_calibration_uses_newest_grade_and_label_and_skips_others() -> None:

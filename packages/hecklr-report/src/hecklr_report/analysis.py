@@ -351,4 +351,5 @@ def _trust(calibration: JudgeCalibration) -> JudgeTrust:
         n=calibration.n,
         kappa=calibration.kappa,
         trusted=calibration.trusted,
+        reason=calibration.untrusted_reason,
     )

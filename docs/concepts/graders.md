@@ -54,8 +54,8 @@ hecklr calibrate --judges --labels .hecklr/labels.jsonl --run latest
 ```
 
 This reports Cohen's κ, precision and recall (with "fail" as the positive class) for every rubric
-against your labels, each with an interval. A rubric below κ = 0.70 is marked **untrusted** in
-reports. Changing the judge model re-scores the labeled set and warns when agreement drops.
+against your labels, each with an interval. A rubric below κ = 0.70, or with fewer than 10 of your
+labels of either class, is marked **untrusted** in reports. Changing the judge model re-scores the labeled set and warns when agreement drops.
 
 ## Voice metrics
 

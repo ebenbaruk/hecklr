@@ -334,6 +334,8 @@ def test_judge_calibrations_flag_untrusted_rubrics(
         grader_version="abc123",
         judge_model="fake/judge",
         n=10,
+        human_passes=5,
+        human_fails=5,
         kappa=kappa,
         precision=None,
         recall=None,

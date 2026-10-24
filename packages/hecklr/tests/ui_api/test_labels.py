@@ -11,6 +11,7 @@ import httpx2
 import pytest
 from typer.testing import CliRunner
 
+from hecklr import exit_codes
 from hecklr.cli import app as cli_app
 from hecklr.ui_api.labels import LabelBook, LabelFileError, agreement, label_queue
 from hecklr_core import RunResults
@@ -185,17 +186,19 @@ async def test_the_labels_file_is_what_hecklr_calibrate_judges_reads(
     # The CLI runs its own event loop, so it cannot run on this test's.
     result = await anyio.to_thread.run_sync(lambda: CliRunner().invoke(cli_app, args))
 
-    # Exit 0: the CLI matched these labels to the run's judge grades and found every judge
-    # trusted, as the UI did (it exits non-zero on no match or an untrusted judge).
+    # The CLI matched these labels to the run's judge grades (it refuses labels that match none)
+    # and, as the UI did, found perfect agreement on too few labels of each class to trust
+    # (issue #100).
     output = click.unstyle(result.output)
-    assert result.exit_code == 0, output
+    assert result.exit_code == exit_codes.CHECK_FAILED, output
     assert "Judge agreement with human labels" in output
     assert {j["grader"]: j["n"] for j in ui_report["judges"]} == {
         "judge:no_hallucination": 4,
         "judge:resolved": 4,
         "judge:tone": 2,
     }
-    assert all(judge["kappa"]["value"] == 1.0 and judge["trusted"] for judge in ui_report["judges"])
+    judges = ui_report["judges"]
+    assert all(judge["kappa"]["value"] == 1.0 and not judge["trusted"] for judge in judges)
 
 
 # --- unit level ----------------------------------------------------------------------------
