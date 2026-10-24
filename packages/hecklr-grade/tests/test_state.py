@@ -12,6 +12,7 @@ from pydantic import JsonValue
 
 from hecklr_grade.state import (
     MAX_POWER_BITS,
+    MAX_VALUE_SIZE,
     IsoDateTime,
     StateExpressionError,
     StateExpressionTimeoutError,
@@ -421,3 +422,55 @@ async def test_issue114_a_cancelled_grade_returns_at_once(
     with anyio.move_on_after(0.05):
         await StateGrader().grade(ctx_for(log, {"type": "state", "expr": "True"}))
     assert time.monotonic() - started < 0.4
+
+
+# One C-level operation (str, sorted, ==) on a value aliased many times over runs for seconds while
+# holding the GIL: neither the deadline nor the worker thread can stop it, so such values are
+# refused when they are built (#114).
+ORDERS_WORLD: dict[str, JsonValue] = {
+    "orders": {str(n): {"id": n, "note": "x" * 100} for n in range(1000)}
+}
+HUGE_VALUES = [
+    "len(str([[0] * 9999] * 9999)) > 0",
+    "sorted([[0] * 9999] * 9999) == []",
+    "[[0] * 9999] * 9999 == [[0] * 9999] * 9999",
+    "len(str(([0] * 9999,) * 9999)) > 0",
+    "len(f'{[[0] * 9999] * 9999}') > 0",
+    "len([world for x in [0] * 9999]) > 0",
+]
+
+
+@pytest.mark.parametrize("expr", HUGE_VALUES)
+def test_issue114_values_too_large_to_handle_quickly_are_refused(expr: str) -> None:
+    started = time.monotonic()
+    with pytest.raises(StateExpressionError, match="too large"):
+        run(expr, after=ORDERS_WORLD)
+    assert time.monotonic() - started < 0.5
+
+
+def test_issue114_a_value_built_piece_by_piece_stops_at_the_deadline() -> None:
+    # Each piece is small and new, so no single node is too large; the deadline ends it.
+    started = time.monotonic()
+    with pytest.raises(StateExpressionTimeoutError):
+        run("len(str([[0] * 9999 for x in [0] * 9999])) > 0")
+    assert time.monotonic() - started < 1.5
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        f"len([[0] * 1000] * {MAX_VALUE_SIZE // 2000}) > 0",
+        "len([o for o in values(world.orders) if o.id > 10]) == 989",
+        "sorted(keys(world.orders))[0] == '0'",
+        "len(str(world.orders)) > 0",
+    ],
+)
+def test_issue114_values_within_the_size_bound_still_work(expr: str) -> None:
+    assert run(expr, after=ORDERS_WORLD) is True
+
+
+def test_issue114_sum_adds_numbers_only() -> None:
+    # sum(lists, []) concatenates quadratically; numbers are what assertions add up.
+    assert run("sum([1, 2, 3]) == 6") is True
+    with pytest.raises(StateExpressionError):
+        run("sum([[0] * 999] * 999, []) == []")
