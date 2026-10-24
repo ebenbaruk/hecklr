@@ -69,6 +69,13 @@ def p_equals(p: float) -> str:
     return f"p{text}" if text.startswith("<") else f"p={text}"
 
 
+def look(c: Comparison) -> str:
+    """The look and alpha spent of a group-sequential comparison; empty for a fixed design."""
+    if c.alpha_spent is None:
+        return ""
+    return f" · adaptive look {c.look}, \N{GREEK SMALL LETTER ALPHA} spent {c.alpha_spent:.3f}"
+
+
 def abandoned(conversations: int) -> str:
     """How many conversations the simulator's consistency guard gave up on (issue #101)."""
     plural = "s" if conversations != 1 else ""

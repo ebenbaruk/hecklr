@@ -84,7 +84,7 @@ def _headline(analysis: Analysis) -> list[str]:
             f"{fmt.p_equals(comparison.p_value)} · {comparison.n_scenarios} scenarios, "
             f"{comparison.n_trials_baseline} vs {comparison.n_trials_candidate} trials · "
             f"\N{GREEK SMALL LETTER DELTA}={100 * comparison.min_effect:g} pts, "
-            f"\N{GREEK SMALL LETTER ALPHA}={comparison.alpha:g}"
+            f"\N{GREEK SMALL LETTER ALPHA}={comparison.alpha:g}{fmt.look(comparison)}"
         ]
         if comparison.verdict is Verdict.INCONCLUSIVE:
             lines.append(_inconclusive_note(comparison))

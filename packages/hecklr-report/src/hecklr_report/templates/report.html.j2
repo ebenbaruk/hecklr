@@ -141,7 +141,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
 
 {% if a.comparisons %}
 <section id="comparisons">
-  <h2>Comparisons <span class="meta">(candidate − baseline, α={{ a.stats.alpha }}, δ={{ a.stats.min_effect }})</span></h2>
+  <h2>Comparisons <span class="meta">(candidate − baseline, α={{ a.stats.alpha }}, δ={{ a.stats.min_effect }}{% if a.suite_comparison %}{{ fmt.look(a.suite_comparison) }}{% endif %})</span></h2>
   <div class="scroll"><table>
     <thead><tr><th>Metric</th><th>Slice</th><th>Baseline</th><th>Candidate</th><th>Δ [CI]</th><th>p</th><th>q</th><th>Verdict</th></tr></thead>
     <tbody>

@@ -27,6 +27,7 @@ from hecklr_report.outcomes import ACCENT, SNR_DB, ConvertedRun, convert
 from hecklr_report.voice import SNR_ORDER, degradation, mean_estimate, voice_metrics
 from hecklr_schemas import (
     Channel,
+    Comparison,
     Event,
     MetricSummary,
     Persona,
@@ -35,7 +36,15 @@ from hecklr_schemas import (
     Scenario,
     StatsConfig,
 )
-from hecklr_stats import JudgeCalibration, compare_runs, summarize_run, wilson_estimate
+from hecklr_stats import (
+    JudgeCalibration,
+    TrialOutcome,
+    compare_runs,
+    compare_sequentially,
+    summarize_run,
+    wilson_estimate,
+)
+from hecklr_stats.sequential import MIN_LOOK_GAP
 
 COST_PER_TRIAL = "cost_usd_per_trial"
 """Mean simulator and judge spend per conversation, with a bootstrap interval."""
@@ -85,13 +94,8 @@ def analyze(
         base_seed = stats.seed if stats.seed is not None else baseline.run.seed
         baseline_summaries = _summaries(baseline, base, stats, base_seed)
         if not problems:
-            comparisons = compare_runs(
-                base.outcomes,
-                cand.outcomes,
-                baseline_run=baseline.run.id,
-                candidate_run=candidate.run.id,
-                config=stats,
-                seed=seed,
+            comparisons = _compare_pass_rates(
+                candidate, cand, baseline, base, stats, seed
             ) + compare_latencies(
                 base.outcomes,
                 cand.outcomes,
@@ -120,6 +124,55 @@ def analyze(
         trials=cand.rows,
         problems=problems,
     )
+
+
+def _compare_pass_rates(
+    candidate: RunResults,
+    cand: ConvertedRun,
+    baseline: RunResults,
+    base: ConvertedRun,
+    stats: StatsConfig,
+    seed: int,
+) -> list[Comparison]:
+    """Pass-rate comparisons: fixed design, or one group-sequential look per adaptive batch."""
+    looks = candidate_looks(candidate, cand)
+    base_id, cand_id = baseline.run.id, candidate.run.id
+    if len(looks) == 1:
+        return compare_runs(
+            base.outcomes,
+            cand.outcomes,
+            baseline_run=base_id,
+            candidate_run=cand_id,
+            config=stats,
+            seed=seed,
+        )
+    return compare_sequentially(
+        base.outcomes, looks, baseline_run=base_id, candidate_run=cand_id, config=stats, seed=seed
+    )
+
+
+def candidate_looks(results: RunResults, converted: ConvertedRun) -> list[list[TrialOutcome]]:
+    """The candidate's outcomes at each look: the first pass, then everything (issue #103).
+
+    ``hecklr_core`` plans every cell with the same trial indices ``0 .. trials - 1`` in a row,
+    and an adaptive pass appends cells numbered from ``trials`` on (``extend_matrix``), so the
+    first cell's leading run in the matrix is the first pass's trials per cell. A run without an
+    adaptive pass, or whose extra trials are too few to be a look of their own
+    (``MIN_LOOK_GAP``), has one look: the fixed design.
+    """
+    everything = converted.outcomes
+    matrix = results.run.matrix
+    if not results.run.adaptive or not matrix:
+        return [everything]
+    first_cell = matrix[0].key[:3]
+    per_cell = next((n for n, spec in enumerate(matrix) if spec.key[:3] != first_cell), len(matrix))
+    analyzed = [row for row in converted.rows if row.passed is not None]
+    first = [
+        outcome for row, outcome in zip(analyzed, everything, strict=True) if row.index < per_cell
+    ]
+    if not first or len(everything) - len(first) < MIN_LOOK_GAP * len(everything):
+        return [everything]
+    return [first, everything]
 
 
 def _problems(

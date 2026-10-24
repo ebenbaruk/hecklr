@@ -13,6 +13,7 @@ the standard recursive numerical integration of the Brownian-motion score proces
 McPherson and Rowe, 1969) on a fixed grid, so the result is deterministic.
 """
 
+import functools
 import heapq
 import itertools
 import math
@@ -80,6 +81,13 @@ def group_sequential_boundaries(fractions: Sequence[float], alpha: float) -> lis
     """
     if not fractions or any(b - a < MIN_LOOK_GAP for a, b in itertools.pairwise(fractions)):
         raise ValueError(f"fractions must be non-empty and increase by >= {MIN_LOOK_GAP} per look")
+    return list(_boundaries(tuple(fractions), alpha))
+
+
+@functools.lru_cache(maxsize=256)
+def _boundaries(fractions: tuple[float, ...], alpha: float) -> tuple[Boundary, ...]:
+    # Cached: each look of an adaptive comparison, and every replicate of a simulation of one,
+    # asks again for the same design, and one grid integration takes about 0.1 s.
     boundaries: list[Boundary] = []
     grid: FloatArray | None = None
     density: FloatArray | None = None
@@ -100,7 +108,7 @@ def group_sequential_boundaries(fractions: Sequence[float], alpha: float) -> lis
         grid = new_grid
         boundaries.append(Boundary(look, t, spent, z, float(2 * norm.sf(z))))
         previous_t, spent_before = t, spent
-    return boundaries
+    return tuple(boundaries)
 
 
 def _solve_boundary(

@@ -84,6 +84,8 @@ def _header(analysis: Analysis) -> Text:
         text.append(
             analysis.verdict.value.replace("_", " ").upper(), _VERDICT_STYLES[analysis.verdict]
         )
+        if analysis.suite_comparison is not None:
+            text.append(fmt.look(analysis.suite_comparison))
     return text
 
 
