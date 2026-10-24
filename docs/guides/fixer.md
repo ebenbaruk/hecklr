@@ -19,8 +19,9 @@ hecklr fix <cluster id> --agent-cmd '{python} agent/serve.py --port {port}' --pr
 Hecklr does not build your agent, and most agents read their prompt when they start. So the fixer
 starts the agent itself, once per pass, from a copy of your project with the candidate's files
 written in. `--agent-cmd` says how: `{port}` (required) is a free port Hecklr also writes into the
-copy's adapter URLs, `{python}` is Hecklr's interpreter and `{project}` the copy. The command runs
-without a shell, from the copy. The agent is ready when its port accepts a connection
+copy's adapter URLs, `{python}` is Hecklr's interpreter and `{project}` the copy. The command is
+split like a shell would split it before the placeholders are filled in, so a path with spaces
+(`~/My Drive/...`) stays one argument; it runs without a shell, from the copy. The agent is ready when its port accepts a connection
 (`--ready-timeout`, default 60 s); it is stopped with SIGTERM, then SIGKILL, sent to its own process
 group. Agents reached only in process (a `python` adapter) or at a remote URL cannot be restarted
 this way and are refused.
@@ -68,7 +69,7 @@ what decides whether it generalizes. The decisions are in
 | 0 | `fixed`: a validated patch |
 | 1 | `no_candidate_beat_baseline`, or `baseline_passes` (the current agent already passes every trial of the cluster; no model is called) |
 | 3 | the agent or a run failed |
-| 4 | the budget ran out (`--budget-usd`, default `budget.usd`, one cap for generation and every run); a winner found before that is still reported |
+| 4 | the budget ran out (`--budget-usd`, default `budget.usd`, one cap for generation and every run; as for `hecklr run`, spend may reach it but not cross it, so `--budget-usd 0` runs free models only: `fake/`, `ollama/` or priced at 0 in `models.prices`); a winner found before that is still reported |
 | 78 | configuration error (no `editable` files, no `--agent-cmd`, unknown suite or cluster, the miner not installed) |
 
 ## Output
