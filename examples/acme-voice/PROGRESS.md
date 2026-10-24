@@ -37,14 +37,15 @@ SC4, US-06, US-07. ADRs: 0006, 0007e, 0009a, 0010a, and this workstream's 0011a.
   exits 0. A/A `no_change` on both suites; F7, F8, F9, F10 each a suite regression
   (p 0.008-0.016) with only their own tag slice flipped. US-07 curve: clean agent 92/100/85/62/8%
   at clean/20/10/5/0 dB, F10 31/31/31/23/0%.
+- **Re-run on `main` (5c75dd4, 2026-10-23/24)**: `scripts/voice-fault-matrix.sh all` exits 0 with
+  the same verdicts (A/A no change / inconclusive; F7-F10 regression, p 0.008-0.009), and the
+  US-07 curve reproduces within one task per cell; run ids in `docs/milestones/M2.md`.
 - Numbers: 98 tests in the two examples, 90% coverage; whole repository 1996 passed.
 
 ## Next
 
-- After WS-wire (#32) merges into `main`: merge `origin/main` here, run
-  `scripts/voice-fault-matrix.sh` once more on `main`'s code, and add a suite-loading test through
-  `hecklr.config.load_project_config` (the frozen schema cannot load `type: websocket` voice
-  adapters until then).
+- Add a suite-loading test through `hecklr.config.load_project_config` (the frozen schema could
+  not load `type: websocket` voice adapters before WS-wire).
 - Pipecat SmallWebRTC transport for the voice agent (the spec's P0 voice adapter); today it
   speaks the WebSocket `pcm` protocol only.
 

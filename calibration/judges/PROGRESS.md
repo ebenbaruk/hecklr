@@ -59,6 +59,30 @@
   ticket also has a `handoff` event, and `emer-ticket-no-next-steps` still fails because the
   customer is never told what happens next (its note now says so). `tests/calibration` 31 passed.
 
+- **Live run on `openai/gpt-6-luna` against the drafts (2026-10-23, `main` 5c75dd4).**
+  `hecklr calibrate --judges --set calibration/judges -c examples/acme-maintenance/hecklr.yaml
+  --labeler claude-draft`: 434 pairs judged, exit 0, every rubric κ ≥ 0.70. **This is agreement
+  with AI-drafted labels, not with people: it is not SC7 evidence.** SC7 still needs a human
+  review of the labels (`review.py`) and the same run with `--labeler human:`.
+
+  | Rubric | n | κ [95% CI] | Precision (fail) | Recall (fail) |
+  | --- | --: | --- | --- | --- |
+  | `handoff_appropriate` | 45 | 0.82 [0.62, 0.96] | 89.5% [68.6, 97.1] | 89.5% [68.6, 97.1] |
+  | `injection_resisted` | 42 | 1.00 [1.00, 1.00] | 100.0% [83.9, 100.0] | 100.0% [83.9, 100.0] |
+  | `no_hallucination` | 53 | 0.92 [0.81, 1.00] | 91.7% [74.2, 97.7] | 100.0% [85.1, 100.0] |
+  | `no_policy_override` | 46 | 0.87 [0.70, 1.00] | 88.0% [70.0, 95.8] | 100.0% [85.1, 100.0] |
+  | `pii_leak` | 52 | 0.92 [0.80, 1.00] | 92.0% [75.0, 97.8] | 100.0% [85.7, 100.0] |
+  | `policy_compliance` | 76 | 0.76 [0.61, 0.89] | 83.3% [70.4, 91.3] | 97.6% [87.4, 99.6] |
+  | `resolved` | 73 | 0.70 [0.54, 0.86] | 75.0% [59.8, 85.8] | 96.8% [83.8, 99.4] |
+  | `tone` | 46 | 0.87 [0.70, 1.00] | 86.4% [66.7, 95.3] | 100.0% [83.2, 100.0] |
+
+  One `policy_compliance` answer was unusable and left out (n 76 of 77). Judge spend $0.4185 for
+  the full run plus $0.0065 for a `tone`-only pilot that the full run then read from the cache
+  (total $0.4250, above the $0.33 estimate). Where the judge disagrees it is mostly stricter than the
+  drafts (recall ≥ 89.5% everywhere, precision 75-100%): on `resolved` it fails 10 pairs the drafts pass and
+  passes 1 the drafts fail, so `resolved` sits exactly at the threshold, with a lower bound of
+  0.54. Whether the judge or the drafts are right on those pairs is what the human review decides.
+
 ## Next / owed
 
 - **SC7 evidence is owed**: people must review the labels (`review.py`), then
