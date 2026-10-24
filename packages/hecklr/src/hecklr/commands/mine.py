@@ -113,7 +113,8 @@ def mine(
         typer.Option(
             min=0.0,
             help="Spending cap [default: budget.usd]. Checked before each model call, so the "
-            "calls already in flight (up to 8) can overshoot it slightly.",
+            "calls already in flight (up to 8) can overshoot it slightly. 0 runs free models "
+            "only (fake/, ollama/), as for hecklr run.",
         ),
     ] = None,
 ) -> None:
@@ -133,6 +134,12 @@ def mine(
         )
     chosen_model = None if no_model else (model or project.config.models.simulator)
     cap = Decimal(str(budget_usd)) if budget_usd is not None else project.config.budget.usd
+    if cap == 0 and embedder is EmbedderOption.OPENAI:
+        # The miner meters embeddings only after they are paid for; refuse before spending.
+        raise fail(
+            "--embedder openai is paid and the budget is $0: use --embedder hashing or a budget",
+            exit_codes.BUDGET,
+        )
     mine_root = project.output_dir / hecklr_mine.MINE_DIR
     mine_id = new_id()
     target = out if out is not None else mine_root / mine_id
@@ -148,6 +155,7 @@ def mine(
             min_cluster_size=min_cluster_size,
             dedup_threshold=dedup_threshold,
             max_usd=cap,
+            prices=project.config.models.prices,
             seed=project.config.seed,
         )
         csv_mapping = hecklr_mine.CsvMapping.from_yaml(mapping) if mapping else None
