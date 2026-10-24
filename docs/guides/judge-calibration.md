@@ -97,7 +97,8 @@ Verdicts are not in the case files: they live in `calibration/judges/labels.json
     Changing the judge model needs only step 2.
 
 A full run on `openai/gpt-6-luna` is 434 judge calls, about 2.7 million input tokens and
-110,000 output tokens: about $0.33.
+110,000 output tokens: estimated at about $0.33. The one measured run (2026-10-23, below) cost
+$0.42 in judge spend, about a quarter over the estimate, so budget at least $0.50.
 
 ## Status of SC7
 
@@ -107,7 +108,8 @@ A full run on `openai/gpt-6-luna` is 434 judge calls, about 2.7 million input to
     and agreement with them proves nothing about agreement with people. SC7 is met only when
     people have reviewed the set (`human:` labels on at least 40 pairs of every rubric) and the
     live acceptance test, `tests/calibration/test_live_sc7_judges.py`, shows κ ≥ 0.70 per rubric
-    on the real judge model. The human review has not happened yet.
+    on the real judge model. Neither has happened yet: the set has no human labels, so the live
+acceptance test skips and has never run.
 
 **Live run against the drafts** (2026-10-23, `openai/gpt-6-luna`, `--labeler claude-draft`, 434
 pairs, judge spend $0.42): every rubric reaches κ ≥ 0.70 against the AI-drafted labels. This
