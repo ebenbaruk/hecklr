@@ -21,8 +21,8 @@ starts the agent itself, once per pass, from a copy of your project with the can
 written in. `--agent-cmd` says how: `{port}` (required) is a free port Hecklr also writes into the
 copy's adapter URLs, `{python}` is Hecklr's interpreter and `{project}` the copy. The command is
 split like a shell would split it before the placeholders are filled in, so a path with spaces
-(`~/My Drive/...`) stays one argument; it runs without a shell, from the copy. The agent is ready when its port accepts a connection
-(`--ready-timeout`, default 60 s); it is stopped with SIGTERM, then SIGKILL, sent to its own process
+(`~/My Drive/...`) stays one argument; it runs without a shell, from the copy. The agent is ready
+when its port accepts a connection (`--ready-timeout`, default 60 s); it is stopped with SIGTERM, then SIGKILL, sent to its own process
 group. Agents reached only in process (a `python` adapter) or at a remote URL cannot be restarted
 this way and are refused.
 
