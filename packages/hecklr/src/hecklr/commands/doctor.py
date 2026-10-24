@@ -24,7 +24,7 @@ from hecklr import exit_codes
 from hecklr.channels import DEFAULT_ASR, MODELS_DIR
 from hecklr.commands._common import CONFIG_ERRORS, stdout
 from hecklr.compose import load_run_project
-from hecklr.probe import DEFAULT_OLLAMA_URL, ollama_models, probe_agent
+from hecklr.probe import DEFAULT_OLLAMA_URL, local_ollama_url, ollama_models, probe_agent
 from hecklr.scaffold import MODEL_KEYS, choose_models
 from hecklr_adapters import AdapterConfigError, load_agent
 from hecklr_core import Project
@@ -160,7 +160,7 @@ def _asr(project: Project) -> Iterator[Check]:
 def _available_models() -> Check:
     """Which models this machine can use, as ``hecklr init`` would choose them."""
     has_key = any(os.environ.get(key) for key in MODEL_KEYS)
-    found = None if has_key else ollama_models(DEFAULT_OLLAMA_URL)
+    found = None if has_key else ollama_models(local_ollama_url(os.environ))
     choice = choose_models(os.environ, found)
     detail = f"{choice.simulator} / {choice.judge}: {choice.reason}"
     return Check("models available", "warn" if choice.warning else "ok", detail)

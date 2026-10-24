@@ -170,6 +170,26 @@ def test_doctor_reports_which_models_this_machine_can_use(
     assert "sk-x" not in check.detail
 
 
+def test_issue83_models_available_probes_ollama_where_ollama_base_url_points(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11500/v1")
+    probed: list[str] = []
+
+    def served(base_url: str) -> list[str] | None:
+        probed.append(base_url)
+        return ["qwen3:8b"] if base_url == "http://gpu-box:11500" else None
+
+    monkeypatch.setattr("hecklr.commands.doctor.ollama_models", served)
+
+    check = _checks(config_path)["models available"]
+
+    assert probed == ["http://gpu-box:11500"]
+    assert check.detail.startswith("ollama/"), check.detail
+
+
 def test_asr_key_is_checked_by_name_for_voice_projects(
     config_path: Path, monkeypatch: pytest.MonkeyPatch, edit: Edit
 ) -> None:
