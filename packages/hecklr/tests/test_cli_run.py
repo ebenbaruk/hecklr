@@ -22,11 +22,13 @@ import hecklr.commands.run
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
-from hecklr.commands.run import _exit_code
+from hecklr.commands.run import _exit_code, at_most_usd
 from hecklr.testing import scripted_models
 from hecklr_core import ResultStore, RunResults
+from hecklr_core.planning import SIM_DRAFTS_PER_TURN
 from hecklr_llm import FakeLLM, ProviderConfigError
 from hecklr_schemas import AgentRef, Budget, LLMRequest, Run, RunId, RunStatus, new_id
+from hecklr_sim import SimulatorSettings
 
 Edit = Callable[[Path, str, str], None]
 StubAgent = Callable[..., str]
@@ -266,6 +268,31 @@ def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     (run,) = store.list_runs()
     store.close()
     assert (run.id, run.status) == (run_id, RunStatus.CANCELLED)
+
+
+@pytest.mark.parametrize(
+    ("usd", "printed"),
+    [
+        ("0", "$0.00"),
+        ("0.0149", "$0.02"),
+        ("0.01", "$0.01"),
+        ("0.0071", "$0.0071"),
+        ("0.00712001", "$0.0072"),
+        ("0.00000001", "$0.0001"),
+        ("1.231", "$1.24"),
+        ("25", "$25.00"),
+    ],
+)
+def test_issue84_the_estimate_is_printed_rounded_up(usd: str, printed: str) -> None:
+    assert at_most_usd(Decimal(usd)) == printed
+
+
+def test_issue85_the_estimate_charges_the_simulator_hecklr_run_builds() -> None:
+    # hecklr-core cannot import hecklr-sim, so its constants are checked here against the
+    # settings `hecklr run` builds its simulators with (make_adversarial_simulator's defaults).
+    settings = SimulatorSettings(model="fake/customer")
+    assert settings.max_regenerations + 1 == SIM_DRAFTS_PER_TURN
+    assert not settings.llm_consistency_check
 
 
 _ISSUE117_AGENT = """\

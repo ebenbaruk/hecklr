@@ -10,7 +10,7 @@ import logging
 import signal
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Final
@@ -154,10 +154,24 @@ def _print_plan(prepared: PreparedRun) -> None:
     plan = prepared.plan
     stderr.print(
         f"Suite [bold]{escape(plan.suite.name)}[/]: {len(plan.run.matrix)} trials over "
-        f"{len(plan.suite.cells)} scenarios, estimated cost at most ${plan.estimate.total_usd:.2f}"
+        f"{len(plan.suite.cells)} scenarios, estimated cost at most "
+        f"{at_most_usd(plan.estimate.total_usd)}"
         f"{' (adaptive)' if prepared.adaptive else ''}; run {plan.run.id}",
         soft_wrap=True,
     )
+
+
+_CENT: Final = Decimal("0.01")
+_SUB_CENT: Final = Decimal("0.0001")
+
+
+def at_most_usd(usd: Decimal) -> str:
+    """``usd`` as an upper bound: rounded up, to the cent, or to 1/100 cent below one cent.
+
+    Rounding to the nearest cent printed an estimate of $0.0149 as "at most $0.01" (issue #84).
+    """
+    step = _SUB_CENT if 0 < usd < _CENT else _CENT
+    return f"${usd.quantize(step, rounding=ROUND_CEILING)}"
 
 
 def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) -> RunResults:
