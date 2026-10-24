@@ -33,6 +33,7 @@ the scenarios that flipped, grouped by cause. [`demo/`](demo/README.md) reproduc
 - [Concepts](#concepts)
 - [Connect your agent](#connect-your-agent)
 - [Use it in CI](#use-it-in-ci)
+- [Guides](#guides)
 - [CLI](#cli)
 - [Configuration](#configuration)
 - [Statistical guarantees](#statistical-guarantees)
@@ -201,16 +202,16 @@ Wrote 11 files to /tmp/my-agent-tests:
   ...
   personas/polite-regular.yaml
   hecklr_agent.py
-Models: simulator fake/customer, judge fake/judge; WARNING: no OPENAI_API_KEY, ANTHROPIC_API_KEY
-or running Ollama found, so these are scripted fake models: they test the wiring, not the agent.
-Set a key and re-run `hecklr init --force`.
+Models: simulator fake/customer, judge fake/judge; WARNING: no OPENAI_API_KEY, ANTHROPIC_API_KEY or running Ollama found, so these are scripted fake models: they test the wiring, not the agent. Set a key and re-run `hecklr init --force`.
 Next: hecklr doctor && hecklr run
 ```
 
 `hecklr run` places every conversation, grades it, and prints the run:
 
 ```text
-Hecklr run 01M5Q2HQ357TCV959ZHFJPS7JD · agent my-agent-tests · suite ci
+Suite ci: 15 trials over 5 scenarios, estimated cost at most $0.00; run 01M5QXQ248PWK6134ZSVQXFNTB
+
+Hecklr run 01M5QXQ248PWK6134ZSVQXFNTB · agent my-agent-tests · suite ci
                    Run metrics (95% CI)
 ┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━┓
 ┃ Metric               ┃                      Value ┃  n ┃
@@ -219,14 +220,23 @@ Hecklr run 01M5Q2HQ357TCV959ZHFJPS7JD · agent my-agent-tests · suite ci
 │ pass^3               │     100.0% [56.6%, 100.0%] │  5 │
 │ pass@3               │     100.0% [56.6%, 100.0%] │  5 │
 │ response_latency_p50 │          0 ms [0 ms, 0 ms] │ 15 │
-│ response_latency_p95 │       21 ms [17 ms, 76 ms] │ 15 │
+│ response_latency_p95 │       21 ms [17 ms, 47 ms] │ 15 │
+│ response_latency_p99 │       47 ms [17 ms, 47 ms] │ 15 │
 │ cost_usd_per_trial   │ $0.0000 [$0.0000, $0.0000] │ 15 │
 └──────────────────────┴────────────────────────────┴────┘
 15 of 15 trials analyzed · 0 harness errors · 0 undecided (0 grade errors) · 0 agent errors · 0 timeouts
 Simulator contradiction rate 0.0% [0.0%, 20.4%]
-...
+Scenarios (Wilson 95% CI)
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ scenario          ┃ passed ┃     pass rate [95% CI] ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ check-appointment │    3/3 │ 100.0% [43.9%, 100.0%] │
+│ ...               │        │                        │
+└───────────────────┴────────┴────────────────────────┘
 Spent: $0.0000 of budget $5.00
-Report: .hecklr/runs/01M5Q2HQ357TCV959ZHFJPS7JD/report.html
+Run 01M5QXQ248PWK6134ZSVQXFNTB (completed)
+Results: /tmp/my-agent-tests/.hecklr/runs/01M5QXQ248PWK6134ZSVQXFNTB
+Report: /tmp/my-agent-tests/.hecklr/runs/01M5QXQ248PWK6134ZSVQXFNTB/report.html
 ```
 
 Note the interval: five scenarios that all passed give a suite pass rate of
@@ -237,7 +247,7 @@ Open the report, run again, and compare the two runs:
 ```bash
 hecklr report latest --open     # one self-contained HTML file: overview, scenarios, every trial
 hecklr run
-hecklr compare 01M5Q2HQ357TCV959ZHFJPS7JD latest
+hecklr compare 01M5QXQ248PWK6134ZSVQXFNTB latest
 hecklr gate --suite ci
 ```
 
@@ -246,8 +256,11 @@ hecklr gate --suite ci
 
 **Pass rate** 100.0% [56.6%, 100.0%] → 100.0% [56.6%, 100.0%]: **0.0 pts [−43.4, +43.4]** (95% CI), p=1.000 · 5 scenarios, 15 vs 15 trials · δ=3 pts, α=0.05
 Inconclusive: more trials are unlikely to decide it; add scenarios.
-...
-Gate: INCONCLUSIVE (exit 2); reports in .hecklr/runs/01M5Q2MGHS2Q4PTTAG245WGYE9
+
+**Latency p95** suite: 21 ms [17 ms, 47 ms] → 26 ms [21 ms, 123 ms], +5 ms [−24, +106], inconclusive
+**Latency p95** channel=chat: 21 ms [17 ms, 47 ms] → 26 ms [20 ms, 123 ms], +5 ms [−24, +106], inconclusive
+**Run** 15 of 15 trials analyzed · simulator contradictions 0.0% [0.0%, 20.4%]
+Gate: INCONCLUSIVE (exit 2); reports in /tmp/my-agent-tests/.hecklr/runs/01M5QXQHT1FMZE7FWHJHNYFGMM
 ```
 
 That is the honest answer for five scenarios: no paired test on 5 scenarios can reach p < 0.05,
@@ -285,9 +298,11 @@ uv run hecklr gate --suite smoke                # exit 1
 - `state: the visit moved to the slot asked for` (6): `scripted-reschedule-1`, `scripted-reschedule-2`, `scripted-reschedule-3`, `scripted-reschedule-4` +2 more — _the visit moved to the slot asked for: False_
 - `state: the visit is booked at the slot asked for` (3): `scripted-booking-1`, `scripted-booking-2`, `scripted-booking-3` — _the visit is booked at the slot asked for: False_
 
+**Latency p95** suite: 19 ms [17 ms, 28 ms] → 21 ms [17 ms, 30 ms], +2 ms [−7, +12], inconclusive
+**Latency p95** channel=chat: 19 ms [17 ms, 28 ms] → 21 ms [17 ms, 30 ms], +2 ms [−7, +12], inconclusive
 **Slices regressed** (q < α): `channel=chat` −27.3 pts [−44.2, −11.2], `tag=catches-f1` −100.0 pts [−100.0, −57.7], `tag=scripted` −27.3 pts [−44.2, −11.2]
 **Run** 33 of 33 trials analyzed · simulator contradictions 0.0% [0.0%, 10.4%]
-Gate: REGRESSION (exit 1)
+Gate: REGRESSION (exit 1); reports in examples/acme-maintenance/.hecklr/runs/<run id>
 ```
 
 The regression is caught by **state assertions** on the world sandbox: the visit was booked, just
@@ -420,7 +435,19 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-The [CI guide](docs/guides/ci.md) covers cost, caching and the action's inputs.
+The [CI guide](docs/guides/ci.md) covers cost, speed and the action's inputs.
+
+## Guides
+
+| Guide | Covers |
+| --- | --- |
+| [Voice](docs/guides/voice.md) | What a call goes through, the timing metrics, the loopback calibration (SC4), running voice suites |
+| [Email](docs/adapters.md#email) | The `webhook` and `smtp-imap` adapters, threading and reply deadlines |
+| [CI](docs/guides/ci.md) | `hecklr gate`, the GitHub Action, cost and speed, other CI systems |
+| [Judge calibration](docs/guides/judge-calibration.md) | Labeling trials and measuring each judge's κ before you trust it |
+| [Miner](docs/guides/miner.md) and [fixer](docs/guides/fixer.md) | From production logs to approved scenarios, and validated prompt patches |
+| [Red team](docs/guides/red-team.md) | The eight attack strategies and the safety graders |
+| [Local UI](docs/guides/ui.md) | Runs, comparisons, the trial viewer, approvals and labeling |
 
 ## CLI
 
