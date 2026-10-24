@@ -14,12 +14,10 @@ import dataclasses
 import gc
 import signal
 import sys
-import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Final
 
 import anyio
 import httpx2
@@ -57,15 +55,11 @@ from hecklr_voice import (
 from hecklr_voice import (
     VoiceConfigError as EngineConfigError,
 )
-from hecklr_voice.pool import dsp_workers, run_dsp
+from hecklr_voice.pool import dsp_workers
 from hecklr_voice.vad import VadFactory
 from hecklr_world import WorldConfigError, load_world
 
 DEFAULT_MODELS_DIR = PROJECT_ROOT / ".hecklr" / "models"
-KEEP_WARM_S: Final = 60.0
-"""How often every speech worker gets a moment's work (anyio retires workers idle 300 s)."""
-WARM_JOB_S: Final = 0.05
-"""Length of a keep-warm job: long enough that the jobs overlap and land on distinct workers."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,21 +143,6 @@ async def warm_up(stack: SpeechStack) -> None:
             group.start_soon(one, index)
 
 
-async def keep_warm(interval_s: float = KEEP_WARM_S) -> None:
-    """Give every DSP worker a moment's work every ``interval_s``, forever.
-
-    anyio retires a worker that has been idle for five minutes, and reuses idle workers last in,
-    first out, so the workers warmed at start-up are the ones that sit idle and get retired.
-    The next peak of calls then starts a worker that loads the speech models on a caller's
-    answer path: 4-7 s, measured five minutes into every timing suite run.
-    """
-    while True:
-        await anyio.sleep(interval_s)
-        async with anyio.create_task_group() as group:
-            for _ in range(dsp_workers()):
-                group.start_soon(run_dsp, time.sleep, WARM_JOB_S)
-
-
 async def serve(options: Options) -> None:
     """Serve calls until SIGINT or SIGTERM."""
     world = load_world(CHAT_ROOT / WORLD_FILE)
@@ -187,12 +166,9 @@ async def serve(options: Options) -> None:
             gc.collect()
             gc.freeze()
             print(f"listening on ws://{options.host}:{bound_port(running)}/", flush=True)  # noqa: T201 -- the CLI's output
-            async with anyio.create_task_group() as group:
-                group.start_soon(keep_warm)
-                with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
-                    async for _ in signals:
-                        group.cancel_scope.cancel()
-                        return
+            with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+                async for _ in signals:
+                    return
 
 
 def main(argv: Sequence[str] | None = None) -> int:

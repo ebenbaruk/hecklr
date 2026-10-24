@@ -45,11 +45,10 @@ from acme_agent import (
     load_agent_files,
 )
 from acme_voice import SpeechStack, VoiceCall, load_pipeline_config
-from acme_voice.__main__ import DEFAULT_MODELS_DIR, keep_warm, speech_stack, warm_up
+from acme_voice.__main__ import DEFAULT_MODELS_DIR, speech_stack, warm_up
 from livekit import api, rtc
 
 from hecklr_schemas import World, new_id
-from hecklr_voice import SpeechRequest
 from hecklr_voice.audio import SAMPLE_RATE, Pcm16
 from hecklr_world import load_world
 
@@ -256,9 +255,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 async def serve(args: argparse.Namespace, url: str, key: str, secret: str) -> None:
     """Take calls until SIGINT or SIGTERM."""
     stack = speech_stack(load_pipeline_config(), DEFAULT_MODELS_DIR)
-    # One synthesis first: warm_up loads the models in every worker at once, and on a fresh
-    # machine those parallel first downloads of the same file race each other.
-    await stack.tts.synthesize(SpeechRequest(text="Hello.", voice=stack.voice))
     await warm_up(stack)
     settings = dataclasses.replace(AgentSettings.from_env(), brain="rules")
     async with httpx2.AsyncClient(timeout=settings.tool_timeout_s) as client:
@@ -272,7 +268,6 @@ async def serve(args: argparse.Namespace, url: str, key: str, secret: str) -> No
         print(f"listening on {url}", flush=True)  # noqa: T201 -- the readiness line the runner waits for
         async with anyio.create_task_group() as group:
             group.start_soon(worker.run)
-            group.start_soon(keep_warm)
             with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
                 async for _ in signals:
                     group.cancel_scope.cancel()

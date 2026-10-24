@@ -59,3 +59,9 @@ so a worker killed by a cancelled job is replaced before the next call, not duri
   import them.
 - One private anyio import. A change there fails the pool's tests (`test_pool.py`) and every voice
   test under `filterwarnings = error`, not silently.
+
+## Follow-up (2026-10-25, #82)
+
+The acme voice agent's `keep_warm`, the LiveKit bench agent's pre-warm synthesis and the CLI's
+`_keep_dsp_workers_off_the_entry_script` are removed. SC3 and SC4 were run serially after the
+removal (`packages/hecklr-voice/PROGRESS.md`).

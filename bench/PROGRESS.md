@@ -31,8 +31,9 @@ Owner: WS17. Spec: `docs/SPEC.md` -> SC10, US-12, WS17 row, "Voice simulation en
   context (`models/`); the cloud Pipecat stack tests AssemblyAI only (no OpenAI TTS).
 - The acme cascade caches synthesized replies on disk; its rows are measured warm (the first,
   cold run had p95 7.7 s, all of it first-time Kokoro synthesis of long replies).
+- Issue #81 (fixed in hecklr-voice) and #82: `livekit_acme.py` no longer synthesizes once before
+  `warm_up` nor runs `keep_warm`; parallel first downloads are safe and DSP workers never retire.
 
 ## Next / open
 
 - Re-measure every row on an idle machine before quoting numbers publicly (rows record their load).
-- Issue #81: parallel first downloads of a voice model race in `hecklr-voice`.
