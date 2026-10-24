@@ -122,11 +122,14 @@ The specification is [`docs/SPEC.md`](docs/SPEC.md); architecture decisions are 
 
 ## Status
 
-Pre-release. Chat, voice, email, the graders, statistics, CI gate, miner, red-team pack and UI
-work and are tested against a reference agent with twelve seeded faults, each one caught
-([M1](docs/milestones/M1.md), [M2](docs/milestones/M2.md)). The fixer (`hecklr fix`) and the
-benchmark (`hecklr bench`) are built; the benchmark's measured rows are preliminary and are to be
-re-measured on an idle machine before publication. See the [roadmap](docs/roadmap.md).
+Pre-release; **the v1.0 gate is not passed** ([V1.0](docs/milestones/V1.0.md)). Chat, voice,
+email, the graders, statistics, CI gate, miner, red-team pack and UI work and are tested against
+a reference agent with twelve seeded faults, each one caught ([M1](docs/milestones/M1.md),
+[M2](docs/milestones/M2.md), [M3](docs/milestones/M3.md)). Still owed for v1.0: judge
+agreement with human labels (SC7; the labels are AI drafts so far), the 50-call voice benchmark
+on an 8-core machine (SC3), and the launch assets: the docs site going live, the demo video and
+a benchmark re-measured on an idle machine (SC10). The fixer (`hecklr fix`) and the benchmark
+(`hecklr bench`) are built. See the [roadmap](docs/roadmap.md).
 
 ## Contributing
 

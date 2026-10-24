@@ -34,6 +34,8 @@ milestone report with evidence for every criterion.
 
 Tracked as issues; the milestone reports list them with evidence.
 
+- SC7: people review the judge calibration labels (today AI drafts), then the live κ run.
+- SC10: the 90-second demo video, the docs site live, the benchmark published.
 - SC3 (50 simultaneous calls on 8 cores) as a CI benchmark, not only a laptop measurement.
 - SC4 asserted over WebRTC transports on a dedicated idle runner.
 - The voice fault matrix (F7-F10) and F10 as a nightly job on `main`.
