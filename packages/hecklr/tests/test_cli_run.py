@@ -468,3 +468,39 @@ def _results(status: RunStatus) -> RunResults:
 )
 def test_run_status_maps_to_exit_code(status: RunStatus, code: int) -> None:
     assert _exit_code(_results(status)) == code
+
+
+_ISSUE112_AGENT = """\
+import os
+
+import hecklr
+import hecklr_agent
+
+
+@hecklr.agent(channel="chat")
+async def reply(session: hecklr.Session, message: str) -> str:
+    text = await hecklr_agent.reply(session, message)
+    if os.environ.get("ISSUE112_BROKEN") and "saturday" in message.lower():
+        return "Sure \\ud83d"  # an emoji escape cut in half, as json.loads decodes it
+    return text
+"""
+
+
+def test_issue112_a_reply_with_a_lone_surrogate_is_an_agent_error_and_fails_the_gate(
+    config_path: Path, edit: Callable[[Path, str, str], None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (config_path.parent / "issue112_agent.py").write_text(_ISSUE112_AGENT, encoding="utf-8")
+    edit(config_path, "hecklr_agent:reply", "issue112_agent:reply")
+    code, output = _run(config_path)
+    assert code == exit_codes.OK, output
+
+    monkeypatch.setenv("ISSUE112_BROKEN", "1")
+    code, output = _run(config_path)
+
+    assert code == exit_codes.OK, output
+    flat = " ".join(output.split())
+    assert "15 of 15 trials analyzed · 0 harness errors" in flat
+    assert "3 agent errors" in flat
+    assert "saturday-visits │ 0/3" in flat
+    gate = runner.invoke(app, ["gate", "--config", str(config_path)])
+    assert gate.exit_code != exit_codes.OK, click.unstyle(gate.output)

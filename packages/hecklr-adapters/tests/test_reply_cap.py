@@ -118,3 +118,30 @@ def test_issue34_the_default_cap_is_256_kib_and_must_be_positive() -> None:
     assert DEFAULT_MAX_REPLY_BYTES == 262_144
     with pytest.raises(ValueError, match="max_bytes must be >= 1"):
         cap_reply_size(ScriptedTarget(ScriptedSession([])), 0)
+
+
+@pytest.mark.anyio
+async def test_issue112_a_lone_surrogate_fails_the_turn_as_the_agents() -> None:
+    # json.loads('"Sure \\ud83d"') gives this: an emoji escape cut in half.
+    session = ScriptedSession([AgentChunk(text="Sure, "), AgentChunk(text="Saturday \ud83d ok")])
+    capped = await cap_reply_size(ScriptedTarget(session)).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert [chunk.text for chunk in received] == ["Sure, ", "Saturday "]
+    assert error is not None
+    assert "not valid Unicode (an unpaired surrogate) '\\ud83d'" in str(error)
+    assert session.streams_closed == 1
+
+
+@pytest.mark.anyio
+async def test_issue112_a_lone_surrogate_in_a_tool_call_fails_the_turn() -> None:
+    call = ToolCallPayload(call_id="c1", tool="book", args={"note": "\udc00"})
+    session = ScriptedSession([AgentChunk(tool_call=call)])
+    capped = await cap_reply_size(ScriptedTarget(session)).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert received == []
+    assert error is not None
+    assert "not valid Unicode" in str(error)

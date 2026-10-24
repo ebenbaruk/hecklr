@@ -75,7 +75,7 @@ def _json(message: Message) -> dict[str, object]:
         raise AgentError("agent sent a binary message where JSON text was expected")
     try:
         data = json.loads(message)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:  # as in ``parse_json`` (issue #112)
         raise AgentError(f"agent sent malformed JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise AgentError("agent sent a JSON message that is not an object")
