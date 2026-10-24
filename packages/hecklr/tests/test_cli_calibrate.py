@@ -87,6 +87,19 @@ def test_sc5_aa_on_two_stored_runs_of_the_same_agent(config_path: Path, store: S
     assert "target <= 5% ok" in output
 
 
+def test_issue102_aa_flags_scenarios_flaky_across_the_two_runs(
+    config_path: Path, store: StoreRun
+) -> None:
+    rates = {s: 0.5 if s == "s00" else 1.0 for s in SCENARIOS}
+    a = store(rates, order=0, seed=1, trials=10)
+    b = store(rates, order=1, seed=2, trials=10)
+
+    code, output = invoke(config_path, "--aa", "--runs", a.id, "--runs", b.id, "--replicates", "0")
+
+    assert code == exit_codes.OK, output
+    assert re.search(r"Flaky across identical runs \(pass rate 20-80%\): s00 \d+\.\d% \[", output)
+
+
 def test_aa_fails_when_the_runs_differ(config_path: Path, store: StoreRun) -> None:
     a = store(dict.fromkeys(SCENARIOS, 1.0), order=0)
     b = store({s: 0.0 if i < 15 else 1.0 for i, s in enumerate(SCENARIOS)}, order=1)
@@ -350,6 +363,71 @@ def test_sc7_calibrate_judges_set_judges_the_transcripts_and_trusts_agreement(
     assert "Judge spend: $0.0000" in output
     assert "NO (kappa < 0.70)" not in output
     assert "note:" not in output  # all labels are human
+
+
+OLD_JUDGE = "fake/old-judge"
+
+
+def _two_models(*, current_agrees: bool) -> FakeLLM:
+    """``OLD_JUDGE`` agrees with the labels; the project's judge too, or passes everything."""
+    return FakeLLM(
+        responder=lambda request: {
+            "verdict": "pass"
+            if _agrees(request.messages[0].content)
+            or (request.model != OLD_JUDGE and not current_agrees)
+            else "fail",
+            "rationale": "Scripted.",
+            "evidence": [],
+        }
+    )
+
+
+def test_issue102_changing_the_judge_model_warns_when_agreement_drops(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+    judge = _two_models(current_agrees=False)
+
+    code, output = _invoke_set(config_path, judge, "--set", str(root), "--drift-from", OLD_JUDGE)
+
+    assert code == exit_codes.CHECK_FAILED, output
+    assert {call.model for call in judge.calls} == {OLD_JUDGE, "fake/judge"}
+    assert f"Judge model drift: {OLD_JUDGE} → fake/judge on the same labels (95% CI)" in output
+    assert re.search(
+        r"judge:tone \S+ 1\.00 \[1\.00, 1\.00\] 0\.00 \[[^\]]+\] \N{MINUS SIGN}1\.00 \[", output
+    )
+    assert "DROPPED" in output
+    assert (
+        "warning: judge agreement dropped with fake/judge on judge:resolved, judge:tone" in output
+    )
+
+
+def test_issue102_no_drift_warning_when_the_new_judge_model_agrees_as_well(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+
+    code, output = _invoke_set(
+        config_path,
+        _two_models(current_agrees=True),
+        "--set",
+        str(root),
+        "--drift-from",
+        OLD_JUDGE,
+    )
+
+    assert code == exit_codes.OK, output
+    assert "Judge model drift" in output
+    assert "+0.00 [" in output
+    assert "DROPPED" not in output
+    assert "warning:" not in output
+
+
+def test_issue102_drift_from_needs_a_labeled_set(config_path: Path) -> None:
+    code, output = invoke(config_path, "--judges", "--drift-from", OLD_JUDGE)
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert "--drift-from re-judges a labeled set: add --set DIR" in output
 
 
 def test_sc7_calibrate_judges_set_flags_a_disagreeing_judge(

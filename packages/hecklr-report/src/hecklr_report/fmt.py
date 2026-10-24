@@ -82,6 +82,14 @@ def abandoned(conversations: int) -> str:
     return f"{conversations} conversation{plural} abandoned by the consistency guard"
 
 
+def rescore_advice(earlier_judge_model: str) -> str:
+    """What to do after a judge model change: the spec's re-score of the labeled set (#102)."""
+    return (
+        "judge verdicts may have moved with the judge, not the agent; re-score the labeled set: "
+        f"hecklr calibrate --judges --set DIR --drift-from {earlier_judge_model}"
+    )
+
+
 def slice_label(slice_: Slice) -> str:
     """``suite`` for the whole run, else e.g. ``channel=voice``."""
     return ", ".join(f"{k}={v}" for k, v in sorted(slice_.items())) or "suite"

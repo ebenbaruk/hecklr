@@ -221,6 +221,14 @@ def _health(analysis: Analysis) -> Text:
         )
         if counts.guard_abandoned:
             text.append(f" · {fmt.abandoned(counts.guard_abandoned)}")
+    flaky = [(s.scenario_id, s.flaky) for s in analysis.scenarios if s.flaky is not None]
+    if flaky:
+        text.append("\nFlaky across identical runs (pass rate 20-80%): ", "yellow")
+        text.append(", ".join(f"{sid} {fmt.estimate(rate, 'percent')}" for sid, rate in flaky))
+    if (change := analysis.judge_model_change) is not None:
+        before, after = change
+        text.append(f"\nJudge model changed: {before} → {after}; ", "yellow")
+        text.append(fmt.rescore_advice(before))
     for problem in analysis.problems:
         text.append(f"\nCannot gate: {problem}", "bold red")
     return text

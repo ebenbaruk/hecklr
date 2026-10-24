@@ -96,7 +96,18 @@ Verdicts are not in the case files: they live in `calibration/judges/labels.json
     prompt and the transcript format). Edit a rubric and its old labels stop counting (they stay
     in the append-only file as history): CI names the changed rubric, and re-reviewing it with
     `review.py --rubric <name>` appends labels of the new version. Then re-run step 2.
-    Changing the judge model needs only step 2.
+    Changing the judge model needs only step 2, with the earlier model named:
+
+    ```bash
+    hecklr calibrate --judges --set calibration/judges --labeler human: \
+      --drift-from openai/gpt-5 -c hecklr.yaml
+    ```
+
+    The set is judged by both models, and a table shows each rubric's κ before and after and
+    the change with its 95% interval. A drop whose interval lies below zero, or a fall from
+    trusted to untrusted, prints a drift warning. `compare`, `gate`, `report` and the PR
+    comment also warn when the baseline and candidate runs were graded by different judge
+    models, and name this command.
 
 A full run on `openai/gpt-6-luna` is 434 judge calls, about 2.7 million input tokens and
 110,000 output tokens: estimated at about $0.33. The one measured run (2026-10-23, below) cost

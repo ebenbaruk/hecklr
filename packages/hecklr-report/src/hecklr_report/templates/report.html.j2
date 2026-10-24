@@ -93,6 +93,10 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
   <div class="panel problems"><strong>Cannot gate on this run:</strong>
     <ul>{% for p in a.problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
   {% endif %}
+  {% if a.judge_model_change %}{% set before, after = a.judge_model_change %}
+  <div class="panel problems"><strong>Judge model changed:</strong>
+    <code>{{ before }}</code> → <code>{{ after }}</code>; {{ fmt.rescore_advice(before) }}</div>
+  {% endif %}
   <nav>
     <a href="#overview">Overview</a>
     {% if a.comparisons %}<a href="#comparisons">Comparisons</a>{% endif %}
@@ -180,7 +184,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
     {% for s in a.scenarios %}
       <tr id="s-{{ s.scenario_id }}"><td><code>{{ s.scenario_id }}</code><div class="meta">{{ s.title }}</div></td>
         <td>{{ s.tags|join(", ") }}</td>
-        <td class="num">{% if s.pass_rate %}{{ fmt.estimate(s.pass_rate, "percent") }} <span class="meta">{{ s.passes }}/{{ s.trials }}</span>{% else %}no analyzable trial{% endif %}</td>
+        <td class="num">{% if s.pass_rate %}{{ fmt.estimate(s.pass_rate, "percent") }} <span class="meta">{{ s.passes }}/{{ s.trials }}</span>{% else %}no analyzable trial{% endif %}{% if s.flaky %}<div class="bad">flaky across identical runs: {{ fmt.estimate(s.flaky, "percent") }}</div>{% endif %}</td>
         {% if a.baseline %}
         <td class="num">{% if s.baseline_pass_rate %}{{ fmt.estimate(s.baseline_pass_rate, "percent") }}{% else %}—{% endif %}</td>
         <td class="{{ 'bad' if s.flip == 'pass_to_fail' else 'good' }}">{{ (s.flip or "").replace("_", " ") }}</td>

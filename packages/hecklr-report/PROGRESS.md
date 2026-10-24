@@ -54,6 +54,21 @@ US-03, US-04, US-05, US-06, US-07, "Voice simulation engine > Metrics". Decision
   127.0.0.1 and drove it in Chrome: one network request (the document), no page errors,
   waveform and markers drawn, failed-only and text filters work, evidence links open the
   timeline row.
+- **WShstats (Wave 6 close, ADR 0024-hstats):**
+  - #101: conversations the consistency guard gave up on count in the contradiction rate and are
+    named in every format (`test_analysis.py`, `test_markdown.py`,
+    `test_machine_and_terminal.py`).
+  - #103: adaptive runs are compared at O'Brien-Fleming looks, first pass then everything
+    (`test_adaptive.py`: `test_issue103_*`, 6 tests).
+  - #102: scenarios flaky across identical runs (`is_identical`, or `identical_runs=True` from
+    `calibrate --aa`) carry `ScenarioResult.flaky` with its Wilson interval, shown in the
+    terminal, PR comment and HTML (`test_flaky.py`, 5 tests); `Analysis.judge_model_change`
+    warns in every format when baseline and candidate were graded by different judge models
+    (`test_judge_model_change.py`, 3 tests). The UI reads the report JSON: `scenarios[].flaky`
+    and both runs' `judge_model` are in it; rendering them there is left to the UI owner.
+  - #104: the PR comment's untrusted judges show κ with its interval
+    (`test_issue104_untrusted_judges_kappa_carries_its_interval`).
+  - 112 tests, 98% line+branch coverage.
 
 ## Next
 

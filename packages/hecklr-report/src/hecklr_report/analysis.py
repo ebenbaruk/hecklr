@@ -28,9 +28,11 @@ from hecklr_report.voice import SNR_ORDER, degradation, mean_estimate, voice_met
 from hecklr_schemas import (
     Channel,
     Comparison,
+    Estimate,
     Event,
     MetricSummary,
     Persona,
+    Run,
     RunId,
     RunStatus,
     Scenario,
@@ -41,6 +43,7 @@ from hecklr_stats import (
     TrialOutcome,
     compare_runs,
     compare_sequentially,
+    flaky_scenarios,
     summarize_run,
     wilson_estimate,
 )
@@ -66,6 +69,7 @@ def analyze(
     *,
     personas: Mapping[str, Persona] | None = None,
     judge_calibrations: Sequence[JudgeCalibration] = (),
+    identical_runs: bool | None = None,
 ) -> Analysis:
     """Analyze ``candidate``, compared with ``baseline`` when one is given.
 
@@ -80,6 +84,9 @@ def analyze(
             when their persona is given.
         judge_calibrations: Agreement of judge rubrics with human labels, when available; rubrics
             below κ 0.70 are flagged untrusted.
+        identical_runs: Whether the two runs test the same agent and code, so scenarios between
+            20% and 80% pooled pass rate are flagged flaky. ``None`` decides it from the runs'
+            suite, agent and commit (``is_identical``); an A/A self-test declares it ``True``.
     """
     known_personas = personas or {}
     seed = stats.seed if stats.seed is not None else candidate.run.seed
@@ -104,7 +111,15 @@ def analyze(
                 config=stats,
                 seed=seed,
             )
-    scenario_results = _scenario_results(cand.rows, base.rows if base else None, scenarios)
+    identical = baseline is not None and (
+        is_identical(candidate.run, baseline.run) if identical_runs is None else identical_runs
+    )
+    flaky = (
+        {f.scenario_id: f.pass_rate for f in flaky_scenarios([*base.outcomes, *cand.outcomes])}
+        if identical and base is not None
+        else {}
+    )
+    scenario_results = _scenario_results(cand.rows, base.rows if base else None, scenarios, flaky)
     return Analysis(
         created_at=datetime.now(UTC),
         candidate=RunInfo.of(candidate.run),
@@ -118,6 +133,7 @@ def analyze(
         comparisons=comparisons,
         verdict=comparisons[0].verdict if comparisons else None,
         scenarios=scenario_results,
+        identical_runs=identical,
         flips=_flip_groups(scenario_results),
         voice=_voice(candidate, cand, summaries, baseline_summaries, stats, seed),
         judges=[_trust(c) for c in judge_calibrations],
@@ -274,10 +290,21 @@ def _summaries(
     return summaries
 
 
+def is_identical(a: Run, b: Run) -> bool:
+    """Runs of the same suite, agent and commit: the spec's "identical runs" for flakiness.
+
+    Seeds may differ (``hecklr calibrate --aa`` runs with seed and seed + 1). A run that recorded
+    no commit cannot be shown to test the same code, so it is never identical.
+    """
+    same = (a.suite, a.agent, a.git_sha) == (b.suite, b.agent, b.git_sha)
+    return a.git_sha is not None and same
+
+
 def _scenario_results(
     rows: Sequence[TrialRow],
     baseline_rows: Sequence[TrialRow] | None,
     scenarios: Mapping[str, Scenario],
+    flaky: Mapping[str, Estimate],
 ) -> list[ScenarioResult]:
     by_scenario = _group(rows)
     base_by_scenario = _group(baseline_rows or [])
@@ -304,6 +331,7 @@ def _scenario_results(
                 ),
                 flip=flip,
                 cause=_dominant_cause(failing_side),
+                flaky=flaky.get(sid),
             )
         )
     return results

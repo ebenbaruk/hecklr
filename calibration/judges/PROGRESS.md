@@ -13,6 +13,10 @@
 
 ## Done (evidence)
 
+- WShstats: the agreement table names its labelers and says "(not human)" for AI drafts (#97,
+  `test_cli_calibrate.py`); `--drift-from MODEL` re-judges the set with an earlier judge model and
+  warns when κ drops (#102, `test_issue102_changing_the_judge_model_warns_when_agreement_drops`).
+
 - `packages/hecklr/src/hecklr/judge_calibration.py`: set loading, case → trial with executed tool
   calls, labels, `judge_set`. 27 unit tests in `packages/hecklr/tests/test_judge_calibration.py`
   (99-100% line coverage of the module).

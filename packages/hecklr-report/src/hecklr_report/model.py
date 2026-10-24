@@ -133,6 +133,9 @@ class ScenarioResult(FrozenModel):
     """Majority pass on one side and majority fail on the other (as ``hecklr_stats`` defines)."""
     cause: FailureCause | None = None
     """The most common failure cause on the failing side, for failed or flipped scenarios."""
+    flaky: Estimate | None = None
+    """Pass rate pooled over both runs when they are identical runs and it lies in 20-80%: the
+    scenario is flaky (spec, "Validating the statistics"); ``None`` otherwise."""
 
 
 class FlipGroup(FrozenModel):
@@ -198,6 +201,9 @@ class Analysis(FrozenModel):
     verdict: Verdict | None = None
     """The suite pass-rate verdict; ``None`` without a usable baseline."""
     scenarios: list[ScenarioResult] = Field(default_factory=list)
+    identical_runs: bool = False
+    """Baseline and candidate are runs of the same suite, agent and commit, so scenarios were
+    checked for flakiness (``ScenarioResult.flaky``)."""
     flips: list[FlipGroup] = Field(default_factory=list)
     voice: VoiceSection | None = None
     judges: list[JudgeTrust] = Field(default_factory=list)
@@ -213,6 +219,20 @@ class Analysis(FrozenModel):
     def baseline_summary(self, metric: str, slice_: Slice | None = None) -> Estimate | None:
         """The baseline's estimate of ``metric`` on ``slice_`` (default: whole suite)."""
         return _find(self.baseline_summaries, metric, slice_ or {})
+
+    @property
+    def judge_model_change(self) -> tuple[str, str] | None:
+        """``(baseline, candidate)`` judge models when both were recorded and they differ.
+
+        The spec's judge drift check: verdicts of judge rubrics may then move with the judge,
+        so reports warn and point to re-scoring the labeled set (issue #102).
+        """
+        if self.baseline is None:
+            return None
+        before, after = self.baseline.judge_model, self.candidate.judge_model
+        if before is None or after is None or before == after:
+            return None
+        return before, after
 
     @property
     def suite_comparison(self) -> Comparison | None:
