@@ -66,6 +66,14 @@ other workstreams' ADRs or milestone reports), `mkdocs.yml`, `CONTRIBUTING.md`,
   estimate below actual).
 - `docs/milestones/LAUNCH.md`: checklist with status and the four drafts (not posted).
 
+## Milestone reports (2026-10-24)
+
+- `docs/milestones/M3.md`: gate M3 passed, with open P2/P3 caveats. Re-run on `main` b4813a4
+  at $0: red-team F4 caught (−23.3 pts [−40.9, −7.1], p 0.018), then miner → approve in the UI
+  → run, labeling, and Playwright 6/6 plus the voice case skipped.
+- `docs/milestones/V1.0.md`: the v1.0 gate is **not passed**. SC3, SC7 and SC10 are not met;
+  there are 0 open P0/P1 issues. The README status line says so.
+
 ## Next
 
 - Done at integration: `docs/guides/fixer.md`, README, index and roadmap describe the merged
