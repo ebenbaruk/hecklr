@@ -242,7 +242,7 @@ $ hecklr mine [OPTIONS] {logs}
 * `--persona <str>`: Persona of the proposed scenarios .
 * `--min-cluster-size <int range>`: Smallest cluster .  [x&gt;=2]
 * `--dedup-threshold <float range>`: Similarity that makes a duplicate.  [default: 0.9; 0.0&lt;=x&lt;=1.0]
-* `--budget-usd <float range>`: Spending cap . Checked before each model call, so the calls already in flight (up to 8) can overshoot it slightly.  [x&gt;=0.0]
+* `--budget-usd <float range>`: Spending cap . Checked before each model call, so the calls already in flight (up to 8) can overshoot it slightly. 0 runs free models only (fake/, ollama/), as for hecklr run.  [x&gt;=0.0]
 * `--help`: Show this message and exit.
 
 ## `hecklr fix`
@@ -273,7 +273,7 @@ $ hecklr fix [OPTIONS] [cluster]
 * `--guard-trials <int range>`: Trials per guard scenario .  [x&gt;=1]
 * `--model <str>`: Model that writes the patches .
 * `--seed <int>`: Seed of every run .
-* `--budget-usd <float range>`: Cap on Hecklr&#x27;s spend for the session .  [x&gt;=0]
+* `--budget-usd <float range>`: Cap on Hecklr&#x27;s spend for the session . 0 runs free models only (fake/, ollama/), as for hecklr run.  [x&gt;=0]
 * `--ready-timeout <float range>`: Seconds the agent has to start listening.  [default: 60.0; x&gt;=1]
 * `--pr`: Open a pull request with the winner.
 * `--draft / --no-draft`: With --pr: open it as a draft.  [default: no-draft]
