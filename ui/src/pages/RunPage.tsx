@@ -45,7 +45,7 @@ export function RunPage() {
         </div>
       )}
       <Card title="Metrics">
-        <p className="mb-2 text-sm text-zinc-500">
+        <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
           {data.counts.analyzed} of {data.counts.total} trials analyzed · {data.counts.harness_error}{" "}
           harness errors · {data.counts.undecided} undecided · spent ${Number(run.spent_usd).toFixed(4)}
           {data.counts.contradiction_rate && (
@@ -86,7 +86,7 @@ export function RunPage() {
                 <tr key={s.scenario_id} className="border-b border-zinc-100 dark:border-zinc-800/60">
                   <td className={td}>
                     <div className="font-medium">{s.title}</div>
-                    <div className="font-mono text-xs text-zinc-500">{s.scenario_id}</div>
+                    <div className="font-mono text-xs text-zinc-600 dark:text-zinc-400">{s.scenario_id}</div>
                   </td>
                   <td className={td}>{s.tags.join(", ")}</td>
                   <td className={`${td} tabular-nums`}>

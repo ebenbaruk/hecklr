@@ -46,7 +46,7 @@ export function LabelsPage() {
       </PageTitle>
       <AgreementCard report={agreement} />
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col text-xs text-zinc-500">
+        <label className="flex flex-col text-xs text-zinc-600 dark:text-zinc-400">
           Run
           <select
             className={input}
@@ -63,7 +63,7 @@ export function LabelsPage() {
             ))}
           </select>
         </label>
-        <label className="flex flex-col text-xs text-zinc-500">
+        <label className="flex flex-col text-xs text-zinc-600 dark:text-zinc-400">
           Rubric
           <select
             className={input}
@@ -147,7 +147,7 @@ function AgreementCard({ report }: { report: Loaded<AgreementReport> }) {
         </TableWrap>
       )}
       {report.data && report.data.unmatched > 0 && (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
           {report.data.unmatched} label(s) match no readable judge grade: their run is still being written or was deleted.
         </p>
       )}
@@ -274,7 +274,7 @@ function LabelCard({
     <Card
       title={
         <>
-          {item.title} <code className="ml-2 font-mono text-xs text-zinc-500">{item.grade.grader}</code>
+          {item.title} <code className="ml-2 font-mono text-xs text-zinc-600 dark:text-zinc-400">{item.grade.grader}</code>
         </>
       }
       actions={
@@ -289,7 +289,7 @@ function LabelCard({
             key={e.id}
             className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${e.actor === "agent" ? "bg-zinc-100 dark:bg-zinc-800" : "ml-auto bg-sky-50 dark:bg-sky-950"}`}
           >
-            <span className="mb-1 block text-xs text-zinc-500">{e.actor === "agent" ? "Agent" : "Customer"}</span>
+            <span className="mb-1 block text-xs text-zinc-600 dark:text-zinc-400">{e.actor === "agent" ? "Agent" : "Customer"}</span>
             <span className="whitespace-pre-wrap">
               {e.payload.kind === "utterance" && e.payload.text}
               {e.payload.kind === "email" && `Subject: ${e.payload.message.subject}\n\n${e.payload.message.body}`}
@@ -314,10 +314,10 @@ function LabelCard({
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className={button} onClick={() => void save(true)}>
-            Pass <kbd className="text-xs text-zinc-500">p</kbd>
+            Pass <kbd className="text-xs text-zinc-600 dark:text-zinc-400">p</kbd>
           </button>
           <button type="button" className={button} onClick={() => void save(false)}>
-            Fail <kbd className="text-xs text-zinc-500">f</kbd>
+            Fail <kbd className="text-xs text-zinc-600 dark:text-zinc-400">f</kbd>
           </button>
           {label && (
             <span className="text-sm">
@@ -341,7 +341,7 @@ function LabelCard({
             )}
           </>
         ) : (
-          <span className="text-zinc-500">
+          <span className="text-zinc-600 dark:text-zinc-400">
             The judge's verdict is hidden until you label, so it cannot sway you.
           </span>
         )}

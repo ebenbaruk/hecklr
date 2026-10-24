@@ -35,7 +35,7 @@ export function MetricTable({ summaries }: { summaries: MetricSummary[] }) {
                   <EstimateText estimate={s.estimate} kind={metricKind(s.metric)} />
                 </td>
                 <td className={`${td} tabular-nums`}>{s.estimate.n}</td>
-                <td className={`${td} text-xs text-zinc-500`}>{s.estimate.method}</td>
+                <td className={`${td} text-xs text-zinc-600 dark:text-zinc-400`}>{s.estimate.method}</td>
               </tr>
             ))}
           </tbody>

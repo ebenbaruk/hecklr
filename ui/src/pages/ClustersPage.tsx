@@ -32,7 +32,7 @@ export function ClustersPage() {
                     className={`block rounded-lg border p-3 text-zinc-900 no-underline hover:no-underline dark:text-zinc-100 ${selected ? "border-sky-500 bg-sky-50 dark:bg-sky-950" : "border-zinc-200 bg-white hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900"}`}
                   >
                     <span className="block font-medium">{cluster.label}</span>
-                    <span className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
+                    <span className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                       <Badge tone={cluster.source === "run" ? "info" : "neutral"}>{cluster.source}</Badge>
                       {size} member(s) · {proposals.length} proposal(s) · {dateTime(cluster.created_at)}
                     </span>
@@ -108,7 +108,7 @@ function Member({ member }: { member: ClusterMember }) {
       ) : (
         <span>
           <code className="font-mono">{member.id}</code>{" "}
-          <span className="text-xs text-zinc-500">(not stored here)</span>
+          <span className="text-xs text-zinc-600 dark:text-zinc-400">(not stored here)</span>
         </span>
       )}{" "}
       {tag}

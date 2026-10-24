@@ -92,7 +92,7 @@ export function TrialPage() {
                 {data.labels.map((l) => (
                   <li key={l.id}>
                     {l.labeler}: {l.grader} <PassBadge passed={l.passed} />
-                    {l.note && <span className="text-zinc-500"> “{l.note}”</span>}
+                    {l.note && <span className="text-zinc-600 dark:text-zinc-400"> “{l.note}”</span>}
                   </li>
                 ))}
               </ul>
@@ -120,7 +120,7 @@ function Transcript({ events, highlighted }: { events: Event[]; highlighted: str
             id={`ev-${e.id}`}
             className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${agent ? "bg-zinc-100 dark:bg-zinc-800" : "ml-auto bg-sky-50 dark:bg-sky-950"} ${highlighted === e.id ? ROW_HIGHLIGHT : ""}`}
           >
-            <div className="mb-1 flex gap-2 text-xs text-zinc-500">
+            <div className="mb-1 flex gap-2 text-xs text-zinc-600 dark:text-zinc-400">
               <span className="font-medium">{agent ? "Agent" : "Customer"}</span>
               <span>{e.t_ms} ms</span>
               {p.kind === "utterance" && p.latency_ms !== null && (
@@ -191,13 +191,13 @@ function Timeline({ events, highlighted }: { events: Event[]; highlighted: strin
             id={`ev-${e.id}`}
             className={`rounded px-2 py-1 ${highlighted === e.id ? ROW_HIGHLIGHT : ""}`}
           >
-            <span className="mr-2 inline-block w-16 text-right font-mono text-xs text-zinc-500">
+            <span className="mr-2 inline-block w-16 text-right font-mono text-xs text-zinc-600 dark:text-zinc-400">
               {e.t_ms} ms
             </span>
             <span className={tone === "bad" ? "text-rose-600 dark:text-rose-400" : ""}>{title}</span>
             {detail && (
               <details className="ml-18">
-                <summary className="cursor-pointer text-xs text-zinc-500">details</summary>
+                <summary className="cursor-pointer text-xs text-zinc-600 dark:text-zinc-400">details</summary>
                 <pre className="mt-1 overflow-x-auto rounded bg-zinc-100 p-2 text-xs dark:bg-zinc-950">
                   {detail}
                 </pre>
@@ -221,7 +221,7 @@ function Grades({ grades, runId, trialId }: { grades: Grade[]; runId: string; tr
             <div className="flex flex-wrap items-center gap-2">
               {g.status === "ok" ? <PassBadge passed={g.passed} /> : <Badge tone="warn">{g.status}</Badge>}
               <code className="font-mono text-xs">{g.grader}</code>
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">
                 v{g.grader_version}
                 {g.judge_model && ` · ${g.judge_model}`}
               </span>
@@ -282,7 +282,7 @@ function WorldDiff({ detail }: { detail: TrialDetail }) {
                 <div className="font-mono">
                   {c.collection}[{c.key}]
                 </div>
-                <div className="text-zinc-500">{c.change}</div>
+                <div className="text-zinc-600 dark:text-zinc-400">{c.change}</div>
               </td>
               <td className={td}>
                 <pre className="whitespace-pre-wrap text-rose-700 dark:text-rose-300">{c.before ?? "-"}</pre>

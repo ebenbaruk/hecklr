@@ -13,7 +13,7 @@ export function EstimateText({
   kind: EstimateKind;
 }) {
   if (!estimate) {
-    return <span className="text-zinc-400">n/a</span>;
+    return <span className="text-zinc-600 dark:text-zinc-400">n/a</span>;
   }
   const level = Math.round(estimate.confidence * 100);
   return (
@@ -22,7 +22,7 @@ export function EstimateText({
       title={`${formatEstimate(estimate, kind)}, ${level}% CI (${estimate.method}, n=${estimate.n})`}
     >
       {formatValue(estimate.value, kind)}{" "}
-      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+      <span className="text-xs text-zinc-600 dark:text-zinc-400">
         [{formatValue(estimate.ci_low, kind)}, {formatValue(estimate.ci_high, kind)}]
       </span>
     </span>
@@ -80,7 +80,7 @@ export function PassBadge({ passed }: { passed: boolean | null }) {
 
 export function Loading({ what }: { what: string }) {
   return (
-    <p role="status" className="py-6 text-sm text-zinc-500">
+    <p role="status" className="py-6 text-sm text-zinc-600 dark:text-zinc-400">
       Loading {what}…
     </p>
   );
@@ -131,13 +131,13 @@ export function PageTitle({ children, sub }: { children: ReactNode; sub?: ReactN
   return (
     <header className="mb-6">
       <h1 className="text-2xl font-semibold tracking-tight">{children}</h1>
-      {sub && <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{sub}</p>}
+      {sub && <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{sub}</p>}
     </header>
   );
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-4 text-sm text-zinc-500 dark:text-zinc-400">{children}</p>;
+  return <p className="py-4 text-sm text-zinc-600 dark:text-zinc-400">{children}</p>;
 }
 
 /** Wraps a table so it scrolls sideways on narrow screens instead of overflowing the page. */
@@ -145,7 +145,7 @@ export function TableWrap({ children }: { children: ReactNode }) {
   return <div className="-mx-4 overflow-x-auto px-4">{children}</div>;
 }
 
-export const th = "px-2 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500";
+export const th = "px-2 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-600 dark:text-zinc-400";
 export const td = "px-2 py-2 align-top";
 export const button =
   "inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700";
