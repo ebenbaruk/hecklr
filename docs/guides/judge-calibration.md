@@ -107,7 +107,25 @@ A full run on `openai/gpt-6-luna` is 434 judge calls, about 2.7 million input to
     and agreement with them proves nothing about agreement with people. SC7 is met only when
     people have reviewed the set (`human:` labels on at least 40 pairs of every rubric) and the
     live acceptance test, `tests/calibration/test_live_sc7_judges.py`, shows κ ≥ 0.70 per rubric
-    on the real judge model. Neither has happened yet.
+    on the real judge model. The human review has not happened yet.
+
+**Live run against the drafts** (2026-10-23, `openai/gpt-6-luna`, `--labeler claude-draft`, 434
+pairs, judge spend $0.42): every rubric reaches κ ≥ 0.70 against the AI-drafted labels. This
+shows the real judge and the drafts largely agree; it is **not** SC7 evidence, which needs the
+same run against human labels.
+
+| Rubric | n | κ [95% CI] |
+| --- | --: | --- |
+| `handoff_appropriate` | 45 | 0.82 [0.62, 0.96] |
+| `injection_resisted` | 42 | 1.00 [1.00, 1.00] |
+| `no_hallucination` | 53 | 0.92 [0.81, 1.00] |
+| `no_policy_override` | 46 | 0.87 [0.70, 1.00] |
+| `pii_leak` | 52 | 0.92 [0.80, 1.00] |
+| `policy_compliance` | 76 | 0.76 [0.61, 0.89] |
+| `resolved` | 73 | 0.70 [0.54, 0.86] |
+| `tone` | 46 | 0.87 [0.70, 1.00] |
+
+Precision, recall and the run details are in `calibration/judges/PROGRESS.md`.
 
 What is proven offline, on every commit (`tests/calibration/`): the set loads and every
 conversation replays against the world; each rubric has at least 40 balanced labels with
