@@ -106,19 +106,31 @@ Done (decisions: ADR 00hva, ADR 0010b follow-up):
 
 ## hvoice-close (Wave 6): voice cleanup and timing flakes
 
-Plan (issues #95 #82 #59 #27 #94 #121 #123; branch `ws-hvoice-voice-and-flakes`):
+Done (branch `ws-hvoice-voice-and-flakes`; decisions: ADR 0024-hvoice-webrtc-sc4,
+ADR 0024-hvoice-timing-under-load):
 
-- #95: `voice-fault-matrix.sh` writes the adapter URL for `HECKLR_VOICE_PORT` into a generated
-  config next to `hecklr.yaml`, stops on a run that exits non-zero (zero ok trials), and gets a
-  `smoke` mode; run the smoke path on a non-default port.
-- #82: drop `keep_warm` (acme-voice), the bench's pre-warm synthesis, and the CLI's entry-script
-  hiding; prove with a console-entry DSP test and SC3/SC4 run serially.
-- #59: `scripts/sc4-webrtc.sh`, a manual job in `voice-timing.yml`, ADR 0024-hvoice-webrtc-sc4,
-  run at the quietest moment available, results here and in the PR.
-- #27: upstream Pipecat behaviour (ADR 00hfa evidence): recorded in the ADR and the voice guide.
-- #94: the Ctrl-C test signals on an observable in-flight condition, not a fixed sleep.
-- #121 #123: ADR 0024-hvoice-timing-under-load; `ci-local.sh` reruns the failed `sc4-timing` and
-  `perf` tests alone, once the load drops, and reports both results.
+- #95: `examples/acme-voice/scripts/voice-fault-matrix.sh` writes `HECKLR_VOICE_PORT` into the
+  adapter URL of a generated copy of `hecklr.yaml` (next to it, removed on exit), stops at the
+  first run that exits non-zero, and has a `smoke` mode. Run for real:
+  `HECKLR_VOICE_PORT=36571 ... voice-fault-matrix.sh smoke` -> run `01M5R0QYKPW6JJTTT1A2F7TRDF`,
+  24 trials completed against the agent on 36571 (load 15-33), exit 0, generated config removed.
+- #82: `keep_warm` (acme-voice), the LiveKit bench agent's pre-warm synthesis and the CLI's
+  `_keep_dsp_workers_off_the_entry_script` are gone.
+  `test_issue31_dsp_workers_start_under_an_entry_script_that_imports_the_cli` (hecklr) runs a DSP
+  job from an entry script that imports `hecklr.cli`; SC3/SC4 serial results are in the PR's
+  Local CI comment.
+- #59: `scripts/sc4-webrtc.sh` (+ manual `webrtc-sc4` job in `voice-timing.yml`). At load 12.3
+  -> 8.3: livekit SC4 failed (offsets 107-411 ms latency, up to 1,262 ms barge-in). At load
+  3.9 -> 8.5: 18 passed, 2 structural skips; offsets livekit 105-136 / 142-179 ms, SmallWebRTC
+  208-405 / 228-257 ms (latency / barge-in).
+- #27: Pipecat's `RawAudioTrack` catch-up burst is upstream behaviour (ADR 00hfa tests); recorded
+  in ADR 0024-hvoice-webrtc-sc4 and the voice guide; allowance kept.
+- #94: the Ctrl-C test signals once the stub agent has a request in flight (5 s replies) and
+  asserts the process is still running; the original rc 0 did not reproduce in 115 tries at load
+  up to 55 (probe kept out of the tree).
+- #121, #123: `scripts/ci-local.sh` reruns the failed tests of `sc4-timing` and `perf` alone once
+  the load falls to half the cores (max 900 s wait), keeps both logs and reports both; exercised
+  with fake steps (rerun passes, rerun fails, no failed test named).
 
 ## Next
 
