@@ -7,8 +7,20 @@ hecklr ui --port 9000 --user ada --no-open
 ```
 
 A local web app over the runs in your project's `.hecklr/` directory: a FastAPI backend and a React
-frontend that ship inside the `hecklr` wheel (no Node needed). It binds to 127.0.0.1 and has no
-login, so keep it local.
+frontend. It binds to 127.0.0.1 and has no login, so keep it local.
+
+The `hecklr` wheel ships the frontend built, so `pip install "hecklr[ui]"` needs no Node. Installed
+from a checkout (`uv sync --all-packages --all-extras`, the only install before the first PyPI
+release), the first `hecklr ui` builds the frontend with npm, which needs Node.js 20.19 or newer
+(about a minute the first time, then never again). To build it yourself, or to rebuild after
+pulling UI changes, run from the checkout's root:
+
+```bash
+npm --prefix ui ci && npm --prefix ui run build
+```
+
+Working on the UI itself? `hecklr ui --dev` serves the API only; `npm run dev` in `ui/` serves the
+frontend with hot reload and proxies `/api` to it.
 
 | View | What it shows |
 | --- | --- |
