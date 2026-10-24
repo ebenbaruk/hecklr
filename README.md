@@ -385,8 +385,9 @@ Every other transport is a few lines of `hecklr.yaml`:
 | email | `smtp-imap` | A real mailbox |
 
 Your agent's tools should call the trial's **world sandbox** instead of your real backend, so
-that state assertions can check what the agent did. Every request carries the sandbox URL in the
-`X-Hecklr-World-Url` header. See [Connect your agent](docs/adapters.md) for every option, and the
+that state assertions can check what the agent did. Chat and email requests carry the sandbox
+URL in the `X-Hecklr-World-Url` header; voice WebSocket adapters send it as `world_url` in the
+call's start message. See [Connect your agent](docs/adapters.md) for every option, and the
 [voice](docs/guides/voice.md) guide for real-audio calls and the timing calibration.
 
 ## Use it in CI
@@ -500,9 +501,13 @@ the code.
 
 ## Statistical guarantees
 
-A testing tool is only useful if its verdicts can be trusted. These properties are asserted by
-tests that run on every merge, on seeded synthetic suites the size of the reference suite
-(60 scenarios × 5 trials). Numbers from the [v1.0 report](docs/milestones/V1.0.md):
+A testing tool is only useful if its verdicts can be trusted. SC5 and SC6 are asserted at 200
+replicates by tests that run on every merge, on seeded synthetic suites the size of the reference
+suite (60 scenarios × 5 trials). The 2,000-replicate numbers come from the study in
+[ADR 0005a](docs/adr/0005a-reference-suite-size-and-power.md), SC4 from the loopback
+calibration run, and SC8 from the fault matrix (F1-F6 free tier and F7-F9 scripted on every
+merge; F10-F12 and the voice CLI matrix are local runs). Numbers from the
+[v1.0 report](docs/milestones/V1.0.md):
 
 | Guarantee | Target | Measured, 95% interval |
 | --- | --- | --- |
@@ -608,8 +613,8 @@ uv run pre-commit install
 scripts/ci-local.sh --quick     # ruff, mypy --strict, the test suite with coverage, and more
 ```
 
-Every behavior is tested (line coverage 98.4% at v1.0, 85% minimum), `mypy --strict` is clean,
-and every number Hecklr prints ships with its interval. Please read the
+Every behavior is tested (line coverage 98.4% at v1.0, commit `b4813a4`; 85% minimum),
+`mypy --strict` is clean, and every number Hecklr prints ships with its interval. Please read the
 [code of conduct](CODE_OF_CONDUCT.md) first.
 
 ## Security

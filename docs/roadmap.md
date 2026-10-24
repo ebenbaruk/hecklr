@@ -22,7 +22,8 @@ are met, three of them (SC3, SC7, SC10) as the owner scoped them for v1.0
   guard passes), with `--pr`.
 - **Benchmark** (`hecklr bench`): a pinned suite, eight stacks, `reproduce`, and a static
   leaderboard. The measured rows are preliminary.
-- **Hardening:** two red-team passes, every P0-P3 finding fixed or decided in an ADR.
+- **Hardening:** two red-team passes; every P0/P1 finding fixed, P2/P3 findings tracked in the
+  [v1.0 report](https://github.com/ebenbaruk/hecklr/blob/main/docs/milestones/V1.0.md)'s issue closure.
 
 ## At launch
 
@@ -39,6 +40,7 @@ These need a public repository, which is the owner's decision
 - A human review of the judge calibration labels (today AI-drafted), then the live κ run with
   `--labeler human:` ([judge calibration](guides/judge-calibration.md)).
 - SC3 (50 simultaneous calls) measured on an 8-core runner as a scheduled job.
+- SC4 asserted over WebRTC (LiveKit, SmallWebRTC) on a dedicated idle runner (#59).
 - The voice fault matrix (F7-F10) as a nightly job on `main`.
 - The adaptive design's trial savings measured and published.
 - `agent.command` in `hecklr.yaml` instead of `hecklr fix --agent-cmd` (RFC 0015a).
