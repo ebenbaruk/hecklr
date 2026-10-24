@@ -258,15 +258,17 @@ class Fixer:
             run = await self._run_pass(
                 f"candidate-{candidate.index}-guard", candidate.files, self._guard_suite
             )
-            comparisons = self._compare(baseline, run)
+            comparisons = self._compare(baseline, run, guard=True)
             status = (
                 PatchStatus.REJECTED_GUARD if regressions(comparisons) else PatchStatus.ACCEPTED
             )
             self._record(candidate, status, guard=comparisons)
 
-    def _compare(self, baseline: SuiteRun, candidate: SuiteRun) -> list[Comparison]:
+    def _compare(
+        self, baseline: SuiteRun, candidate: SuiteRun, *, guard: bool = False
+    ) -> list[Comparison]:
         return compare_cells(
-            baseline, candidate, stats=self.settings.stats, seed=self.settings.seed
+            baseline, candidate, stats=self.settings.stats, seed=self.settings.seed, guard=guard
         )
 
     async def _run_pass(

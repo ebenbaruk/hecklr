@@ -20,7 +20,7 @@ hecklr gate --suite ci
 | 0 | pass: no change, an improvement, or (with `--on-inconclusive pass`) inconclusive |
 | 1 | regression: p < α and Δ < −δ |
 | 2 | inconclusive (configurable with `gate.on_inconclusive` or `--on-inconclusive`) |
-| 3 | harness error: the runs could not be read or nothing could be analyzed |
+| 3 | harness error: the runs could not be read, nothing could be analyzed, or a scenario both runs ran has no analyzable trial in one of them |
 
 It writes `report.md` (the PR comment), `report.html`, `report.json` and `junit.xml` (one test
 case per scenario) to `--out-dir`. The Markdown stays under 30 lines: the verdict, Δ with its

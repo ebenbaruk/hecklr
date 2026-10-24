@@ -104,5 +104,6 @@ grades, each trial gets one verdict:
 - a failing `ok` grade fails the trial, even if another grader errored;
 - a trial whose criteria all passed except some that errored is **undecided**: it is left out of
   the statistics and counted next to the harness errors, because calling it a pass or a fail would
-  be a guess;
+  be a guess (when every trial of a scenario is undecided or a harness error in one run, the
+  scenario cannot be compared and the gate exits 3 rather than gate on the other scenarios);
 - otherwise the trial passes when every `ok` criterion grade passed.
