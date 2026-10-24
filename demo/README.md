@@ -6,7 +6,7 @@ nothing.
 
 | File | What it does |
 | --- | --- |
-| `chat_gate.sh` | Copies the reference agent, records a clean baseline, changes **one line** of its system prompt, re-runs and gates: `REGRESSION, −27.3 pts [−42.4, −12.1], p = 0.004, 9 scenarios flipped`. Outputs in `out/chat/` |
+| `chat_gate.sh` | Copies the reference agent, records a clean baseline, changes **one line** of its system prompt, re-runs and gates: `REGRESSION, −27.3 pts [−44.2, −11.2], p = 0.004, 9 scenarios flipped`. Outputs in `out/chat/` |
 | `voice_call.py` | Calls the reference voice agent with callers on a noisy phone line who barge in, for the clean agent and for fault F8 (barge-in disabled), and compares them. Outputs in `out/voice/` |
 | `record_gif.sh`, `demo.tape` | Records `docs/assets/demo.gif` with [VHS](https://github.com/charmbracelet/vhs) from a real run |
 | `screenshots.py` | Screenshots of the gate report, a voice trial, and the local UI into `docs/assets/` |
