@@ -7,12 +7,13 @@ run directory.
 
 import asyncio
 import logging
-from collections.abc import Iterator, Mapping, Sequence
+import signal
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Final
 
 import anyio
 import typer
@@ -184,17 +185,16 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
         progress.update(task, total=(progress.tasks[0].total or 0) + extra)
         stderr.print(f"Adaptive pass: {extra} more trials")
 
+    execute = partial(
+        execute_run,
+        prepared,
+        llm_providers=llm_providers or None,
+        on_trial=on_trial,
+        on_adaptive=on_adaptive,
+    )
     with progress, _quiet_server_cancellations():
         try:
-            return anyio.run(
-                partial(
-                    execute_run,
-                    prepared,
-                    llm_providers=llm_providers or None,
-                    on_trial=on_trial,
-                    on_adaptive=on_adaptive,
-                )
-            )
+            results = anyio.run(_unless_terminated, execute)
         except KeyboardInterrupt:
             # asyncio cancelled the run on SIGINT and the executor recorded it as cancelled.
             stderr.print(f"Interrupted: run {prepared.plan.run.id} recorded as cancelled")
@@ -202,6 +202,37 @@ def _execute(prepared: PreparedRun, llm_providers: Mapping[str, LLMProvider]) ->
         except Exception as exc:
             # The executor already recorded the run as failed; say why and stop.
             raise fail(f"the run failed: {describe_error(exc)}", exit_codes.HARNESS_ERROR) from exc
+    if results is None:
+        stderr.print(f"Terminated: run {prepared.plan.run.id} recorded as cancelled")
+        raise typer.Exit(code=TERMINATED)
+    return results
+
+
+TERMINATED: Final = 128 + signal.SIGTERM
+"""The shell's code for a command stopped by SIGTERM."""
+
+
+async def _unless_terminated(execute: Callable[[], Awaitable[RunResults]]) -> RunResults | None:
+    """``execute()``, or ``None`` when SIGTERM cancelled it first (issue #117).
+
+    CI cancellations, ``timeout``, ``docker stop`` and Kubernetes send SIGTERM, which would
+    otherwise kill the process outright and leave the run ``running`` with nothing exported.
+    Cancelling instead finalizes it as Ctrl-C does: recorded ``cancelled``, finished trials
+    counted and exported, the result database closed.
+    """
+    results: RunResults | None = None
+    async with anyio.create_task_group() as tasks:
+
+        async def cancel_on_sigterm() -> None:
+            with anyio.open_signal_receiver(signal.SIGTERM) as signals:
+                async for _ in signals:
+                    tasks.cancel_scope.cancel()
+                    return
+
+        tasks.start_soon(cancel_on_sigterm)
+        results = await execute()
+        tasks.cancel_scope.cancel()
+    return results
 
 
 class _DropCancellations(logging.Filter):

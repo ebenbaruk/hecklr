@@ -268,6 +268,70 @@ def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     assert (run.id, run.status) == (run_id, RunStatus.CANCELLED)
 
 
+_ISSUE117_AGENT = """\
+import asyncio
+from pathlib import Path
+
+import hecklr
+import hecklr_agent
+
+
+@hecklr.agent(channel="chat")
+async def reply(session: hecklr.Session, message: str) -> str:
+    if "saturday" in message.lower():
+        Path(__file__).with_name("stuck").touch()
+        await asyncio.sleep(3600)  # this scenario's trials are still running when SIGTERM comes
+    return await hecklr_agent.reply(session, message)
+"""
+
+
+@pytest.mark.slow
+def test_issue117_sigterm_finalizes_the_run_like_ctrl_c(config_path: Path, edit: Edit) -> None:
+    project = config_path.parent
+    (project / "issue117_agent.py").write_text(_ISSUE117_AGENT, encoding="utf-8")
+    edit(config_path, "hecklr_agent:reply", "issue117_agent:reply")
+    command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
+    with subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
+        [*command, "-c", str(config_path)],
+        cwd=project,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
+    ) as process:
+        try:
+            assert process.stderr is not None
+            plan = click.unstyle(process.stderr.readline())
+            assert plan.startswith("Suite ci:"), plan
+            run_id = plan.split("; run ")[1].strip()
+            deadline = time.monotonic() + 60
+            while not (project / "stuck").exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            time.sleep(2.0)  # the other scenarios' trials answer at once and finish meanwhile
+            process.send_signal(signal.SIGTERM)
+            _, rest = process.communicate(timeout=60)
+        finally:
+            if process.poll() is None:
+                process.kill()
+
+    assert process.returncode == 128 + signal.SIGTERM, rest
+    assert click.unstyle(rest).strip() == f"Terminated: run {run_id} recorded as cancelled"
+    run_dir = project / ".hecklr" / "runs" / run_id
+    assert sorted(path.name for path in run_dir.glob("*.parquet")) == [
+        "events.parquet",
+        "grades.parquet",
+        "trials.parquet",
+    ]
+    assert not list(run_dir.glob("*.wal")), "the result database was not closed"
+    store = ResultStore(run_dir.parent)
+    (run,) = store.list_runs()
+    results = anyio.run(store.load_run, run_id)
+    store.close()
+    assert run.status is RunStatus.CANCELLED
+    assert run.counts.planned == 15
+    assert run.counts.ok == len(results.trials) >= 1
+
+
 def test_issue35_only_cancellations_of_the_embedded_server_are_silenced(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
