@@ -8,8 +8,8 @@
 # their reference bots share the test process with the harness and their own record of when
 # they spoke is the timing truth. This script is the dedicated-CPU opt-in: HECKLR_SHARED_CPU
 # unset, one process (no xdist), on a machine with idle cores. It prints the load before and
-# after, as the result depends on it, and fails if any case was skipped: the livekit case needs
-# Docker for its LiveKit server, and a skipped case would prove nothing.
+# after, as the result depends on it, and fails if a check was skipped: the livekit case needs
+# Docker for its LiveKit server, and a skipped check would prove nothing.
 set -u
 root=$(cd "$(dirname "$0")/.." && pwd) || exit 2
 dir=${1:-$root/.ci-local}
@@ -25,9 +25,10 @@ uv run pytest packages/hecklr-adapters/tests/contract/test_voice_contract.py -p 
 status=$?
 echo "load after: $(uptime | sed 's/.*load averages*: //')"
 tail -1 "$log"
-if grep -q "^SKIPPED" "$log"; then
-  grep "^SKIPPED" "$log"
-  echo "FAIL: a WebRTC case was skipped (see $log)"
+# WebRTC reference bots cannot end a call abnormally, so that one contract test never applies to
+# them; any other skip (no Docker, a shared CPU) means a check did not run.
+if grep "^SKIPPED" "$log" | grep -v "cannot fail abnormally on this transport"; then
+  echo "FAIL: a WebRTC check was skipped (see $log)"
   exit 1
 fi
 [ "$status" = 0 ] || echo "FAIL: see $log"
