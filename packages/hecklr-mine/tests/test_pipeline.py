@@ -300,3 +300,18 @@ def test_ws13_embedding_spend_is_capped_without_a_model() -> None:
         anyio.run(lambda: mine(logs.conversations, settings, embedder=_PaidEmbedder()))
     free = MineSettings(world="w", persona="p", max_usd=Decimal(0))
     assert anyio.run(lambda: mine(logs.conversations, free, embedder=HashingEmbedder())).clusters
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
+def test_issue109_a_blank_model_label_falls_back_to_the_keyword_label(
+    responder: Reply, blank: str
+) -> None:
+    def blank_labels(request: LLMRequest) -> Any:
+        if request.schema_name == "ClusterLabel":
+            return {"label": blank, "description": "Customers wait."}
+        return responder(request)
+
+    result = _run(SETTINGS, FakeLLM(responder=blank_labels))
+    assert result.clusters
+    assert all(c.label.startswith("failures about ") for c in result.clusters)
+    assert all(c.label.removeprefix("failures about ").strip() for c in result.clusters)

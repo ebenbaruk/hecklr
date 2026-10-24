@@ -315,10 +315,16 @@ async def _labels(
             labels.append(keyword_label(members, summaries))
             continue
         try:
-            labels.append(await llm_label(members, llm, model, seed=settings.seed))
+            label = await llm_label(members, llm, model, seed=settings.seed)
         except LLMOutputError as exc:
             log.warning("mine.label_failed", error=str(exc))
-            labels.append(keyword_label(members, summaries))
+            label = keyword_label(members, summaries)
+        if not label.label.strip():
+            # A blank name is a valid reply (fake/ models give one) but an unusable label: the
+            # CLI and UI list clusters by it (#109).
+            log.warning("mine.label_blank", model=model)
+            label = keyword_label(members, summaries)
+        labels.append(label)
     return labels
 
 

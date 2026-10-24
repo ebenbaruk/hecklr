@@ -341,3 +341,22 @@ def test_mine_default_persona_skips_adversarial_ones(
     queue = load_queue(config_path.parent / ".hecklr" / MINE_DIR)
     assert queue
     assert {proposal.scenario.persona for proposal in queue} == {"busy-commuter"}
+
+
+def test_issue109_mine_with_the_default_fake_models_stores_readable_labels(
+    config_path: Path, logs: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "mined"
+    result = runner.invoke(
+        app,
+        ["mine", str(logs), "--config", str(config_path), "--out", str(out)],
+        obj=CliOverrides({}),
+    )
+
+    assert result.exit_code == exit_codes.OK, result.output
+    clusters = [
+        FailureCluster.model_validate_json(line)
+        for line in (out / "clusters.jsonl").read_text().splitlines()
+    ]
+    assert clusters
+    assert all(cluster.label.startswith("failures about ") for cluster in clusters)
