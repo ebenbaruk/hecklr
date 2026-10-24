@@ -111,22 +111,24 @@ def test_issue103_sc5_adaptive_false_alarm_rate_across_looks_at_most_alpha(
     assert rate.value <= FAST.alpha
 
 
+@pytest.mark.slow
 def test_issue103_the_test_alone_across_looks_is_consistent_with_alpha() -> None:
-    # With min_effect 0 every rejection of the permutation test is a verdict. Over 2,000
-    # replicates it rejects 5.4% [4.5%, 6.5%] across looks, against 5.6% with the final look
-    # alone and 4.0% for a fixed design: the looks add nothing, the variance-targeted extra batch
-    # about a point and a half, which the minimum effect absorbs (ADR 0024-hstats).
+    # With min_effect 0 every rejection of the permutation test is a verdict, so this measures the
+    # looks and the data-dependent extra batch alone. Over 2,000 seeded replicates the rate is
+    # 4.9% [4.0%, 5.9%]: the interval covers alpha, so the looks neither inflate nor waste it
+    # (ADR 0024-hstats quotes this run).
     rate = adaptive_verdict_rate(
         n_scenarios=60,
         trials=5,
         drop=0.0,
-        replicates=400,
+        replicates=2_000,
         config=StatsConfig(bootstrap_resamples=1_000, min_effect=0.0),
         seed=106,
         verdicts=BOTH,
     )
 
-    assert rate.ci_low <= FAST.alpha
+    assert rate.ci_low <= FAST.alpha <= rate.ci_high
+    assert rate.value == pytest.approx(0.049)
 
 
 def test_issue103_adaptive_keeps_its_power_for_a_10_point_drop() -> None:
