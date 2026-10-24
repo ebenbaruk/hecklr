@@ -52,15 +52,16 @@ class _CappedSession:
         stream = self._inner.send(text)
         try:
             async for chunk in stream:
+                unencodable: UnicodeEncodeError | None = None
                 try:
                     data = chunk.text.encode("utf-8")
                 except UnicodeEncodeError as exc:
-                    if head := chunk.text[: exc.start]:
-                        yield AgentChunk(text=head)
-                    raise AgentError(
-                        _not_unicode(f"{chunk.text[exc.start]!r} in its reply")
-                    ) from exc
-                _check_storable(chunk)
+                    # Only the valid head is kept, and it still has to fit the cap (issue #34):
+                    # a flood ending in a lone surrogate must not be stored whole.
+                    unencodable = exc
+                    data = chunk.text[: exc.start].encode("utf-8")
+                else:
+                    _check_storable(chunk)
                 if len(data) > left:
                     # Cut on a character boundary so the kept head is valid text.
                     head = data[:left].decode("utf-8", errors="ignore")
@@ -70,6 +71,11 @@ class _CappedSession:
                         f"agent reply over {self._max_bytes} bytes; the transcript keeps the "
                         "first ones (raise it with --max-reply-bytes)"
                     )
+                if unencodable is not None:
+                    if data:
+                        yield AgentChunk(text=data.decode("utf-8"))
+                    bad = chunk.text[unencodable.start]
+                    raise AgentError(_not_unicode(f"{bad!r} in its reply")) from unencodable
                 left -= len(data)
                 yield chunk
         finally:

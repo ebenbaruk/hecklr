@@ -145,3 +145,31 @@ async def test_issue112_a_lone_surrogate_in_a_tool_call_fails_the_turn() -> None
     assert received == []
     assert error is not None
     assert "not valid Unicode" in str(error)
+
+
+@pytest.mark.anyio
+async def test_issue112_a_flood_ending_in_a_lone_surrogate_is_still_capped() -> None:
+    # An HTTP agent sends its whole reply as one chunk: the surrogate must not let it past #34.
+    session = ScriptedSession([AgentChunk(text="a" * 1_000_000 + "\ud83d")])
+    capped = await cap_reply_size(ScriptedTarget(session), 1000).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert [chunk.text for chunk in received] == ["a" * 1000]
+    assert error is not None
+    assert "agent reply over 1000 bytes" in str(error)
+    assert session.streams_closed == 1
+
+
+@pytest.mark.anyio
+async def test_issue112_a_surrogate_after_an_earlier_chunk_counts_that_chunk_against_the_cap() -> (
+    None
+):
+    session = ScriptedSession([AgentChunk(text="abc"), AgentChunk(text="defg\udc00")])
+    capped = await cap_reply_size(ScriptedTarget(session), 5).open(CTX)
+
+    received, error = await _reply(capped)
+
+    assert [chunk.text for chunk in received] == ["abc", "de"]
+    assert error is not None
+    assert "agent reply over 5 bytes" in str(error)
