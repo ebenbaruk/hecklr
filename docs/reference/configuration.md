@@ -55,6 +55,7 @@ Templated JSON request/response chat endpoint, optionally streamed.
 | `url` | HttpUrl | required |  |
 | `stream` | `none` \| `sse` \| `chunked` | `none` |  |
 | `headers` | dict[str, str] |  |  |
+| `headers_env` | dict[str, str] |  | Headers whose value is read from an environment variable when the adapter starts: header name -> variable name, e.g. `{Authorization: AGENT_AUTH_HEADER}` (RFC 0023). |
 | `request_template` | dict[str, JsonValue] \| null |  | JSON body with `{{message}}`, `{{session_id}}` and `{{trial_id}}` placeholders. |
 | `response_path` | str \| null |  | Dotted path to the reply text in the response JSON; the whole body if `None`. |
 | `timeout_s` | float | `60.0` |  |
@@ -94,6 +95,7 @@ A chat agent over WebSocket with a configurable message schema.
 | `receive_path` | str \| null |  |  |
 | `final_path` | str \| null |  | Dotted path to a boolean marking the agent's last message of a turn. |
 | `headers` | dict[str, str] |  |  |
+| `headers_env` | dict[str, str] |  | Headers whose value is read from an environment variable when the adapter starts: header name -> variable name, e.g. `{Authorization: AGENT_AUTH_HEADER}` (RFC 0023). |
 | `timeout_s` | float | `60.0` |  |
 
 ### WebhookAdapterConfig (`webhook`) { #webhookadapterconfig }
@@ -107,6 +109,7 @@ Hecklr posts user messages to `url` and exposes an endpoint the agent replies to
 | `listen_host` | str | `127.0.0.1` |  |
 | `listen_port` | int | `8787` |  |
 | `headers` | dict[str, str] |  |  |
+| `headers_env` | dict[str, str] |  | Headers whose value is read from an environment variable when the adapter starts: header name -> variable name, e.g. `{Authorization: AGENT_AUTH_HEADER}` (RFC 0023). |
 | `timeout_s` | float | `120.0` |  |
 
 ### PipecatAdapterConfig (`pipecat`) { #pipecatadapterconfig }
@@ -139,6 +142,7 @@ Generic WHIP-style WebRTC offer/answer.
 | `type` | `webrtc` | required |  |
 | `url` | HttpUrl | required |  |
 | `headers` | dict[str, str] |  |  |
+| `headers_env` | dict[str, str] |  | Headers whose value is read from an environment variable when the adapter starts: header name -> variable name, e.g. `{Authorization: AGENT_AUTH_HEADER}` (RFC 0023). |
 
 ### SipAdapterConfig (`sip`) { #sipadapterconfig }
 
@@ -173,6 +177,7 @@ A voice agent reached over one WebSocket per call.
 | `protocol` | `pcm` \| `twilio` \| `pipecat` | `pcm` |  |
 | `sample_rate` | int \| null |  | Audio rate on the wire; 16 kHz by default, always 8 kHz for `twilio`. |
 | `headers` | dict[str, str] |  |  |
+| `headers_env` | dict[str, str] |  | Headers whose value is read from an environment variable when the adapter starts: header name -> variable name, e.g. `{Authorization: AGENT_AUTH_HEADER}` (RFC 0023). |
 | `connect_timeout_s` | float | `10.0` |  |
 
 ### SmtpImapAdapterConfig (`smtp-imap`, `smtp`) { #smtpimapadapterconfig }

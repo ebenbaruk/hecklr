@@ -211,3 +211,28 @@ def test_asr_key_is_checked_by_name_for_voice_projects(
     assert "ASSEMBLYAI_API_KEY" in missing.detail
     assert present.status == "ok"
     assert "aai-secret-value" not in click.unstyle(result.output)
+
+
+def test_issue115_doctor_names_an_unset_header_variable_never_a_value(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch, edit: Edit
+) -> None:
+    edit(
+        config_path,
+        '{"type": "python", "entrypoint": "hecklr_agent:reply"}',
+        '{"type": "http", "url": "http://localhost:8000/chat",'
+        ' "headers_env": {"Authorization": "AGENT_AUTH_HEADER"}}',
+    )
+    probe = AgentProbe("http", "http://localhost:8000/chat", True, "answered")
+    monkeypatch.setattr("hecklr.commands.doctor.probe_agent", lambda url: probe)
+    monkeypatch.delenv("AGENT_AUTH_HEADER", raising=False)
+
+    result = runner.invoke(app, ["doctor", "--config", str(config_path)])
+
+    assert result.exit_code == exit_codes.CHECK_FAILED
+    check = _checks(config_path)["agent (chat) headers"]
+    assert check.status == "fail"
+    assert "AGENT_AUTH_HEADER" in check.detail
+    monkeypatch.setenv("AGENT_AUTH_HEADER", "Bearer s3cr3t")
+    check = _checks(config_path)["agent (chat) headers"]
+    assert check.status == "ok"
+    assert "s3cr3t" not in check.detail

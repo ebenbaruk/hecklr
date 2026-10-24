@@ -1,8 +1,8 @@
 """``hecklr doctor``: check that a run can start, before spending a minute finding out it cannot.
 
-Checks the Python version, optional extras, the project files, model provider keys (by name;
-values are never printed), the voice channel's ASR, Ollama, the local ports the harness binds and
-the agent itself.
+Checks the Python version, optional extras, the project files, model provider keys and adapter
+header variables (by name; values are never printed), the voice channel's ASR, Ollama, the local
+ports the harness binds and the agent itself.
 """
 
 import importlib.util
@@ -26,7 +26,7 @@ from hecklr.commands._common import CONFIG_ERRORS, stdout
 from hecklr.compose import load_run_project
 from hecklr.probe import DEFAULT_OLLAMA_URL, local_ollama_url, ollama_models, probe_agent
 from hecklr.scaffold import MODEL_KEYS, choose_models
-from hecklr_adapters import AdapterConfigError, load_agent
+from hecklr_adapters import AdapterConfigError, load_agent, resolve_headers
 from hecklr_core import Project
 from hecklr_llm import LLMError, ProviderRouter, split_model
 from hecklr_schemas import (
@@ -92,6 +92,7 @@ def run_checks(config_path: Path) -> Iterator[Check]:
     yield _available_models()
     yield from _ollama(project)
     yield from _agent(project)
+    yield from _header_variables(project)
 
 
 def _python_version() -> Check:
@@ -215,6 +216,23 @@ def _agent(project: Project) -> Iterator[Check]:
             yield Check(
                 f"agent ({channel})", "warn", f"the {channel} channel driver is not available yet"
             )
+
+
+def _header_variables(project: Project) -> Iterator[Check]:
+    # The adapters read headers_env when the run starts; checking here names a missing variable
+    # before anyone waits for a run. The message names variables, never their values.
+    for channel in ("chat", "voice", "email"):
+        adapter = getattr(project.config.agent.adapters, channel)
+        names: dict[str, str] = getattr(adapter, "headers_env", {})
+        if not names:
+            continue
+        name = f"agent ({channel}) headers"
+        try:
+            resolve_headers(adapter.headers, names, environ=os.environ, adapter=adapter.type)
+        except AdapterConfigError as exc:
+            yield Check(name, "fail", str(exc))
+        else:
+            yield Check(name, "ok", f"{', '.join(sorted(names.values()))} set")
 
 
 def _tcp_check(url: str) -> Check:
