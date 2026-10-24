@@ -377,7 +377,8 @@ def render_markdown(matrix: Matrix) -> str:
         "Expected graders in bold; other graders are listed when they regressed too (on the A/A "
         "row they are reported, not gated). Δ is the "
         "candidate's pass rate minus the baseline's, paired by scenario (paired cluster "
-        "bootstrap interval, sign-flip permutation p).",
+        "bootstrap interval, or a paired-proportion interval when every scenario passed all or "
+        "none of its trials in both runs, ADR 00rta; sign-flip permutation p).",
     ]
     return "\n".join(lines) + "\n"
 
