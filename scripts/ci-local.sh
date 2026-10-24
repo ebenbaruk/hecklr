@@ -4,7 +4,8 @@
 #   --quick skips the slow steps (SC4 timing, perf, fault matrix, docs, UI, action self-test) for
 #   iteration; a merge needs the full run.
 # Exit 0 only if every step passed. Each step's output is in <log-dir>/<step>.log and the
-# summary (with load averages, which SC4 timing depends on) in <log-dir>/summary.txt.
+# summary (with load averages, which SC4 timing depends on) in <log-dir>/summary.txt. A failed
+# sc4-timing or perf step reruns its failed tests alone (<step>-rerun.log; see timing_step).
 set -u
 quick=0
 if [ "${1:-}" = "--quick" ]; then quick=1; shift; fi
@@ -17,15 +18,49 @@ unset OPENAI_API_KEY ANTHROPIC_API_KEY ASSEMBLYAI_API_KEY
 export UV_FROZEN=1 # as every workflow sets it: install the lockfile as committed, never re-lock
 
 failed=()
+rerun_passed=()
 load() { uptime | sed 's/.*load averages*: //'; }
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$out/summary.txt"; }
-step() {
+run_step() { # name command... -> the command's exit status; output in <log-dir>/<name>.log
   local name=$1; shift
   log "START $name (load $(load))"
   "$@" > "$out/$name.log" 2>&1
   local rc=$?
   log "END   $name rc=$rc (load $(load))"
-  [ "$rc" = 0 ] || failed+=("$name")
+  return "$rc"
+}
+step() { run_step "$@" || failed+=("$1"); }
+
+# A timing step (SC4 timing, perf) measures the machine as well as Hecklr. When it fails, its
+# failed tests are rerun alone, once the 1-minute load is at most HECKLR_RERUN_MAX_LOAD (default:
+# half the cores) or after HECKLR_RERUN_WAIT_S (default 900 s), and both results are reported.
+# The step passes only if the rerun does (ADR 0024-hvoice-timing-under-load). Bounds never change.
+rerun_max_load=${HECKLR_RERUN_MAX_LOAD:-$(( $(getconf _NPROCESSORS_ONLN) / 2 ))}
+rerun_wait_s=${HECKLR_RERUN_WAIT_S:-900}
+load_above() { uptime | sed 's/.*load averages*: //' | tr -d ',' | awk -v max="$1" '{exit !($1 > max)}'; }
+timing_step() {
+  local name=$1; shift
+  run_step "$name" "$@" && return 0
+  local ids=()
+  # pytest's -ra summary names each failed test; colour codes (FORCE_COLOR) are stripped first.
+  read -r -a ids <<< "$(sed -E $'s/\033\\[[0-9;]*m//g' "$out/$name.log" \
+    | sed -nE 's/^(FAILED|ERROR) ([^ ]+).*/\2/p' | sort -u | tr '\n' ' ')"
+  if [ "${#ids[@]}" = 0 ]; then
+    log "RERUN $name: its log names no failed test, so there is nothing to rerun"
+    failed+=("$name")
+    return
+  fi
+  local waited=0
+  while load_above "$rerun_max_load" && [ "$waited" -lt "$rerun_wait_s" ]; do
+    sleep 30
+    waited=$((waited + 30))
+  done
+  log "RERUN $name alone after ${waited} s (load limit $rerun_max_load): ${ids[*]}"
+  if run_step "$name-rerun" "$@" --cov-append "${ids[@]}"; then
+    rerun_passed+=("$name")
+  else
+    failed+=("$name")
+  fi
 }
 
 : > "$out/summary.txt"
@@ -40,8 +75,8 @@ step format uv run ruff format --check .
 step mypy scripts/mypy-all.sh
 cov_append=()
 if [ "$quick" = 0 ]; then
-  step sc4-timing env HECKLR_SHARED_CPU=1 uv run pytest -m sc4_timing -p no:xdist --cov --cov-report=
-  step perf uv run pytest -m perf -p no:xdist --cov --cov-append --cov-report=
+  timing_step sc4-timing env HECKLR_SHARED_CPU=1 uv run pytest -m sc4_timing -p no:xdist --cov --cov-report=
+  timing_step perf uv run pytest -m perf -p no:xdist --cov --cov-append --cov-report=
   cov_append=(--cov-append)
 fi
 step tests uv run pytest -n auto --cov ${cov_append[@]+"${cov_append[@]}"} --cov-report=term --cov-fail-under=85
@@ -70,6 +105,9 @@ EOF' _ "$out"
   step action-selftest scripts/ci-selftest.sh "$out"
 fi
 
+if [ "${#rerun_passed[@]}" != 0 ]; then
+  log "NOTE: ${rerun_passed[*]} failed under load and passed when rerun alone (both logs kept)"
+fi
 if [ "${#failed[@]}" = 0 ]; then
   log "PASS"
 else
