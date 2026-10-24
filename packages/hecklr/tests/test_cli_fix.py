@@ -173,6 +173,7 @@ def test_ws15_fixes_f1_and_the_guard_rejects_a_planted_bad_patch(
             "--tag", "catches-f1", "--agent-cmd", AGENT_CMD, "--model", "fake/fixer",
             "--candidates", "3", "--trials", "3",
             "--guard-suite", "smoke", "--guard-trials", "3", "--pr", "--draft",
+            "--budget-usd", "0",  # #118: free models (rules brain, fake/fixer) run on $0
         ],
         generator,
     )  # fmt: skip

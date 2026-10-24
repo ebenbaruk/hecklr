@@ -101,7 +101,11 @@ def fix(
     seed: Annotated[int | None, typer.Option(help="Seed of every run [default: seed].")] = None,
     budget_usd: Annotated[
         float | None,
-        typer.Option(min=0, help="Cap on Hecklr's spend for the session [default: budget.usd]."),
+        typer.Option(
+            min=0,
+            help="Cap on Hecklr's spend for the session [default: budget.usd]. 0 runs free "
+            "models only (fake/, ollama/), as for hecklr run.",
+        ),
     ] = None,
     ready_timeout: Annotated[
         float, typer.Option(min=1, help="Seconds the agent has to start listening.")
@@ -129,6 +133,7 @@ def fix(
         targeted_trials=trials,
         guard_trials=guard_trials,
         budget_usd=budget,
+        prices=project.config.models.prices,
     )
     fix_root = project.output_dir / FIX_DIR
     fix_id = new_id()
