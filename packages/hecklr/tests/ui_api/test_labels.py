@@ -191,7 +191,7 @@ async def test_the_labels_file_is_what_hecklr_calibrate_judges_reads(
     # (issue #100).
     output = click.unstyle(result.output)
     assert result.exit_code == exit_codes.CHECK_FAILED, output
-    assert "Judge agreement with human labels" in output
+    assert f"Judge agreement with {USER} labels" in output
     assert {j["grader"]: j["n"] for j in ui_report["judges"]} == {
         "judge:no_hallucination": 4,
         "judge:resolved": 4,

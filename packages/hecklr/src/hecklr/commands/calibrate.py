@@ -292,7 +292,7 @@ def _report_judges(
             f"no label in {labels_path} matches a judge grade of the runs {', '.join(refs)}",
             exit_codes.CONFIG_ERROR,
         )
-    stdout.print(_judge_table(calibrations))
+    stdout.print(_judge_table(calibrations, labels))
     _warn_if_not_human(labels, calibrations)
     return all(c.trusted for c in calibrations)
 
@@ -336,7 +336,7 @@ def _report_judge_set(
     usable = [grade for grade in grades if grade.status == "ok"]
     calibrations = _calibrations(project, usable, labels)
     if calibrations:
-        stdout.print(_judge_table(calibrations))
+        stdout.print(_judge_table(calibrations, labels))
     uncalibrated = _uncalibrated(calibration_set, pairs, grades, calibrations)
     for grader, problem in uncalibrated.items():
         stdout.print(f"[bold red]{grader}[/]: not calibrated, {problem}", soft_wrap=True)
@@ -443,8 +443,29 @@ def _judge_groups(grades: Sequence[Grade], labels: Sequence[HumanLabel]) -> list
     return [groups[key] for key in sorted(groups, key=lambda k: (k[0], k[1], k[2] or ""))]
 
 
-def _judge_table(calibrations: Sequence[JudgeCalibration]) -> Table:
-    table = Table(title="Judge agreement with human labels (95% CI)", title_justify="left")
+def _label_source(labels: Sequence[HumanLabel]) -> str:
+    """Whose labels the judges were compared with, so AI drafts never read as human (#97).
+
+    ``human:<name>`` labelers are people and print as "human"; any other labeler is named as is,
+    and AI drafts (``claude-draft``) are called out as not human.
+    """
+    names = sorted(
+        {
+            "human" if label.labeler.startswith(judge_calibration.HUMAN_PREFIX) else label.labeler
+            for label in labels
+        },
+        key=lambda name: (name != "human", name),
+    )
+    source = " and ".join(names) + " labels"
+    if judge_calibration.DRAFT_LABELER not in names:
+        return source
+    return source + (" (not human)" if len(names) == 1 else " (not all human)")
+
+
+def _judge_table(calibrations: Sequence[JudgeCalibration], labels: Sequence[HumanLabel]) -> Table:
+    table = Table(
+        title=f"Judge agreement with {_label_source(labels)} (95% CI)", title_justify="left"
+    )
     for name in ("rubric", "version", "model", "n", "kappa", "precision", "recall", "trusted"):
         table.add_column(name)
     for c in calibrations:

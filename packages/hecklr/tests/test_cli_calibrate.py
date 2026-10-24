@@ -132,7 +132,9 @@ def test_aa_on_runs_that_cannot_be_compared_is_a_harness_error(
 # --- judges -------------------------------------------------------------------------------------
 
 
-def _labels(path: Path, runs_dir: Path, run: Run, *, agree: float) -> Path:
+def _labels(
+    path: Path, runs_dir: Path, run: Run, *, agree: float, labeler: str = "human:qa"
+) -> Path:
     """Label each judge grade of ``run``; a labeler agrees with the judge with ``agree``."""
 
     async def grades() -> list[tuple[str, str, bool, str]]:
@@ -149,7 +151,7 @@ def _labels(path: Path, runs_dir: Path, run: Run, *, agree: float) -> Path:
             grader="judge:resolved",
             grader_version=version,
             passed=passed if rng.random() < agree else not passed,
-            labeler="qa",
+            labeler=labeler,
             created_at=datetime(2026, 10, 21, tzinfo=UTC),
         ).model_dump_json()
         for trial_id, grade_id, passed, version in anyio.run(grades)
@@ -234,7 +236,7 @@ def test_sc7_judges_keep_only_the_chosen_labelers(
     config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
 ) -> None:
     run = store(SCENARIOS, grader="judge:resolved")
-    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0)
+    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0, labeler="qa")
 
     code, output = invoke(config_path, "--judges", "--labels", str(labels), "--labeler", "human:")
 
@@ -362,6 +364,34 @@ def test_sc7_calibrate_judges_set_flags_a_disagreeing_judge(
     assert "NO (kappa < 0.70)" in output
 
 
+def test_issue97_judges_table_names_non_human_labelers(
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
+) -> None:
+    run = store(SCENARIOS, grader="judge:resolved")
+    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0, labeler="claude-draft")
+
+    code, output = invoke(config_path, "--judges", "--labels", str(labels))
+
+    assert code == exit_codes.OK, output
+    assert "Judge agreement with claude-draft labels (not human) (95% CI)" in output
+    assert "human labels" not in output
+
+
+def test_issue97_mixed_labelers_say_not_all_labels_are_human(
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
+) -> None:
+    run = store(SCENARIOS, grader="judge:resolved")
+    humans = _labels(tmp_path / "a.jsonl", runs_dir, run, agree=1.0)
+    drafts = _labels(tmp_path / "b.jsonl", runs_dir, run, agree=1.0, labeler="claude-draft")
+    both = tmp_path / "labels.jsonl"
+    both.write_text(humans.read_text() + drafts.read_text(), encoding="utf-8")
+
+    code, output = invoke(config_path, "--judges", "--labels", str(both))
+
+    assert code == exit_codes.OK, output
+    assert "Judge agreement with human and claude-draft labels (not all human)" in output
+
+
 def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
     config_path: Path, tmp_path: Path
 ) -> None:
@@ -373,6 +403,7 @@ def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
     assert (
         f"{SET_PAIRS} of {SET_PAIRS} labels are not from 'human:' labelers (claude-draft)" in output
     )
+    assert "Judge agreement with claude-draft labels (not human)" in output
 
     judge = _judge(_agrees)
     code, output = _invoke_set(config_path, judge, "--set", str(root), "--labeler", "human:")
