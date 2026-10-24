@@ -395,7 +395,7 @@ With `--adaptive`, after the first pass Hecklr spends a trial budget on scenario
 ### Judge calibration
 
 - The UI offers a labeling queue; humans label a stratified sample of judged trials per rubric.
-- Hecklr reports Cohen's κ, precision and recall of each judge vs humans, with intervals. Rubrics below κ = 0.70 are marked untrusted in reports.
+- Hecklr reports Cohen's κ, precision and recall of each judge vs humans, with intervals. Rubrics below κ = 0.70, or with fewer than 10 human labels of either class (pass or fail), are marked untrusted in reports (ADR 00rtc).
 - Changing the judge model triggers a re-score of the labeled set and a drift warning if agreement drops.
 
 ### Report formats
@@ -442,7 +442,7 @@ agent:
   editable: [prompts/system.md, tools/descriptions.yaml]   # what the fixer may change
 world: worlds/acme-maintenance.yaml
 suites:
-  ci:      { scenarios: "scenarios/**/*.yaml", tags: [core], trials: 3, channels: [chat] }
+  ci:      { scenarios: "scenarios/**/*.yaml", tags: [core, mined], trials: 3, channels: [chat] }
   nightly: { scenarios: "scenarios/**/*.yaml", trials: 10, channels: [chat, voice, email], adaptive: true }
   redteam: { personas: "personas/adversarial/*.yaml", trials: 5 }
 models:

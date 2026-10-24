@@ -104,6 +104,8 @@ def _write_into_copy(dest: Path, relative: str, text: str) -> None:
     file itself, or a directory such as ``prompts -> /abs/path/agent_prompts``) can lead back
     into the user's tree; writing through it would overwrite the user's file with a candidate,
     even a rejected one (issue #113). Each such link is replaced by a copy of what it points to.
+    A linked directory is copied whole, so a link to a very large tree makes this slow; the
+    copy is the price of never writing into the user's files.
     """
     path = dest
     for part in PurePosixPath(relative).parts:

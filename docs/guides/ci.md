@@ -22,6 +22,12 @@ hecklr gate --suite ci
 | 2 | inconclusive (configurable with `gate.on_inconclusive` or `--on-inconclusive`) |
 | 3 | harness error: the runs could not be read, nothing could be analyzed, or a scenario both runs ran has no analyzable trial in one of them |
 
+`gate.on_inconclusive` defaults to `fail`. A deterministic agent (every scenario passes all or
+none of its trials) on a small suite is often inconclusive even when nothing changed: with 33
+such scenarios, Δ's interval is about ±10 points, wider than a 3-point δ. Extra trials do not
+help there, since the agent repeats itself; grow the suite (about 125 scenarios bound "no change"
+within 3 points) or set `on_inconclusive: pass` if an inconclusive result should not block.
+
 It writes `report.md` (the PR comment), `report.html`, `report.json` and `junit.xml` (one test
 case per scenario) to `--out-dir`. The Markdown stays under 30 lines: the verdict, Δ with its
 interval, the scenarios that flipped from pass to fail grouped by the criterion that failed, latency

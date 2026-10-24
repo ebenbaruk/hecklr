@@ -33,6 +33,9 @@ scenarios and why, so a rerun or a judge fix follows.
   harness error instead of being invisible. With `trials: 1`, one such trial is enough; that is
   the honest outcome, since the scenario has no measurement.
 - Partial exclusions still shrink a scenario's sample without a problem; their counts stay in
-  every report.
+  every report. The check is per scenario, not per slice cell: a scenario that kept an analyzable
+  chat trial but lost every voice trial still drops out of the `channel=voice` slice without a
+  problem. The suite verdict, which gates, is covered; slices only report, so this stays a known
+  limit rather than a second check.
 - In the guard, exclusions in the candidate lean towards rejecting the patch, never towards
   accepting it: the guard exists to keep regressions out.
