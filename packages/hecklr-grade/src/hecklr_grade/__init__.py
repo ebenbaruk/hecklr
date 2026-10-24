@@ -35,6 +35,7 @@ from hecklr_grade.safety import (
 from hecklr_grade.state import (
     IsoDateTime,
     StateExpressionError,
+    StateExpressionTimeoutError,
     StateGrader,
     StateLookupError,
     evaluate,
@@ -80,6 +81,7 @@ __all__ = [
     "RegexGrader",
     "Rubric",
     "StateExpressionError",
+    "StateExpressionTimeoutError",
     "StateGrader",
     "StateLookupError",
     "ToolCalledGrader",
