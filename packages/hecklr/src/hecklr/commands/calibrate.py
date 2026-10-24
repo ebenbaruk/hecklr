@@ -546,8 +546,9 @@ def _judge_groups(grades: Sequence[Grade], labels: Sequence[HumanLabel]) -> list
 def _label_source(labels: Sequence[HumanLabel]) -> str:
     """Whose labels the judges were compared with, so AI drafts never read as human (#97).
 
-    ``human:<name>`` labelers are people and print as "human"; any other labeler is named as is,
-    and AI drafts (``claude-draft``) are called out as not human.
+    ``human:<name>`` labelers are people and print as "human"; any other labeler (an AI draft
+    such as ``claude-draft``, or anyone without the prefix) is named as is and called out as not
+    human.
     """
     names = sorted(
         {
@@ -557,9 +558,9 @@ def _label_source(labels: Sequence[HumanLabel]) -> str:
         key=lambda name: (name != "human", name),
     )
     source = " and ".join(names) + " labels"
-    if judge_calibration.DRAFT_LABELER not in names:
+    if names == ["human"]:
         return source
-    return source + (" (not human)" if len(names) == 1 else " (not all human)")
+    return source + (" (not all human)" if "human" in names else " (not human)")
 
 
 def _judge_table(calibrations: Sequence[JudgeCalibration], labels: Sequence[HumanLabel]) -> Table:

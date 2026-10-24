@@ -15,7 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 import hecklr.commands._common
-from hecklr import exit_codes, judge_calibration, voice_calibration
+from hecklr import compose, exit_codes, judge_calibration, voice_calibration
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
 from hecklr.testing import scripted_models
@@ -23,6 +23,7 @@ from hecklr.voice_calibration import TimingCheck
 from hecklr_core import ResultStore
 from hecklr_llm import FakeLLM
 from hecklr_schemas import HumanLabel, LabelId, Run, new_id
+from hecklr_stats import validation
 
 Edit = Callable[[Path, str, str], None]
 StoreRun = Callable[..., Run]
@@ -442,16 +443,17 @@ def test_sc7_calibrate_judges_set_flags_a_disagreeing_judge(
     assert "NO (kappa < 0.70)" in output
 
 
+@pytest.mark.parametrize("labeler", ["claude-draft", "gpt-labeler"])
 def test_issue97_judges_table_names_non_human_labelers(
-    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path, labeler: str
 ) -> None:
     run = store(SCENARIOS, grader="judge:resolved")
-    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0, labeler="claude-draft")
+    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0, labeler=labeler)
 
     code, output = invoke(config_path, "--judges", "--labels", str(labels))
 
     assert code == exit_codes.OK, output
-    assert "Judge agreement with claude-draft labels (not human) (95% CI)" in output
+    assert f"Judge agreement with {labeler} labels (not human) (95% CI)" in output
     assert "human labels" not in output
 
 
@@ -730,3 +732,9 @@ def test_issue100_a_rubber_stamp_judge_on_all_pass_labels_fails_sc7(
     assert code == exit_codes.CHECK_FAILED, output
     assert "1.00 [1.00, 1.00]" in output  # agreement never tested on a fail
     assert "NO (needs 10+ human labels of each class, has 10 pass and 0 fail)" in output
+
+
+def test_issue103_the_aa_simulation_spends_the_extra_share_runs_spend() -> None:
+    # calibrate --aa quotes a simulated adaptive false-alarm rate; it describes `hecklr run
+    # --adaptive` only while both spend the same share of extra trials.
+    assert validation.ADAPTIVE_EXTRA_SHARE == compose.ADAPTIVE_EXTRA_SHARE
