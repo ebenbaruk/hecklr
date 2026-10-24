@@ -28,6 +28,7 @@ from hecklr_schemas import (
     ProposalStatus,
     Scenario,
     ScenarioProposal,
+    SuiteConfig,
 )
 from hecklr_sim import scenario_to_yaml
 
@@ -162,7 +163,7 @@ class MineFiles:
             with target.open("x", encoding="utf-8") as out:
                 out.write(text)
             _append(stored.file, decided)
-        return Approval(decided, target, self._unsuited_warnings(target))
+        return Approval(decided, target, self._unsuited_warnings(target, scenario))
 
     def _undecided(self, proposal_id: str) -> StoredProposal:
         stored = self.proposal(proposal_id)
@@ -213,21 +214,39 @@ class MineFiles:
                 continue
         return ids
 
-    def _unsuited_warnings(self, written: Path) -> list[str]:
-        """A warning when no configured suite would run the scenario just written."""
-        suites = self.project.config.suites
-        runs_it = [
-            name
-            for name, suite in suites.items()
-            if written.resolve() in _files(self.project.root, [suite.scenarios])
-        ]
-        if runs_it:
-            return []
-        globs = ", ".join(f"{name}: {suite.scenarios}" for name, suite in sorted(suites.items()))
+    def _unsuited_warnings(self, written: Path, scenario: Scenario) -> list[str]:
+        """A warning when no configured suite would run the scenario just written.
+
+        A suite runs a scenario when its glob matches the file, one of its ``tags`` (if any) is
+        one of the scenario's, and one of its ``channels`` (if set) is one of the scenario's: the
+        filters of ``hecklr_core.resolve_suite``. Checking the glob alone told users an approved
+        scenario would run when a ``tags`` filter dropped it (issue #105).
+        """
+        reasons = []
+        for name, suite in sorted(self.project.config.suites.items()):
+            reason = self._why_not_run(written, scenario, suite)
+            if reason is None:
+                return []
+            reasons.append(f"{name} {reason}")
         return [
             f"no suite runs {written.relative_to(self.project.root).as_posix()} "
-            f"(suite scenario globs: {globs}); add it to a suite's glob in hecklr.yaml"
+            f"({'; '.join(reasons)}); add it to a suite in hecklr.yaml"
         ]
+
+    def _why_not_run(self, written: Path, scenario: Scenario, suite: SuiteConfig) -> str | None:
+        if written.resolve() not in _files(self.project.root, [suite.scenarios]):
+            return f"has the glob {suite.scenarios}"
+        if suite.tags and not set(suite.tags) & set(scenario.tags):
+            return (
+                f"runs only tags [{', '.join(suite.tags)}], the scenario has "
+                f"[{', '.join(scenario.tags)}]"
+            )
+        if suite.channels is not None and not set(suite.channels) & set(scenario.channels):
+            return (
+                f"runs only channels [{', '.join(c.value for c in suite.channels)}], the "
+                f"scenario is on [{', '.join(c.value for c in scenario.channels)}]"
+            )
+        return None
 
     def _records[M: BaseModel](self, name: str, model: type[M]) -> Iterator[tuple[Path, M]]:
         for path in sorted(self.directory.rglob(name)):

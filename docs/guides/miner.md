@@ -61,7 +61,11 @@ delimiter: ";"
 Results go to `.hecklr/mine/<mine id>/`: the scrubbed conversations, the clusters with their
 labels and members, a `summary.json`, and `proposals.jsonl`, an append-only review queue. Approve,
 edit or reject each proposed scenario in the [local UI](ui.md) (**Approvals**); an approved
-scenario is written to `scenarios/mined/` and joins your suite.
+scenario is written to `scenarios/mined/`, tagged `mined`. It runs in every suite whose glob,
+`tags` and `channels` match it: a project made by `hecklr init` runs the `mined` tag in its `ci`
+suite. If no suite would run it (say your suite keeps only `tags: [core]`), the approval says so
+and names the filter; add `mined` to the suite's tags, or give mined scenarios a suite of their
+own.
 
 ## Replay instead of mining
 
