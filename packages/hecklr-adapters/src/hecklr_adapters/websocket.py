@@ -16,7 +16,8 @@ call whose handshake was merely slow on a busy machine (issue #56).
 """
 
 import json
-from collections.abc import AsyncIterator
+import os
+from collections.abc import AsyncIterator, Mapping
 from typing import Final
 
 import anyio
@@ -27,6 +28,7 @@ from websockets.exceptions import WebSocketException
 from hecklr_adapters._http import parse_json
 from hecklr_adapters.context import session_headers, template_values
 from hecklr_adapters.errors import AdapterConfigError, AgentError, AgentTimeoutError
+from hecklr_adapters.headers import resolve_headers
 from hecklr_adapters.templates import check_path, check_template, find, render
 from hecklr_schemas import (
     AgentChunk,
@@ -52,8 +54,12 @@ class WebSocketChatTarget:
         config: WebSocketAdapterConfig,
         *,
         connect_timeout_s: float = DEFAULT_CONNECT_TIMEOUT_S,
+        environ: Mapping[str, str] = os.environ,
     ) -> None:
-        """Validate the template and paths up front, so a bad config fails before any trial."""
+        """Check the template and paths and read ``headers_env``: a bad config fails early.
+
+        ``environ`` replaces the process environment, for tests.
+        """
         if connect_timeout_s <= 0:
             raise AdapterConfigError(f"connect_timeout_s must be positive, got {connect_timeout_s}")
         self._connect_timeout_s = connect_timeout_s
@@ -64,6 +70,9 @@ class WebSocketChatTarget:
         for path in (config.receive_path, config.final_path):
             if path is not None:
                 check_path(path)
+        self._headers = resolve_headers(
+            config.headers, config.headers_env, environ=environ, adapter="websocket"
+        )
         self._config = config
 
     async def open(self, ctx: SessionContext) -> "WebSocketChatSession":
@@ -71,7 +80,7 @@ class WebSocketChatTarget:
         try:
             socket = await connect(
                 self._config.url,
-                additional_headers={**self._config.headers, **session_headers(ctx)},
+                additional_headers={**self._headers, **session_headers(ctx)},
                 open_timeout=self._connect_timeout_s,
             )
         except TimeoutError as exc:

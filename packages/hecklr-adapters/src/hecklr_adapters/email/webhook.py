@@ -17,8 +17,9 @@ and the ``EmailTarget`` Protocol has no lifecycle hooks, so it starts on first u
 ``close()``.
 """
 
+import os
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Final
@@ -30,6 +31,7 @@ from pydantic import ValidationError
 from hecklr_adapters._http import agent_http_errors, check_status, new_client
 from hecklr_adapters.context import session_fields, session_headers
 from hecklr_adapters.email._routing import TrialAddresses
+from hecklr_adapters.headers import resolve_headers
 from hecklr_schemas import EmailMessage, SessionContext, WebhookAdapterConfig
 
 REPLY_PATH: Final = "/hecklr/email/replies"
@@ -47,8 +49,16 @@ class WebhookEmailTarget:
         config: WebhookAdapterConfig,
         *,
         transport: httpx2.AsyncBaseTransport | None = None,
+        environ: Mapping[str, str] = os.environ,
     ) -> None:
-        """``transport`` replaces the network for the outbound POST, for tests."""
+        """Read ``headers_env`` now, so a missing variable fails before any trial.
+
+        ``transport`` replaces the network for the outbound POST and ``environ`` the process
+        environment, for tests.
+        """
+        self._headers = resolve_headers(
+            config.headers, config.headers_env, environ=environ, adapter="webhook"
+        )
         self._config = config
         self._transport = transport
         self._url = str(config.url)
@@ -96,7 +106,7 @@ class WebhookEmailTarget:
             "reply_url": self.reply_url,
             "message": msg.model_dump(mode="json"),
         }
-        headers = {**self._config.headers, **session_headers(ctx)}
+        headers = {**self._headers, **session_headers(ctx)}
         with agent_http_errors(self._url, self._config.timeout_s):
             async with new_client(self._config.timeout_s, self._transport) as client:
                 response = await client.post(self._url, json=body, headers=headers)

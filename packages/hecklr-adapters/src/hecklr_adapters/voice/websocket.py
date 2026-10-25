@@ -7,7 +7,8 @@ cuts it off where playback had got to. A normal close from the agent is a hang-u
 one, or a protocol violation, is an ``AgentError``.
 """
 
-from collections.abc import AsyncIterator
+import os
+from collections.abc import AsyncIterator, Mapping
 from typing import Final
 
 import anyio
@@ -17,6 +18,7 @@ from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK, Web
 
 from hecklr_adapters.context import session_headers
 from hecklr_adapters.errors import AgentError, AgentTimeoutError
+from hecklr_adapters.headers import resolve_headers
 from hecklr_adapters.voice.audio import SAMPLE_RATE, StreamResampler, ToHarness, pcm16
 from hecklr_adapters.voice.config import WebSocketVoiceAdapterConfig
 from hecklr_adapters.voice.playout import Mark, Playout, Receiver
@@ -49,7 +51,16 @@ def check_caller_rate(sample_rate: int) -> None:
 class WebSocketVoiceTarget:
     """Places each call over a new WebSocket connection."""
 
-    def __init__(self, config: WebSocketVoiceAdapterConfig) -> None:
+    def __init__(
+        self, config: WebSocketVoiceAdapterConfig, *, environ: Mapping[str, str] = os.environ
+    ) -> None:
+        """Read ``headers_env`` now, so a missing variable fails before any call.
+
+        ``environ`` replaces the process environment, for tests.
+        """
+        self._headers = resolve_headers(
+            config.headers, config.headers_env, environ=environ, adapter="websocket voice"
+        )
         self._config = config
 
     async def connect(self, ctx: SessionContext) -> "WebSocketAudioLink":
@@ -58,7 +69,7 @@ class WebSocketVoiceTarget:
         try:
             socket = await connect(
                 config.url,
-                additional_headers={**config.headers, **session_headers(ctx)},
+                additional_headers={**self._headers, **session_headers(ctx)},
                 open_timeout=config.connect_timeout_s,
                 close_timeout=CLOSE_TIMEOUT_S,
                 max_size=None,

@@ -9,6 +9,13 @@ Expressions run on simpleeval, never Python ``eval``, with three extra locks:
   fields of ISO 8601 strings. Names starting with ``_`` are always refused.
 - Only pure functions are available (no ``rand``: graders are deterministic).
 
+Work is bounded too (issue #114), so no single operation runs long: a power whose result would
+pass ``MAX_POWER_BITS`` is refused before it is computed, a value an expression builds may hold at
+most ``MAX_VALUE_SIZE`` elements and characters (counting shared parts each time they appear),
+and ``sum`` adds numbers only (its list form is quadratic). An expression still running after
+``STATE_DEADLINE_S`` stops with ``StateExpressionTimeoutError``. ``StateGrader`` evaluates in a
+worker thread, so a slow expression never stalls the other trials or Ctrl-C.
+
 ISO 8601 date-time strings in the data (``2026-10-23T09:00``) become ``IsoDateTime`` values: still
 strings (they compare and print as written) with ``year``, ``month``, ``day``, ``hour``,
 ``minute``, ``second``, ``weekday`` (Monday is 0, as ``datetime.weekday()``) and ``date``
@@ -16,11 +23,15 @@ attributes. The fields read the wall-clock time as written; an offset is not con
 """
 
 import ast
+import math
 import re
-from collections.abc import Callable, Iterator, Mapping
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import datetime
+from functools import partial
 from typing import Any, Final
 
+import anyio
 import simpleeval  # type: ignore[import-untyped]  # simpleeval ships no type information
 
 from hecklr_grade.base import criterion_as, errored, make_grade
@@ -35,6 +46,21 @@ _ISO_DATE_TIME = re.compile(
 
 class StateExpressionError(ValueError):
     """The expression itself is invalid: syntax, a refused feature, an unknown name or result."""
+
+
+class StateExpressionTimeoutError(StateExpressionError):
+    """The expression was still running at its deadline."""
+
+
+STATE_DEADLINE_S: Final = 1.0
+"""Wall-clock time one expression may take. Real assertions take microseconds."""
+MAX_POWER_BITS: Final = 4096
+"""Largest integer power result, in bits. simpleeval's own limit (operands up to 4,000,000)
+allows ``9**4000000``, which takes seconds to compute and cannot be interrupted (issue #114)."""
+MAX_VALUE_SIZE: Final = 1_000_000
+"""Largest value an expression may build, in elements plus string characters. A shared part counts
+each time it appears: ``[[0] * 9999] * 9999`` is small in memory, but ``str``, ``sorted`` or
+``==`` on it walk 10**8 elements in one uninterruptible call, holding the GIL (issue #114)."""
 
 
 class StateLookupError(LookupError):
@@ -176,13 +202,19 @@ def _values(view: object) -> list[object]:
     return [view[key] for key in view]
 
 
+def _sum(values: Iterable[Any], *start: object) -> object:
+    if start:
+        raise StateExpressionError("sum() takes one argument: the numbers to add")
+    return sum(values)
+
+
 FUNCTIONS: Final[Mapping[str, Callable[..., object]]] = {
     "len": len,
     "any": any,
     "all": all,
     "min": min,
     "max": max,
-    "sum": sum,
+    "sum": _sum,
     "abs": abs,
     "round": round,
     "sorted": sorted,
@@ -213,15 +245,20 @@ def evaluate(
     world_after: Mapping[str, object],
     world_before: Mapping[str, object],
     facts: Mapping[str, object],
+    deadline_s: float | None = None,
 ) -> bool:
-    """Evaluate ``expr`` to a boolean.
+    """Evaluate ``expr`` to a boolean, within ``deadline_s`` (``STATE_DEADLINE_S`` by default).
 
     Raises:
-        StateExpressionError: the expression is invalid, refused, or not boolean.
+        StateExpressionError: the expression is invalid, refused, or not boolean;
+            ``StateExpressionTimeoutError`` when it runs past its deadline.
         StateLookupError: it reads data that is missing or of the wrong type.
     """
     after = JsonObject(world_after)
+    operators = dict(simpleeval.DEFAULT_OPERATORS)
+    operators[ast.Pow] = _bounded_power
     evaluator: Any = simpleeval.EvalWithCompoundTypes(
+        operators=operators,
         functions=dict(FUNCTIONS),
         names={
             "world": after,
@@ -231,10 +268,14 @@ def evaluate(
         },
     )
     evaluator.nodes[ast.Attribute] = _attribute_reader(evaluator)
+    limit = STATE_DEADLINE_S if deadline_s is None else deadline_s
+    evaluator._eval = _with_deadline(evaluator._eval, limit)
+    for node_type in _BUILDERS:
+        evaluator.nodes[node_type] = _size_checked(evaluator.nodes[node_type])
     check_expression(expr)
     try:
         result = evaluator.eval(expr.strip())
-    except StateLookupError:
+    except (StateLookupError, StateExpressionError):
         raise
     except (KeyError, IndexError, TypeError, ArithmeticError, ValueError) as exc:
         raise StateLookupError(f"{type(exc).__name__}: {exc}") from exc
@@ -245,6 +286,106 @@ def evaluate(
             f"expression must be a boolean, got {type(result).__name__} {_brief(result)}"
         )
     return result
+
+
+def _bounded_power(base: Any, exponent: Any) -> Any:
+    """The ``**`` operator: ``simpleeval.safe_power`` with integer results bounded in size."""
+    if (
+        isinstance(base, int)
+        and isinstance(exponent, int)
+        and exponent > 0
+        and abs(base) > 1
+        and exponent * math.log2(abs(base)) > MAX_POWER_BITS
+    ):
+        # The operands are not quoted: a huge base has no printable decimal form (issue #38).
+        raise simpleeval.NumberTooHigh(
+            f"a power is too high: results are limited to {MAX_POWER_BITS} bits"
+        )
+    return simpleeval.safe_power(base, exponent)
+
+
+_BUILDERS: Final = (
+    ast.BinOp,
+    ast.Call,
+    ast.List,
+    ast.Tuple,
+    ast.Set,
+    ast.Dict,
+    ast.ListComp,
+    ast.GeneratorExp,
+    ast.DictComp,
+    ast.JoinedStr,
+)
+"""Nodes that can build a new value; reading a name, field or item only shares an existing one."""
+
+
+def _with_deadline(
+    step: Callable[[ast.AST], object], limit_s: float
+) -> Callable[[ast.AST], object]:
+    """``step`` (the evaluator's per-node recursion) checking the deadline before every node.
+
+    With powers and values bounded, every operation an expression can reach is short, so checking
+    between nodes stops a long expression within one operation of its deadline.
+    """
+    deadline = time.monotonic() + limit_s
+
+    def bounded(node: ast.AST) -> object:
+        if time.monotonic() > deadline:
+            raise StateExpressionTimeoutError(f"the expression exceeded its {limit_s} s deadline")
+        return step(node)
+
+    return bounded
+
+
+def _size_checked(handler: Callable[[ast.AST], object]) -> Callable[[ast.AST], object]:
+    """A node handler that refuses a value past ``MAX_VALUE_SIZE`` as soon as it is built.
+
+    It wraps the handler, not ``_eval``: simpleeval's own check of each result walks the value
+    element by element, which on an oversized one is the very work being prevented.
+    """
+
+    def checked(node: ast.AST) -> object:
+        value = handler(node)
+        _check_size(value)
+        return value
+
+    return checked
+
+
+def _check_size(value: object) -> None:
+    """Raise ``StateExpressionError`` if ``value`` is larger than ``MAX_VALUE_SIZE``."""
+    sizes: dict[int, int] = {}
+    if _size(value, sizes) > MAX_VALUE_SIZE:
+        raise StateExpressionError(
+            f"a value is too large: values are limited to {MAX_VALUE_SIZE:,} elements"
+        )
+
+
+def _size(value: object, sizes: dict[int, int]) -> int:
+    """Elements plus characters in ``value``, stopping once past ``MAX_VALUE_SIZE``.
+
+    ``sizes`` remembers each container already measured, so a part shared a million times is
+    walked once and counted a million times: measuring costs what the value holds in memory.
+    """
+    if isinstance(value, str):
+        return max(1, len(value))
+    if isinstance(value, JsonObject):
+        value = value._data
+    if not isinstance(value, Mapping | list | tuple | set | frozenset):
+        return 1
+    known = sizes.get(id(value))
+    if known is not None:
+        return known
+    items: Iterable[object] = (
+        (part for pair in value.items() for part in pair) if isinstance(value, Mapping) else value
+    )
+    total = 1
+    for item in items:
+        total += _size(item, sizes)
+        if total > MAX_VALUE_SIZE:
+            break
+    sizes[id(value)] = total
+    return total
 
 
 _BRIEF_CHARS: Final = 60
@@ -303,13 +444,17 @@ class StateGrader:
         """Pass when the expression is true; missing data fails, an invalid expression errors."""
         criterion = criterion_as(ctx, StateCriterion)
         label = criterion.description or criterion.expr
+        check = partial(
+            evaluate,
+            criterion.expr,
+            world_after=ctx.trial.world_after.collections,
+            world_before=ctx.trial.world_before.collections,
+            facts=ctx.scenario.facts,
+        )
         try:
-            holds = evaluate(
-                criterion.expr,
-                world_after=ctx.trial.world_after.collections,
-                world_before=ctx.trial.world_before.collections,
-                facts=ctx.scenario.facts,
-            )
+            # Off the event loop, so other trials' timeouts and Ctrl-C keep working (#114). A
+            # cancelled grade abandons the thread, which stops by itself at the deadline.
+            holds = await anyio.to_thread.run_sync(check, abandon_on_cancel=True)
         except StateExpressionError as exc:
             return errored(ctx, self, f"invalid state expression {criterion.expr!r}: {exc}")
         except StateLookupError as exc:

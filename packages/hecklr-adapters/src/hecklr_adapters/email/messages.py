@@ -96,8 +96,36 @@ def from_mime(raw: bytes) -> EmailMessage:
     still be logged and graded (it then cannot be a thread parent anyone names).
 
     Raises:
-        AgentError: the message lacks a usable sender or recipient.
+        AgentError: the message lacks a usable sender or recipient, or cannot be decoded to
+            storable text (an unknown charset, or one that yields a lone surrogate).
     """
+    try:
+        return storable(_parse(raw))
+    except (UnicodeError, LookupError) as exc:
+        # The agent's bytes are at fault, so this is its error, not the harness's (issue #119).
+        raise AgentError(f"agent sent an email that cannot be decoded: {exc}") from exc
+
+
+def storable(msg: EmailMessage) -> EmailMessage:
+    """``msg``, once checked to have a UTF-8 form, so the harness can store it.
+
+    A lone UTF-16 surrogate (``json.loads`` of an emoji escape cut in half, or a charset such as
+    ``unicode-escape``) has none: storing it would fail inside the harness, and the agent's fault
+    would be retried and excluded as a harness error (issues #112, #119).
+
+    Raises:
+        AgentError: some text of ``msg`` is not valid Unicode.
+    """
+    try:
+        msg.model_dump_json()
+    except ValueError as exc:  # pydantic's serialization error wraps the UnicodeEncodeError
+        raise AgentError(
+            f"agent sent an email whose text is not valid Unicode (an unpaired surrogate): {exc}"
+        ) from exc
+    return msg
+
+
+def _parse(raw: bytes) -> EmailMessage:
     mime = message_from_bytes(raw, _class=MimeMessage, policy=policy.default)
     msg_ids = _MSG_ID.findall(str(mime.get("Message-ID", "")))
     in_reply_to = _MSG_ID.findall(str(mime.get("In-Reply-To", "")))
