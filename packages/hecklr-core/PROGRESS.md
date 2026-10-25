@@ -54,6 +54,14 @@ Owner: WS1. Spec: `docs/SPEC.md` → "Run lifecycle", "Core data model", "Orches
   10-minute bound, no bottleneck needed fixing.
 - Package: 102 tests (one `perf`), 100% line and branch coverage with the serial step.
 
+## Done (WShrun, Wave 6-close)
+
+- **#117** a cancelled run (Ctrl-C, SIGTERM) exports its finished trials and `ResultStore` closes
+  its databases under a shielded scope: `test_issue117_a_cancelled_run_keeps_its_counts_exports_
+  and_closes_its_store`.
+- **#85** the estimate charges every simulator draft (3 per customer turn) and its feedback
+  (ADR 0024-hrun): `test_issue85_estimate_uses_max_turns_prices_and_every_simulator_draft`.
+
 ## Next
 
 - WS7 wires concrete components: `Collaborators(sandbox=hecklr_world..., drivers={chat: ...},

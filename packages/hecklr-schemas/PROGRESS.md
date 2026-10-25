@@ -55,3 +55,11 @@ Spec: `docs/SPEC.md` → "Core data model", "Agent adapters", "Graders", "Config
 ## Open questions
 
 - None.
+
+## RFC 0023 (WShrun, #115)
+
+- Additive, optional `headers_env: dict[str, EnvVarName]` on `HttpAdapterConfig`,
+  `WebSocketAdapterConfig`, `WebhookAdapterConfig` and `WebRTCAdapterConfig`, the one schema
+  change of the closing wave (RFC 0023, accepted by the architect). Tests:
+  `test_issue115_header_adapters_name_env_vars_for_header_values`,
+  `test_issue115_headers_env_is_optional`.

@@ -44,8 +44,15 @@ SIM_BRIEF_TOKENS: Final = 800
 """Simulator system prompt: persona, goal, facts and rules."""
 TOKENS_PER_TURN: Final = 80
 """Average size of one message of the dialogue, either party, as the simulator reads it."""
+SIM_DRAFTS_PER_TURN: Final = 3
+"""Model calls one customer turn may take: a draft the consistency guard rejects (or that is not
+valid JSON) is regenerated, up to ``hecklr_sim``'s default ``max_regenerations`` of 2, which is
+what ``hecklr run`` uses (issue #85). The LLM consistency check is off in ``hecklr run``."""
+SIM_FEEDBACK_TOKENS: Final = 200
+"""What a regenerated draft's prompt adds: the guard's description of the rejected draft."""
 SIM_OUTPUT_TOKENS: Final = 80
-"""One simulated customer message."""
+"""One simulated customer message (ADR 0024-hrun-cost-estimate-charges-regenerations explains
+why this is not the draft's ``max_tokens``)."""
 
 JUDGE_INSTRUCTIONS_CHARS: Final = 4000
 """Judge system prompt, rubric, answer schema, section headings and the retry instruction:
@@ -244,12 +251,15 @@ def _judge_vote_usage(prompt_chars: int) -> LLMUsage:
 
 
 def _simulator_usage(max_turns: int) -> LLMUsage:
-    calls = math.ceil(max_turns / 2)
-    # Call k (0-based) sees the brief plus the 2k messages exchanged before it.
-    dialogue = TOKENS_PER_TURN * 2 * (calls * (calls - 1) // 2)
+    """Every customer turn of a conversation that reaches ``max_turns``, each regenerated."""
+    turns = math.ceil(max_turns / 2)
+    # Turn k (0-based) sees the brief plus the 2k messages exchanged before it.
+    dialogue = TOKENS_PER_TURN * 2 * (turns * (turns - 1) // 2)
+    regenerations = turns * (SIM_DRAFTS_PER_TURN - 1)
     return LLMUsage(
-        input_tokens=calls * SIM_BRIEF_TOKENS + dialogue,
-        output_tokens=calls * SIM_OUTPUT_TOKENS,
+        input_tokens=SIM_DRAFTS_PER_TURN * (turns * SIM_BRIEF_TOKENS + dialogue)
+        + regenerations * SIM_FEEDBACK_TOKENS,
+        output_tokens=turns * SIM_DRAFTS_PER_TURN * SIM_OUTPUT_TOKENS,
     )
 
 

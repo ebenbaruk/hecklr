@@ -40,6 +40,7 @@ from hecklr_schemas import (
     DriverResult,
     EndReason,
     ErrorPayload,
+    Event,
     EventSink,
     Grade,
     GradeContext,
@@ -57,6 +58,7 @@ from hecklr_schemas import (
     SimTurn,
     ToolCallPayload,
     ToolResultPayload,
+    Trial,
     TrialBrief,
     UtterancePayload,
     World,
@@ -807,6 +809,71 @@ async def test_cancelled_run_is_recorded(tmp_path: Path, ci_suite: Suite) -> Non
     # Issue #35: Ctrl-C is not an error; the CLI prints its own one-line notice.
     run_end = next(entry for entry in logs if entry["event"] == "run.end")
     assert (run_end["log_level"], run_end["status"]) == ("info", "cancelled")
+
+
+@dataclass
+class HangsAfter(FakeDriver):
+    """Finishes its first ``finished`` trials, then hangs: a run stopped partway."""
+
+    finished: int = 2
+
+    async def run(
+        self,
+        ctx: SessionContext,
+        brief: TrialBrief,
+        simulator: CustomerSimulator,
+        sink: EventSink,
+    ) -> DriverResult:
+        self.hang = self.runs >= self.finished
+        return await super().run(ctx, brief, simulator, sink)
+
+
+@pytest.mark.anyio
+async def test_issue117_a_cancelled_run_keeps_its_counts_exports_and_closes_its_store(
+    tmp_path: Path, ci_suite: Suite
+) -> None:
+    # SIGTERM in `hecklr run` cancels the run like Ctrl-C: whatever finished must be kept.
+    runs_dir = tmp_path / "runs"
+    planned = _planned(ci_suite)
+    with anyio.CancelScope() as scope:
+        async with CountingStore(runs_dir, wanted=2) as store:
+            executor = RunExecutor(
+                ci_suite, make_collaborators(driver=HangsAfter(finished=2)), store, retry=NO_WAIT
+            )
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(executor.execute, planned)
+                await store.reached.wait()
+                scope.cancel()
+    run_dir = runs_dir / planned.id
+    assert sorted(path.name for path in run_dir.glob("*.parquet")) == [
+        "events.parquet",
+        "grades.parquet",
+        "trials.parquet",
+    ]
+    # The store was closed although the scope around it was cancelled: no WAL is left.
+    assert not list(run_dir.glob("*.wal"))
+    async with ResultStore(runs_dir) as reopened:
+        (run,) = reopened.list_runs()
+        results = await reopened.load_run(run.id)
+    assert run.status is RunStatus.CANCELLED
+    assert run.counts.ok == len(results.trials) == 2
+
+
+class CountingStore(ResultStore):
+    """Sets ``reached`` once ``wanted`` trials are stored."""
+
+    def __init__(self, runs_dir: Path, wanted: int) -> None:
+        super().__init__(runs_dir)
+        self.reached = anyio.Event()
+        self._left = wanted
+
+    async def append_trial_result(
+        self, trial: Trial, events: Sequence[Event], grades: Sequence[Grade]
+    ) -> None:
+        await super().append_trial_result(trial, events, grades)
+        self._left -= 1
+        if self._left == 0:
+            self.reached.set()
 
 
 @pytest.mark.anyio

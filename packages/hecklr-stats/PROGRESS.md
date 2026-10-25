@@ -44,6 +44,17 @@ US-11. Contracts: `hecklr_schemas.runtime` (`Estimate`, `MetricSummary`, `Compar
   [56.6%, 100%]; `test_all_or_nothing_suite_interval_covers_at_nominal_rate` >= 90% at S = 5,
   10, 20). 124 tests, 100% line and branch coverage.
 
+- **Issue #103** (WShstats, ADR 0024-hstats): `compare_sequentially` tests each adaptive batch
+  at its O'Brien-Fleming look and stops at the first decision; `adaptive_verdict_rate`
+  simulates the whole procedure, allocation included. Seeded A/A false-alarm rate across looks
+  (`test_issue103_sc5_adaptive_false_alarm_rate_across_looks_at_most_alpha`, 400 replicates,
+  both directions): 60 x 5: 4.5% [2.9%, 7.0%]; 20 x 3: 3.3% [1.9%, 5.5%]; power for a 10-point
+  drop at 60 x 5: 98% [93%, 99%]. With `min_effect = 0` the test alone across looks rejects
+  4.9% [4.0%, 5.9%] over 2,000 replicates, covering alpha
+  (`test_issue103_the_test_alone_across_looks_is_consistent_with_alpha`, marked slow, ~37 s).
+  `flaky_scenarios` and `judge_drift` now have callers
+  (`hecklr-report`, `hecklr calibrate`; issue #102).
+
 ## Next
 
 - WS7: call `summarize_run` and `compare_runs` (pass `config.stats` and the run seed), read

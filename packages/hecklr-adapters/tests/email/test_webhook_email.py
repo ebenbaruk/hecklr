@@ -193,5 +193,15 @@ async def test_ws12_webhook_reply_endpoint_rejects_what_it_cannot_route(
     assert post_raw(target, REPLY_PATH, b"x", length=100 * 1024 * 1024) == 413
 
 
+async def test_issue119_a_webhook_reply_with_a_lone_surrogate_is_refused_to_the_agent(
+    target: WebhookEmailTarget,
+) -> None:
+    target.start()
+    reply = make_reply(email(), body="Sure", from_addr=AGENT)
+    payload = json.dumps(reply.model_dump(mode="json")).replace('"Sure"', '"Sure \\ud83d"')
+    # Refused before it is routed: the agent hears why, and nothing unstorable is queued.
+    assert post_raw(target, REPLY_PATH, payload.encode()) == 400
+
+
 async def test_ws12_webhook_close_without_start_is_harmless() -> None:
     WebhookEmailTarget(webhook_config("http://agent.test/inbound")).close()
