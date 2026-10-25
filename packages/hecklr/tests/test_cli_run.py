@@ -1,6 +1,7 @@
 """``hecklr run`` through Typer's CliRunner, on starter projects and scripted models."""
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -8,7 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -229,6 +230,16 @@ def test_issue34_max_reply_bytes_sets_the_cap(config_path: Path, stub_agent: Stu
     assert code == exit_codes.OK, output
 
 
+@contextlib.contextmanager
+def _sigint_ignored() -> Iterator[None]:
+    """Ignore SIGINT while a child is spawned: it inherits SIG_IGN, as under a background job."""
+    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
 @pytest.mark.slow
 def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     config_path: Path, stub_agent: StubAgent
@@ -236,16 +247,22 @@ def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     asked = threading.Event()
     # Every reply takes longer than the test needs to signal, so the run cannot finish first.
     stub_agent("slow", 5.0, asked)
-    # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal.
-    command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
-    with subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
-        [*command, "-c", str(config_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        # CI forces colour on; the assertions read plain text.
-        env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
-    ) as process:
+    # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal. A child
+    # inherits an ignored SIGINT (the gate started as `cmd &`, nohup), and asyncio.run installs no
+    # handler then, so the signal was dropped and the run ended 0 (#94). The child restores the
+    # terminal default, and the test always hands it an ignored SIGINT to keep that case covered.
+    restore = "import signal; signal.signal(signal.SIGINT, signal.default_int_handler)"
+    command = [sys.executable, "-c", f"{restore}; from hecklr.cli import main; main()", "run"]
+    with _sigint_ignored():
+        process = subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
+            [*command, "-c", str(config_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            # CI forces colour on; the assertions read plain text.
+            env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
+        )
+    with process:
         try:
             assert process.stderr is not None
             plan = click.unstyle(process.stderr.readline())

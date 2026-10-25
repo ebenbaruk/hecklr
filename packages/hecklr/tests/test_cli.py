@@ -108,7 +108,7 @@ print(anyio.run(run_dsp, os.getpid) != os.getpid())
 """
 
 
-def test_issue31_dsp_workers_start_under_an_entry_script_that_imports_the_cli(
+def test_issue82_dsp_workers_start_under_an_entry_script_that_imports_the_cli(
     tmp_path: Path,
 ) -> None:
     # DSP workers never run the parent's main file (ADR 00hva), so the console script needs no

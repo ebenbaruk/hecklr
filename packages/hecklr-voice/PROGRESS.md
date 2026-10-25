@@ -116,7 +116,7 @@ ADR 0024-hvoice-timing-under-load):
   24 trials completed against the agent on 36571 (load 15-33), exit 0, generated config removed.
 - #82: `keep_warm` (acme-voice), the LiveKit bench agent's pre-warm synthesis and the CLI's
   `_keep_dsp_workers_off_the_entry_script` are gone.
-  `test_issue31_dsp_workers_start_under_an_entry_script_that_imports_the_cli` (hecklr) runs a DSP
+  `test_issue82_dsp_workers_start_under_an_entry_script_that_imports_the_cli` (hecklr) runs a DSP
   job from an entry script that imports `hecklr.cli`; SC3/SC4 serial results are in the PR's
   Local CI comment.
 - #59: `scripts/sc4-webrtc.sh` (+ manual `webrtc-sc4` job in `voice-timing.yml`). At load 12.3
@@ -125,9 +125,13 @@ ADR 0024-hvoice-timing-under-load):
   208-405 / 228-257 ms (latency / barge-in).
 - #27: Pipecat's `RawAudioTrack` catch-up burst is upstream behaviour (ADR 00hfa tests); recorded
   in ADR 0024-hvoice-webrtc-sc4 and the voice guide; allowance kept.
-- #94: the Ctrl-C test signals once the stub agent has a request in flight (5 s replies) and
-  asserts the process is still running; the original rc 0 did not reproduce in 115 tries at load
-  up to 55 (probe kept out of the tree).
+- #94: root cause is the SIGINT disposition, not load. A gate or pytest started as a background
+  job (`cmd &`, nohup) hands the CLI child an ignored SIGINT; asyncio.run then installs no Ctrl-C
+  handler, the signal is dropped and the run exits 0. Reproduced: `(uv run pytest ...::
+  test_issue35_ctrl_c_prints_one_line_and_exits_130) & wait` failed with rc 0. The child now
+  restores `signal.default_int_handler` before `main()`, and the test always spawns it with SIGINT
+  ignored, so it guards the case on every run (without the restore it fails in the foreground).
+  It also signals only once a trial is in flight and the process is still running.
 - #121, #123: `scripts/ci-local.sh` reruns the failed tests of `sc4-timing` and `perf` alone once
   the load falls to half the cores (max 900 s wait), keeps both logs and reports both; exercised
   with fake steps (rerun passes, rerun fails, no failed test named).

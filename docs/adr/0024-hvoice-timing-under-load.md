@@ -16,8 +16,10 @@ on tests that pass when rerun alone:
 - #123, `sc4-timing`: `hecklr`'s `test_sc4_loopback_measures_every_setting` (latency errors up
   to 1,123 ms at load 2.7-3.5), then `test_ws_wire_voice_run_measures_latency_...`, then
   `examples/voice-loopback`'s calibration case (41 underruns at load 25). Each passed alone.
-- #94 failed in the parallel `tests` step; it was a test that slept instead of waiting for an
-  observable condition and is fixed in the test, not covered by this ADR.
+- #94 failed in the parallel `tests` step and is not a load problem, so this ADR does not cover
+  it: a gate started as a background job (`cmd &`, nohup) passes an ignored SIGINT to the CLI
+  child the Ctrl-C test spawns, asyncio.run installs no handler then, and the run ends 0. The
+  test now restores the default handler in the child and always spawns it with SIGINT ignored.
 
 The cause is the same in every timing case. The caller's audio is placed on a 20 ms send grid
 and every timing is computed from that grid (ADR 0009a). When the harness process does not get
