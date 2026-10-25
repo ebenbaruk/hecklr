@@ -118,3 +118,34 @@ def test_ws12_a_body_less_multipart_reads_as_empty() -> None:
 def test_ws12_a_malformed_agent_email_is_an_agent_error(headers: str) -> None:
     with pytest.raises(AgentError, match="malformed email"):
         from_mime(_raw(headers))
+
+
+_ADDRESSES = "From: a@b.test\r\nTo: c@d.test\r\n"
+
+
+@pytest.mark.parametrize(
+    ("headers", "body"),
+    [
+        # An emoji escape cut in half, in a body whose declared charset decodes escapes.
+        pytest.param(
+            "Subject: s\r\nContent-Type: text/plain; charset=unicode-escape",
+            "Sure \\ud83d",
+            id="body-surrogate",
+        ),
+        pytest.param("Subject: =?unicode-escape?q?Hi_\\ud83d?=", "x", id="subject-surrogate"),
+        pytest.param(
+            "Subject: s\r\nContent-Type: text/plain; charset=no-such-codec", "x", id="unknown-codec"
+        ),
+    ],
+)
+def test_issue119_an_undecodable_agent_email_is_an_agent_error(headers: str, body: str) -> None:
+    # Before #119 these escaped as UnicodeEncodeError, LookupError or, worse, a message that
+    # failed only when stored: a harness error, retried and excluded, for the agent's fault.
+    with pytest.raises(AgentError, match=r"cannot be decoded|not valid Unicode"):
+        from_mime(_raw(_ADDRESSES + headers, body))
+
+
+def test_issue119_replaced_bytes_still_read() -> None:
+    message = from_mime(_ADDRESSES.encode() + b"Subject: Hi \xff\r\n\r\nBody")
+    assert message.subject == "Hi �"
+    message.model_dump_json()  # storable

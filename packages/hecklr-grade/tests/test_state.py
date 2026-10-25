@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import copy
+import time
 from typing import TYPE_CHECKING
 
+import anyio
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from hecklr_grade.state import (
+    MAX_POWER_BITS,
+    MAX_VALUE_SIZE,
     IsoDateTime,
     StateExpressionError,
+    StateExpressionTimeoutError,
     StateGrader,
     StateLookupError,
     check_expression,
@@ -269,9 +274,10 @@ def test_token_soup_only_yields_a_bool_or_a_state_error(tokens: list[str]) -> No
 
 
 def test_issue38_a_huge_non_boolean_integer_is_a_state_error() -> None:
-    # Hypothesis found `12**121212`: its repr exceeds Python's 4300-digit int-to-str limit.
+    # Hypothesis found `12**121212`: its repr exceeds Python's 4300-digit int-to-str limit. That
+    # power is now refused outright (#114); a product of two shifts still makes such an int.
     with pytest.raises(StateExpressionError, match="must be a boolean, got int") as caught:
-        run("12**121212")
+        run("(1 << 10000) * (1 << 10000)")
     assert len(str(caught.value)) < 200
 
 
@@ -326,3 +332,145 @@ async def test_state_grader_pass_fail_and_error(
     bad = await grader.grade(ctx_for(log, {"type": "state", "expr": "world.__class__"}))
     assert bad.status == "error"
     assert not bad.passed
+
+
+# --- issue #114: a state expression is bounded in time and never blocks the event loop ----------
+
+ISSUE114_EXPR = "len([9**4000000 for x in [0]*9999]) > 0"
+MANY_STEPS = "len([x for x in [0] * 9000]) > 0"
+
+
+def test_issue114_the_issue_expression_is_refused_at_once() -> None:
+    started = time.monotonic()
+    with pytest.raises(StateExpressionError, match="too high"):
+        run(ISSUE114_EXPR)
+    assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.parametrize(
+    "expr",
+    ["9**4000000 > 0", f"2**{MAX_POWER_BITS + 1} > 0", "(-3)**100000 > 0", "12**121212 > 0"],
+)
+def test_issue114_powers_past_the_result_bound_are_refused(expr: str) -> None:
+    with pytest.raises(StateExpressionError, match="too high"):
+        run(expr)
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [f"2**{MAX_POWER_BITS} > 0", "10**100 > 0", "2**-3 == 0.125", "1.5**2 == 2.25", "0**0 == 1"],
+)
+def test_issue114_powers_within_the_bound_still_work(expr: str) -> None:
+    assert run(expr) is True
+
+
+def test_issue114_an_expression_past_its_deadline_is_a_timeout() -> None:
+    # Each step is fast, but there are enough of them to pass a deadline of zero.
+    with pytest.raises(StateExpressionTimeoutError, match=r"exceeded its 0.0 s deadline"):
+        evaluate(MANY_STEPS, world_after=WORLD, world_before=BEFORE, facts={}, deadline_s=0.0)
+    assert issubclass(StateExpressionTimeoutError, StateExpressionError)
+
+
+@pytest.mark.anyio
+async def test_issue114_a_runaway_expression_is_an_error_grade_for_its_criterion(
+    log: EventLog, ctx_for: ContextFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    issue = await StateGrader().grade(ctx_for(log, {"type": "state", "expr": ISSUE114_EXPR}))
+    assert issue.status == "error"
+    assert "too high" in (issue.rationale or "")
+
+    monkeypatch.setattr("hecklr_grade.state.STATE_DEADLINE_S", 0.0)
+    grade = await StateGrader().grade(ctx_for(log, {"type": "state", "expr": MANY_STEPS}))
+    assert grade.status == "error"
+    assert not grade.passed
+    assert "deadline" in (grade.rationale or "")
+
+
+def _slow_evaluate(expr: str, **kwargs: object) -> bool:
+    time.sleep(0.6)  # a long evaluation that, like a real one, holds nothing the loop needs
+    return True
+
+
+@pytest.mark.anyio
+async def test_issue114_grading_runs_off_the_event_loop(
+    log: EventLog, ctx_for: ContextFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("hecklr_grade.state.evaluate", _slow_evaluate)
+    ticks = 0
+
+    async def tick() -> None:
+        nonlocal ticks
+        while True:
+            await anyio.sleep(0.01)
+            ticks += 1
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(tick)
+        grade = await StateGrader().grade(ctx_for(log, {"type": "state", "expr": "True"}))
+        tasks.cancel_scope.cancel()
+    assert grade.passed
+    assert ticks >= 20, ticks  # the loop kept running while the expression was evaluated
+
+
+@pytest.mark.anyio
+async def test_issue114_a_cancelled_grade_returns_at_once(
+    log: EventLog, ctx_for: ContextFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Ctrl-C cancels the run's tasks; a grade in progress must not hold the cancellation up.
+    monkeypatch.setattr("hecklr_grade.state.evaluate", _slow_evaluate)
+    started = time.monotonic()
+    with anyio.move_on_after(0.05):
+        await StateGrader().grade(ctx_for(log, {"type": "state", "expr": "True"}))
+    assert time.monotonic() - started < 0.4
+
+
+# One C-level operation (str, sorted, ==) on a value aliased many times over runs for seconds while
+# holding the GIL: neither the deadline nor the worker thread can stop it, so such values are
+# refused when they are built (#114).
+ORDERS_WORLD: dict[str, JsonValue] = {
+    "orders": {str(n): {"id": n, "note": "x" * 100} for n in range(1000)}
+}
+HUGE_VALUES = [
+    "len(str([[0] * 9999] * 9999)) > 0",
+    "sorted([[0] * 9999] * 9999) == []",
+    "[[0] * 9999] * 9999 == [[0] * 9999] * 9999",
+    "len(str(([0] * 9999,) * 9999)) > 0",
+    "len(f'{[[0] * 9999] * 9999}') > 0",
+    "len([world for x in [0] * 9999]) > 0",
+]
+
+
+@pytest.mark.parametrize("expr", HUGE_VALUES)
+def test_issue114_values_too_large_to_handle_quickly_are_refused(expr: str) -> None:
+    started = time.monotonic()
+    with pytest.raises(StateExpressionError, match="too large"):
+        run(expr, after=ORDERS_WORLD)
+    assert time.monotonic() - started < 0.5
+
+
+def test_issue114_a_value_built_piece_by_piece_stops_at_the_deadline() -> None:
+    # Each piece is small and new, so no single node is too large; the deadline ends it.
+    started = time.monotonic()
+    with pytest.raises(StateExpressionTimeoutError):
+        run("len(str([[0] * 9999 for x in [0] * 9999])) > 0")
+    assert time.monotonic() - started < 1.5
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        f"len([[0] * 1000] * {MAX_VALUE_SIZE // 2000}) > 0",
+        "len([o for o in values(world.orders) if o.id > 10]) == 989",
+        "sorted(keys(world.orders))[0] == '0'",
+        "len(str(world.orders)) > 0",
+    ],
+)
+def test_issue114_values_within_the_size_bound_still_work(expr: str) -> None:
+    assert run(expr, after=ORDERS_WORLD) is True
+
+
+def test_issue114_sum_adds_numbers_only() -> None:
+    # sum(lists, []) concatenates quadratically; numbers are what assertions add up.
+    assert run("sum([1, 2, 3]) == 6") is True
+    with pytest.raises(StateExpressionError):
+        run("sum([[0] * 999] * 999, []) == []")

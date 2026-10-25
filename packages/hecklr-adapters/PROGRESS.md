@@ -126,6 +126,17 @@ Owner: WS6 (chat), WS10 (voice), WS12 (email). Spec: `docs/SPEC.md` → "Agent a
   being starved (`jitter_ms=200` kept). `test_issue27_aiortc_holds_the_last_five_frames_...`,
   `tests/contract/test_pipecat_bot.py`.
 
+## Done (WShrun, Wave 6-close)
+
+- **#115 `headers_env`** (RFC 0023, accepted): `resolve_headers` reads each variable once when an
+  `http`, `websocket` (chat and voice) or `webhook` adapter is built; an unset or empty variable,
+  or a header set in both `headers` and `headers_env`, is an `AdapterConfigError` naming the
+  variable, never the value. Tests: `tests/test_headers_env.py` (`test_issue115_*`, 8, including
+  a real WebSocket handshake on 127.0.0.1). Real: acme `smoke` with `headers_env` exits 78 naming
+  the variable when it is unset and completes 33/33 when set; the value is in no run artifact.
+- **#119** an undecodable or unstorable agent email (lone surrogate, unknown charset,
+  `unicode-escape` body) is an `AgentError`: `test_issue119_*` (4) in `tests/email/`.
+
 ## Next
 
 - `webhook` chat adapter (P1, spec table). `make_chat_target` refuses it with a clear error.

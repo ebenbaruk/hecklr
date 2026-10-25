@@ -16,7 +16,8 @@ request also tells the agent where its trial's world sandbox is: headers, and th
 ``{{world_url}}`` / ``{{world_mcp_url}}`` placeholders (``hecklr_adapters.context``).
 """
 
-from collections.abc import AsyncIterator
+import os
+from collections.abc import AsyncIterator, Mapping
 from typing import Final
 
 import httpx2
@@ -30,6 +31,7 @@ from hecklr_adapters._http import (
 )
 from hecklr_adapters.context import session_headers, template_values
 from hecklr_adapters.errors import AgentError
+from hecklr_adapters.headers import resolve_headers
 from hecklr_adapters.templates import check_path, check_template, extract_text, render
 from hecklr_schemas import (
     AgentChunk,
@@ -53,23 +55,30 @@ class HttpChatTarget:
     """Opens chat sessions with an agent behind a JSON HTTP endpoint."""
 
     def __init__(
-        self, config: HttpAdapterConfig, *, transport: httpx2.AsyncBaseTransport | None = None
+        self,
+        config: HttpAdapterConfig,
+        *,
+        transport: httpx2.AsyncBaseTransport | None = None,
+        environ: Mapping[str, str] = os.environ,
     ) -> None:
-        """Validate the template and path up front, so a bad config fails before any trial.
+        """Check the template and path and read ``headers_env``: a bad config fails early.
 
-        ``transport`` replaces the network, for tests.
+        ``transport`` replaces the network and ``environ`` the process environment, for tests.
         """
         self._template = config.request_template or DEFAULT_REQUEST_TEMPLATE
         check_template(self._template)
         if config.response_path is not None:
             check_path(config.response_path)
+        self._headers = resolve_headers(
+            config.headers, config.headers_env, environ=environ, adapter="http"
+        )
         self._config = config
         self._transport = transport
 
     async def open(self, ctx: SessionContext) -> "HttpChatSession":
         """Start a conversation; nothing is sent until the first message."""
         client = new_client(self._config.timeout_s, self._transport)
-        return HttpChatSession(self._config, self._template, ctx, client)
+        return HttpChatSession(self._config, self._template, ctx, client, headers=self._headers)
 
 
 class HttpChatSession:
@@ -81,8 +90,12 @@ class HttpChatSession:
         template: JsonValue,
         ctx: SessionContext,
         client: httpx2.AsyncClient,
+        *,
+        headers: Mapping[str, str],
     ) -> None:
+        """``headers`` are the configured ones, with ``headers_env`` already resolved."""
         self._config = config
+        self._headers = headers
         self._template = template
         self._ctx = ctx
         self._client = client
@@ -94,7 +107,7 @@ class HttpChatSession:
         """POST ``text`` and stream the reply."""
         values = template_values(self._ctx, message=text, session_id=self._session_id)
         body = render(self._template, values)
-        headers = {**self._config.headers, **session_headers(self._ctx)}
+        headers = {**self._headers, **session_headers(self._ctx)}
         with agent_http_errors(self._url, self._config.timeout_s):
             if self._config.stream == "sse":
                 async for chunk in self._send_sse(body, headers):

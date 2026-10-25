@@ -170,6 +170,26 @@ def test_doctor_reports_which_models_this_machine_can_use(
     assert "sk-x" not in check.detail
 
 
+def test_issue83_models_available_probes_ollama_where_ollama_base_url_points(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11500/v1")
+    probed: list[str] = []
+
+    def served(base_url: str) -> list[str] | None:
+        probed.append(base_url)
+        return ["qwen3:8b"] if base_url == "http://gpu-box:11500" else None
+
+    monkeypatch.setattr("hecklr.commands.doctor.ollama_models", served)
+
+    check = _checks(config_path)["models available"]
+
+    assert probed == ["http://gpu-box:11500"]
+    assert check.detail.startswith("ollama/"), check.detail
+
+
 def test_asr_key_is_checked_by_name_for_voice_projects(
     config_path: Path, monkeypatch: pytest.MonkeyPatch, edit: Edit
 ) -> None:
@@ -191,3 +211,28 @@ def test_asr_key_is_checked_by_name_for_voice_projects(
     assert "ASSEMBLYAI_API_KEY" in missing.detail
     assert present.status == "ok"
     assert "aai-secret-value" not in click.unstyle(result.output)
+
+
+def test_issue115_doctor_names_an_unset_header_variable_never_a_value(
+    config_path: Path, monkeypatch: pytest.MonkeyPatch, edit: Edit
+) -> None:
+    edit(
+        config_path,
+        '{"type": "python", "entrypoint": "hecklr_agent:reply"}',
+        '{"type": "http", "url": "http://localhost:8000/chat",'
+        ' "headers_env": {"Authorization": "AGENT_AUTH_HEADER"}}',
+    )
+    probe = AgentProbe("http", "http://localhost:8000/chat", True, "answered")
+    monkeypatch.setattr("hecklr.commands.doctor.probe_agent", lambda url: probe)
+    monkeypatch.delenv("AGENT_AUTH_HEADER", raising=False)
+
+    result = runner.invoke(app, ["doctor", "--config", str(config_path)])
+
+    assert result.exit_code == exit_codes.CHECK_FAILED
+    check = _checks(config_path)["agent (chat) headers"]
+    assert check.status == "fail"
+    assert "AGENT_AUTH_HEADER" in check.detail
+    monkeypatch.setenv("AGENT_AUTH_HEADER", "Bearer s3cr3t")
+    check = _checks(config_path)["agent (chat) headers"]
+    assert check.status == "ok"
+    assert "s3cr3t" not in check.detail

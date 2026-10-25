@@ -484,3 +484,33 @@ async def test_ws2_guard_gives_up_with_a_harness_error_after_bounded_retries(
     with pytest.raises(SimulatorError, match=r"C-1043.*C-1042"):
         await simulator.next_turn([])
     assert len(llm.calls) == 3
+
+
+@pytest.mark.anyio
+async def test_issue101_a_turn_the_guard_gave_up_on_counts_as_a_contradiction(
+    make_brief: BriefFactory,
+) -> None:
+    # The worst contradictions are the ones no regeneration could fix: they must be counted, or the
+    # trial that the guard abandoned reports a contradiction-free simulation.
+    llm = FakeLLM(responder=lambda _: decision_reply("It's C-1043."))
+    simulator = make_simulator("fake/sim", max_regenerations=2)(make_brief(), llm)
+    assert isinstance(simulator, GuidedSimulator)
+
+    with pytest.raises(SimulatorError):
+        await simulator.next_turn([])
+
+    assert len(simulator.issues) == 3
+    assert simulator.contradictions == 1
+
+
+@pytest.mark.anyio
+async def test_issue101_malformed_output_alone_is_not_a_contradiction(
+    make_brief: BriefFactory,
+) -> None:
+    llm = FakeLLM(responder=lambda _: "not json")
+    simulator = make_simulator("fake/sim", max_regenerations=1)(make_brief(), llm)
+
+    with pytest.raises(SimulatorError, match="not a valid JSON"):
+        await simulator.next_turn([])
+
+    assert simulator.contradictions == 0

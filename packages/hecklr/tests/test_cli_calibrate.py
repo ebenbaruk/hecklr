@@ -15,7 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 import hecklr.commands._common
-from hecklr import exit_codes, judge_calibration, voice_calibration
+from hecklr import compose, exit_codes, judge_calibration, voice_calibration
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
 from hecklr.testing import scripted_models
@@ -23,6 +23,7 @@ from hecklr.voice_calibration import TimingCheck
 from hecklr_core import ResultStore
 from hecklr_llm import FakeLLM
 from hecklr_schemas import HumanLabel, LabelId, Run, new_id
+from hecklr_stats import validation
 
 Edit = Callable[[Path, str, str], None]
 StoreRun = Callable[..., Run]
@@ -87,6 +88,19 @@ def test_sc5_aa_on_two_stored_runs_of_the_same_agent(config_path: Path, store: S
     assert "target <= 5% ok" in output
 
 
+def test_issue102_aa_flags_scenarios_flaky_across_the_two_runs(
+    config_path: Path, store: StoreRun
+) -> None:
+    rates = {s: 0.5 if s == "s00" else 1.0 for s in SCENARIOS}
+    a = store(rates, order=0, seed=1, trials=10)
+    b = store(rates, order=1, seed=2, trials=10)
+
+    code, output = invoke(config_path, "--aa", "--runs", a.id, "--runs", b.id, "--replicates", "0")
+
+    assert code == exit_codes.OK, output
+    assert re.search(r"Flaky across identical runs \(pass rate 20-80%\): s00 \d+\.\d% \[", output)
+
+
 def test_aa_fails_when_the_runs_differ(config_path: Path, store: StoreRun) -> None:
     a = store(dict.fromkeys(SCENARIOS, 1.0), order=0)
     b = store({s: 0.0 if i < 15 else 1.0 for i, s in enumerate(SCENARIOS)}, order=1)
@@ -132,7 +146,9 @@ def test_aa_on_runs_that_cannot_be_compared_is_a_harness_error(
 # --- judges -------------------------------------------------------------------------------------
 
 
-def _labels(path: Path, runs_dir: Path, run: Run, *, agree: float) -> Path:
+def _labels(
+    path: Path, runs_dir: Path, run: Run, *, agree: float, labeler: str = "human:qa"
+) -> Path:
     """Label each judge grade of ``run``; a labeler agrees with the judge with ``agree``."""
 
     async def grades() -> list[tuple[str, str, bool, str]]:
@@ -149,7 +165,7 @@ def _labels(path: Path, runs_dir: Path, run: Run, *, agree: float) -> Path:
             grader="judge:resolved",
             grader_version=version,
             passed=passed if rng.random() < agree else not passed,
-            labeler="qa",
+            labeler=labeler,
             created_at=datetime(2026, 10, 21, tzinfo=UTC),
         ).model_dump_json()
         for trial_id, grade_id, passed, version in anyio.run(grades)
@@ -234,7 +250,7 @@ def test_sc7_judges_keep_only_the_chosen_labelers(
     config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
 ) -> None:
     run = store(SCENARIOS, grader="judge:resolved")
-    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0)
+    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0, labeler="qa")
 
     code, output = invoke(config_path, "--judges", "--labels", str(labels), "--labeler", "human:")
 
@@ -350,6 +366,71 @@ def test_sc7_calibrate_judges_set_judges_the_transcripts_and_trusts_agreement(
     assert "note:" not in output  # all labels are human
 
 
+OLD_JUDGE = "fake/old-judge"
+
+
+def _two_models(*, current_agrees: bool) -> FakeLLM:
+    """``OLD_JUDGE`` agrees with the labels; the project's judge too, or passes everything."""
+    return FakeLLM(
+        responder=lambda request: {
+            "verdict": "pass"
+            if _agrees(request.messages[0].content)
+            or (request.model != OLD_JUDGE and not current_agrees)
+            else "fail",
+            "rationale": "Scripted.",
+            "evidence": [],
+        }
+    )
+
+
+def test_issue102_changing_the_judge_model_warns_when_agreement_drops(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+    judge = _two_models(current_agrees=False)
+
+    code, output = _invoke_set(config_path, judge, "--set", str(root), "--drift-from", OLD_JUDGE)
+
+    assert code == exit_codes.CHECK_FAILED, output
+    assert {call.model for call in judge.calls} == {OLD_JUDGE, "fake/judge"}
+    assert f"Judge model drift: {OLD_JUDGE} → fake/judge on the same labels (95% CI)" in output
+    assert re.search(
+        r"judge:tone \S+ 1\.00 \[1\.00, 1\.00\] 0\.00 \[[^\]]+\] \N{MINUS SIGN}1\.00 \[", output
+    )
+    assert "DROPPED" in output
+    assert (
+        "warning: judge agreement dropped with fake/judge on judge:resolved, judge:tone" in output
+    )
+
+
+def test_issue102_no_drift_warning_when_the_new_judge_model_agrees_as_well(
+    config_path: Path, tmp_path: Path
+) -> None:
+    root = _labeled_set(tmp_path / "set")
+
+    code, output = _invoke_set(
+        config_path,
+        _two_models(current_agrees=True),
+        "--set",
+        str(root),
+        "--drift-from",
+        OLD_JUDGE,
+    )
+
+    assert code == exit_codes.OK, output
+    assert "Judge model drift" in output
+    assert "+0.00 [" in output
+    assert "DROPPED" not in output
+    assert "warning:" not in output
+
+
+def test_issue102_drift_from_needs_a_labeled_set(config_path: Path) -> None:
+    code, output = invoke(config_path, "--judges", "--drift-from", OLD_JUDGE)
+
+    assert code == exit_codes.CONFIG_ERROR
+    assert "--drift-from re-judges a labeled set: add --set DIR" in output
+
+
 def test_sc7_calibrate_judges_set_flags_a_disagreeing_judge(
     config_path: Path, tmp_path: Path
 ) -> None:
@@ -360,6 +441,35 @@ def test_sc7_calibrate_judges_set_flags_a_disagreeing_judge(
     assert code == exit_codes.CHECK_FAILED, output
     assert "judge:tone" in output
     assert "NO (kappa < 0.70)" in output
+
+
+@pytest.mark.parametrize("labeler", ["claude-draft", "gpt-labeler"])
+def test_issue97_judges_table_names_non_human_labelers(
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path, labeler: str
+) -> None:
+    run = store(SCENARIOS, grader="judge:resolved")
+    labels = _labels(tmp_path / "labels.jsonl", runs_dir, run, agree=1.0, labeler=labeler)
+
+    code, output = invoke(config_path, "--judges", "--labels", str(labels))
+
+    assert code == exit_codes.OK, output
+    assert f"Judge agreement with {labeler} labels (not human) (95% CI)" in output
+    assert "human labels" not in output
+
+
+def test_issue97_mixed_labelers_say_not_all_labels_are_human(
+    config_path: Path, store: StoreRun, runs_dir: Path, tmp_path: Path
+) -> None:
+    run = store(SCENARIOS, grader="judge:resolved")
+    humans = _labels(tmp_path / "a.jsonl", runs_dir, run, agree=1.0)
+    drafts = _labels(tmp_path / "b.jsonl", runs_dir, run, agree=1.0, labeler="claude-draft")
+    both = tmp_path / "labels.jsonl"
+    both.write_text(humans.read_text() + drafts.read_text(), encoding="utf-8")
+
+    code, output = invoke(config_path, "--judges", "--labels", str(both))
+
+    assert code == exit_codes.OK, output
+    assert "Judge agreement with human and claude-draft labels (not all human)" in output
 
 
 def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
@@ -373,6 +483,7 @@ def test_sc7_calibrate_judges_set_says_ai_drafts_are_not_human_labels(
     assert (
         f"{SET_PAIRS} of {SET_PAIRS} labels are not from 'human:' labelers (claude-draft)" in output
     )
+    assert "Judge agreement with claude-draft labels (not human)" in output
 
     judge = _judge(_agrees)
     code, output = _invoke_set(config_path, judge, "--set", str(root), "--labeler", "human:")
@@ -621,3 +732,9 @@ def test_issue100_a_rubber_stamp_judge_on_all_pass_labels_fails_sc7(
     assert code == exit_codes.CHECK_FAILED, output
     assert "1.00 [1.00, 1.00]" in output  # agreement never tested on a fail
     assert "NO (needs 10+ human labels of each class, has 10 pass and 0 fail)" in output
+
+
+def test_issue103_the_aa_simulation_spends_the_extra_share_runs_spend() -> None:
+    # calibrate --aa quotes a simulated adaptive false-alarm rate; it describes `hecklr run
+    # --adaptive` only while both spend the same share of extra trials.
+    assert validation.ADAPTIVE_EXTRA_SHARE == compose.ADAPTIVE_EXTRA_SHARE

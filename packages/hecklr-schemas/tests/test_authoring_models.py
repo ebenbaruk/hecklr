@@ -174,6 +174,32 @@ def test_adapter_type_must_match_its_channel() -> None:
         )
 
 
+@pytest.mark.parametrize("kind", ["http", "websocket", "webhook", "webrtc"])
+def test_issue115_header_adapters_name_env_vars_for_header_values(kind: str) -> None:
+    url = "ws://agent.test/chat" if kind == "websocket" else "http://agent.test/chat"
+    adapter = {"type": kind, "url": url, "headers_env": {"Authorization": "AGENT_AUTH_HEADER"}}
+    channel = "voice" if kind == "webrtc" else "chat"
+    agent = {"name": "a", "adapters": {channel: adapter}}
+    base = {
+        "version": 1,
+        "world": "w.yaml",
+        "suites": {"ci": {}},
+        "models": {"simulator": "fake/sim", "judge": "fake/judge"},
+    }
+    config = HecklrConfig.model_validate({**base, "agent": agent})
+    parsed = getattr(config.agent.adapters, channel)
+    assert parsed.headers_env == {"Authorization": "AGENT_AUTH_HEADER"}
+
+    adapter["headers_env"] = {"Authorization": "Bearer s3cr3t"}  # a value, not a variable name
+    with pytest.raises(ValidationError, match="headers_env"):
+        HecklrConfig.model_validate({**base, "agent": agent})
+
+
+def test_issue115_headers_env_is_optional() -> None:
+    config = HttpAdapterConfig.model_validate({"type": "http", "url": "http://agent.test"})
+    assert config.headers_env == {}
+
+
 def test_agent_needs_at_least_one_adapter() -> None:
     with pytest.raises(ValidationError, match="at least one channel"):
         HecklrConfig.model_validate(
