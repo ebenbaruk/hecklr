@@ -45,8 +45,13 @@ plain noise in model outputs that makes a 3-point drop meaningless without error
 
 ## Status
 
-Hecklr is pre-release and private while it is being built from its
-[specification](https://github.com/ebenbaruk/hecklr/blob/main/docs/SPEC.md). Chat, voice and email,
-the graders, the statistics, the CI gate, the miner, the red-team pack and the local UI work today
-and are tested against a reference agent with twelve seeded faults. See the [roadmap](roadmap.md)
-for what is next.
+**v1.0 is complete.** All ten success criteria of the
+[specification](https://github.com/ebenbaruk/hecklr/blob/main/docs/SPEC.md) are met, three of them
+(SC3, SC7, SC10) as the owner scoped them for v1.0
+([v1.0 report](https://github.com/ebenbaruk/hecklr/blob/main/docs/milestones/V1.0.md)). Chat,
+voice and email, the graders, the statistics, the CI gate, the miner, the fixer, the red-team pack,
+the benchmark and the local UI are tested against a reference agent with twelve seeded faults,
+each one caught.
+
+The repository is private and unreleased: install from a checkout until the first PyPI release
+(see the [quickstart](quickstart.md)). The [roadmap](roadmap.md) lists what happens at launch.

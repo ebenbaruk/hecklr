@@ -1,10 +1,13 @@
 # Roadmap
 
-Hecklr is built in waves from its
-[specification](https://github.com/ebenbaruk/hecklr/blob/main/docs/SPEC.md); each wave closes on a
-milestone report with evidence for every criterion.
+Hecklr was built in waves from its
+[specification](https://github.com/ebenbaruk/hecklr/blob/main/docs/SPEC.md); each wave closed on a
+milestone report with evidence for every criterion. **v1.0 is done**: all ten success criteria
+are met, three of them (SC3, SC7, SC10) as the owner scoped them for v1.0
+([v1.0 report](https://github.com/ebenbaruk/hecklr/blob/main/docs/milestones/V1.0.md),
+[ADR 0024](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0024-hdocs-v1-scope-decisions.md)).
 
-## Done
+## Done in v1.0
 
 - **Foundation:** frozen schemas, the provider layer with a deterministic fake model and a response
   cache, CI.
@@ -18,29 +21,29 @@ milestone report with evidence for every criterion.
 - **Fixer** (`hecklr fix`): candidate prompt patches validated against the suite (targeted and
   guard passes), with `--pr`.
 - **Benchmark** (`hecklr bench`): a pinned suite, eight stacks, `reproduce`, and a static
-  leaderboard.
-- **Hardening:** robustness of run, gate and report; simulator guard fixes (F4 caught on the full
-  `matrix-live` suite).
+  leaderboard. The measured rows are preliminary.
+- **Hardening:** two red-team passes; every P0/P1 finding fixed, P2/P3 findings tracked in the
+  [v1.0 report](https://github.com/ebenbaruk/hecklr/blob/main/docs/milestones/V1.0.md)'s issue closure.
 
-## In progress (toward v1.0)
+## At launch
 
-- **Benchmark numbers:** the measured rows are preliminary (a shared, loaded laptop; local qwen3
-  customers and judges). Re-measure on an idle machine before
-  publishing the leaderboard.
-- **Docs and launch:** this site, the demo, the launch posts.
-- `agent.command` in `hecklr.yaml` instead of `hecklr fix --agent-cmd` (RFC 0015a, v1.1).
+These need a public repository, which is the owner's decision
+([launch checklist](https://github.com/ebenbaruk/hecklr/blob/main/docs/milestones/LAUNCH.md)):
 
-## Open items on the way to v1.0
+- The first PyPI release, so that `pip install hecklr` works, and a Docker image.
+- This documentation site, hosted.
+- The benchmark re-measured on an idle machine, then the leaderboard published.
+- At least 10 `good first issue` issues for new contributors.
 
-Tracked as issues; the milestone reports list them with evidence.
+## Optional follow-ups
 
-- SC7: people review the judge calibration labels (today AI drafts), then the live κ run.
-- SC10: the 90-second demo video, the docs site live, the benchmark published.
-- SC3 (50 simultaneous calls on 8 cores) as a CI benchmark, not only a laptop measurement.
-- SC4 asserted over WebRTC transports on a dedicated idle runner.
-- The voice fault matrix (F7-F10) and F10 as a nightly job on `main`.
+- A human review of the judge calibration labels (today AI-drafted), then the live κ run with
+  `--labeler human:` ([judge calibration](guides/judge-calibration.md)).
+- SC3 (50 simultaneous calls) measured on an 8-core runner as a scheduled job.
+- SC4 asserted over WebRTC (LiveKit, SmallWebRTC) on a dedicated idle runner (#59).
+- The voice fault matrix (F7-F10) as a nightly job on `main`.
 - The adaptive design's trial savings measured and published.
-- First PyPI release and a Docker image.
+- `agent.command` in `hecklr.yaml` instead of `hecklr fix --agent-cmd` (RFC 0015a).
 
 ## Later
 

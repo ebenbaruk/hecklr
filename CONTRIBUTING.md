@@ -4,10 +4,10 @@ Thanks for helping. Hecklr tests other people's agents, so its own bar is high: 
 tested, every number ships with a confidence interval, and `main` is always green. This guide gets
 you from a clone to a merged pull request.
 
-New here? Issues labeled
-[`good first issue`](https://github.com/ebenbaruk/hecklr/labels/good%20first%20issue) are scoped
-to one package, with the files to touch and how to test them. Comment on one before you start so
-nobody duplicates your work. By participating you agree to the [code of conduct](CODE_OF_CONDUCT.md).
+New here? Pick an open issue, or open one to propose your change, and comment before you start so
+nobody duplicates your work. A set of scoped starter issues is filed when the repository goes
+public ([launch checklist](docs/milestones/LAUNCH.md)). By participating you agree to the
+[code of conduct](CODE_OF_CONDUCT.md).
 
 ## Development setup
 

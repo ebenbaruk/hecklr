@@ -1,7 +1,8 @@
 # Launch: checklist and drafts
 
-Status, 2026-10-23 (WS18). The repository is **private** and nothing below has been published,
-posted or deployed. Launch is a decision for the owner: this file prepares it.
+Status, 2026-10-24 (closing wave, ADR 0024). v1.0 is done ([V1.0](V1.0.md)); the launch is a
+separate step. The repository is **private** and nothing below has been published, posted or
+deployed. Making it public is the owner's decision: this file is what to do on that day.
 
 Spec: "Launch checklist (M2)", "The 90-second demo", SC1 and SC10. Evidence for the numbers in the
 drafts: [`demo/RESULTS.md`](../../demo/RESULTS.md), [M2](M2.md), [M1](M1.md).
@@ -13,20 +14,27 @@ drafts: [`demo/RESULTS.md`](../../demo/RESULTS.md), [M2](M2.md), [M1](M1.md).
 | 1 | README with the demo GIF in the first screen | **done** | `README.md`; `docs/assets/demo.gif` recorded from a real run (`demo/record_gif.sh`) |
 | 2 | 3-command quickstart | **done** | README and `docs/quickstart.md` show the same block; SC1 runs it literally in CI (`tests/docs/test_sc1_quickstart.py`, about 10 s locally, limit 300 s) |
 | 3 | Comparison table vs other eval tools | **done** | README summary and `docs/comparison.md` (promptfoo, DeepEval, Coval, Cekura), every claim sourced from their docs on 2026-10-23 |
-| 4 | Docs site with quickstart, concepts, adapters, statistics explainer | **built, not live** | `mkdocs build --strict` passes locally and in CI (`.github/workflows/docs.yml`). Going live needs: the public repo, a host (GitHub Pages) and the `hecklr.dev` domain (spec open question, unchecked) |
+| 4 | Docs site with quickstart, concepts, adapters, statistics explainer | **built; goes live at launch** | `mkdocs build --strict` passes in every gate (`.github/workflows/docs.yml`, `scripts/ci-local.sh`). Hosting needs the public repo, a host (GitHub Pages) and the `hecklr.dev` domain (spec open question, unchecked). ADR 0024: publication waits for the owner's launch |
 | 5 | Blog post "Your voice agent is slower than you think" | **drafted** | Below. Needs the owner's voice and a place to publish |
-| 6 | Show HN, X thread, LinkedIn post with the video | **drafted** | Below. The video itself is not recorded (needs a human): shot list and script in `demo/VIDEO.md` |
+| 6 | Show HN, X thread, LinkedIn post | **drafted** | Below. They use the demo GIF: the owner dropped the video (ADR 0024) |
 | 7 | Posts in the Pipecat and LiveKit communities, with a working example each | **examples ready, posts not drafted** | Pipecat: `pipecat` (SmallWebRTC) and `websocket` `protocol: pipecat` adapters, contract-tested against a real Pipecat pipeline. LiveKit: `livekit` adapter, contract-tested against `livekit-server` in Docker. A standalone 20-line example agent per community is still to write |
-| 8 | ≥ 10 issues labeled `good first issue` | **done** | 11 issues (#34, #35, #37, #38, #41, #43, #54, #56, #57, #63, #67), each with a "where / what / test first / check" comment |
+| 8 | ≥ 10 issues labeled `good first issue` | **launch-day task** | The 11 filed so far (#34, #35, #37, #38, #41, #43, #54, #56, #57, #63, #67) are all fixed and closed, so the label has 0 open issues (#111). Nobody outside can contribute to a private repository, so new ones are filed on launch day (below). Until then README and CONTRIBUTING do not send newcomers to the label |
 | 9 | CONTRIBUTING guide | **done** | `CONTRIBUTING.md`, plus `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md`, issue forms |
 | 10 | Resume line ready | **drafted** | Below |
-| 11 | 90-second demo video (SC10) | **assets ready, video needs a human** | `demo/VIDEO.md`; real runs in `demo/RESULTS.md`; screenshots in `docs/assets/` |
-| 12 | Benchmark with ≥ 6 stacks (SC10) | **built, rows preliminary** | `hecklr bench` (PR #80): 8 stacks defined and measured, `reproduce` passes on `loopback-reference`. The rows were measured on a shared laptop (load average up to about 250), with local qwen3 4B customers and judges (`acme-chat-luna` added once OpenAI credit was restored): labelled not for publication. Re-measure on an idle machine before launch |
-| 13 | `hecklr fix` beat of the demo | **command built, beat not recorded** | `hecklr fix` merged (PR #79). Free end-to-end proof: `packages/hecklr/tests/test_cli_fix.py` fixes F1 on the reference agent and rejects a planted patch that breaks refunds. The demo beat needs a real patch-writing model (OpenAI credit exhausted); the demo stops at the report until then |
+| 11 | 90-second demo video (SC10) | **dropped by the owner** (ADR 0024) | Not a v1.0 or launch blocker. The GIF in the README shows the same gate from a real run; `demo/chat_gate.sh` reproduces it and `demo/RESULTS.md` keeps its numbers |
+| 12 | Benchmark with ≥ 6 stacks (SC10) | **built, rows preliminary** | `hecklr bench` (PR #80): 8 stacks defined and measured, `reproduce` passes on `loopback-reference`. The rows were measured on a shared laptop (load average up to about 250), with local qwen3 4B customers and judges (`acme-chat-luna` added once OpenAI credit was restored): labelled not for publication. ADR 0024 keeps them preliminary for v1.0; re-measure on an idle machine before launch |
+| 13 | `hecklr fix` beat of the demo | **not needed** (no video) | `hecklr fix` merged (PR #79). Free end-to-end proof: `packages/hecklr/tests/test_cli_fix.py` fixes F1 on the reference agent and rejects a planted patch that breaks refunds. Proven live once (session `01M5K3SFHE8PW4B9MN1TWKACZ5`, [V1.0](V1.0.md)) |
 
-Before going public, also:
+On launch day, in this order:
 
-- [ ] Close the M2 gate's open items (SC3 in CI, SC4 over WebRTC, F10 nightly; see [M2](M2.md)).
+- [ ] Make the repository public (the owner's decision), then run every GitHub Actions workflow on
+      `main` and fix what fails (ADR 0022a's consequences). The local gate stays the fallback.
+- [ ] File at least 10 `good first issue` issues, each scoped to one package with a "where / what
+      / test first / check" comment like #34-#67 had. Candidates: the P3 follow-ups and
+      "Later" items in the [roadmap](../roadmap.md). Then add the label link back to the README's
+      Contributing section and CONTRIBUTING.md (#111).
+- [ ] Host the docs site and re-measure the benchmark on an idle machine before publishing the
+      leaderboard (ADR 0024).
 - [ ] Reserve the GitHub org `hecklr`, the domain `hecklr.dev`, and the PyPI name (spec, "Name"); publish
       the first release so `pip install hecklr` works (the quickstart and the Action assume it).
 - [ ] Enable GitHub private vulnerability reporting (SECURITY.md points to it) and add a
@@ -111,7 +119,7 @@ eight out of eight scenarios that test it fail.
 
 Hecklr is open source (Apache-2.0). It runs locally, speaks WebSocket PCM, Twilio Media Streams,
 Pipecat and LiveKit, tests chat and email too, and gates pull requests only on statistically
-significant regressions. *Link, quickstart and the 90-second video here.*
+significant regressions. *Link and quickstart here.*
 
 ---
 
@@ -165,8 +173,8 @@ not a vibe.
 5/ Seeded faults, each caught: +700 ms before speaking (p50 710 → 1,417 ms), barge-in off (91 ms
 → 9 s), a 150 ms end-of-speech threshold (0 → 15.6 false interruptions per 100 turns).
 
-6/ Apache-2.0, local-first, Python. `pip install hecklr && hecklr init && hecklr run`. Video and
-docs: *link*.
+6/ Apache-2.0, local-first, Python. `pip install hecklr && hecklr init && hecklr run`. Docs:
+*link*.
 
 ---
 
@@ -187,7 +195,7 @@ requests only when a regression is statistically significant.
 A one-line prompt change in the demo: pass rate −27.3 points [−44.2, −11.2], p = 0.004, nine
 scenarios flipped, and one click to the judge's explanation of each failure.
 
-Open source under Apache-2.0. The 90-second video is below; feedback from people running voice or
-chat agents in production is very welcome.
+Open source under Apache-2.0. Feedback from people running voice or chat agents in production is
+very welcome.
 
-*Video, repository link.*
+*Demo GIF, repository link.*
