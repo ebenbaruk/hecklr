@@ -86,8 +86,9 @@ calls):
 | 600 / 300 ms | +3 ms [+3, +4] | 7 ms [6, 8] | +3 ms [+3, +4] | 8 ms [7, 10] | 13 ms |
 | 900 / 200 ms | +4 ms [+3, +4] | 8 ms [6, 10] | +3 ms [+3, +4] | 8 ms [6, 9] | 13 ms |
 
-The timing tests run on every change in CI, serially on an idle runner (timing measured under a
-parallel test run measures the machine, not Hecklr). A ten-minute call drifts by less than 5 ms
+The local gate (`scripts/ci-local.sh`, ADR 0022a) runs the timing tests in their own serial step,
+and reruns a failed one alone once the machine is quieter (ADR `0024-hvoice-timing-under-load.md`):
+timing measured under a parallel test run measures the machine, not Hecklr. A ten-minute call drifts by less than 5 ms
 between the send and receive clocks. When the harness itself is starved of CPU, its caller audio
 leaves late and the trial carries a warning that its voice timings may be skewed; measure on a
 machine with idle cores.

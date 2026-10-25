@@ -23,6 +23,14 @@ PORT=${HECKLR_VOICE_PORT:-8765}
 MODELS=${HECKLR_VOICE_MODELS:-examples/acme-voice/.hecklr/models}
 OUT=${HECKLR_MATRIX_OUT:-examples/acme-voice/.hecklr/matrix}
 WHICH=${1:-all}
+# Checked before anything is written, so a bad argument leaves no generated config behind.
+case "$WHICH" in
+  smoke | timing | snr | all) ;;
+  *)
+    echo "usage: $0 [timing|snr|all|smoke]" >&2
+    exit 2
+    ;;
+esac
 mkdir -p "$OUT"
 agent_pid=""
 generated=""
@@ -137,10 +145,6 @@ case "$WHICH" in
   all)
     matrix voice-timing F7 F8 F9
     matrix voice-snr-10db F10
-    ;;
-  *)
-    echo "usage: $0 [timing|snr|all|smoke]" >&2
-    exit 2
     ;;
 esac
 echo "reports and logs: $OUT"

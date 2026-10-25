@@ -43,6 +43,7 @@ timing_step() {
   run_step "$name" "$@" && return 0
   local ids=()
   # pytest's -ra summary names each failed test; colour codes (FORCE_COLOR) are stripped first.
+  # Word splitting is safe: no test ID in the timing steps has a space in its parameters.
   read -r -a ids <<< "$(sed -E $'s/\033\\[[0-9;]*m//g' "$out/$name.log" \
     | sed -nE 's/^(FAILED|ERROR) ([^ ]+).*/\2/p' | sort -u | tr '\n' ' ')"
   if [ "${#ids[@]}" = 0 ]; then
