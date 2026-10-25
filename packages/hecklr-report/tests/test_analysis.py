@@ -323,6 +323,25 @@ def test_contradiction_rate_has_a_wilson_interval(
     assert analysis.counts.contradiction_rate == wilson_estimate(1, 2)
 
 
+def test_issue101_contradiction_rate_counts_conversations_the_guard_gave_up_on(
+    kit: type[Kit], scenarios: dict[str, Scenario]
+) -> None:
+    # 10 trials: 5 the consistency guard gave up on (harness errors whose simulator counted a
+    # contradiction), 1 harness error for another reason, 4 clean conversations.
+    builder = kit.RunBuilder()
+    for i in range(5):
+        builder.trial(f"s{i:02d}", status="harness_error", contradictions=1)
+    builder.trial("s05", status="harness_error")
+    for i in range(6, 10):
+        builder.trial(f"s{i:02d}")
+
+    analysis = analyze(builder.build(), None, kit.stats, scenarios)
+
+    assert analysis.counts.errors_after_contradiction == 5
+    assert analysis.counts.contradiction_rate == wilson_estimate(5, 9)
+    assert analysis.counts.harness_error == 6
+
+
 def test_judge_calibrations_flag_untrusted_rubrics(
     kit: type[Kit], scenarios: dict[str, Scenario]
 ) -> None:

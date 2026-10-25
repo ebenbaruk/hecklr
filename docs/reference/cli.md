@@ -188,6 +188,7 @@ $ hecklr calibrate [OPTIONS]
 * `--run <str>`: --judges: runs whose judge grades were labeled .
 * `--set <directory>`: --judges: a labeled transcript set to judge now (e.g. calibration/judges).
 * `--labeler <str>`: --judges: only labels whose labeler starts with this, e.g. human: (repeatable).
+* `--drift-from <str>`: --judges --set: also judge the set with this earlier judge model and warn if agreement dropped with the current one.
 * `--help`: Show this message and exit.
 
 ## `hecklr replay`

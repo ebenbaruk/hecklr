@@ -43,12 +43,19 @@ from hecklr.commands._common import (
 from hecklr.commands.run import run_with_progress
 from hecklr.compose import RunRequest, check_model_providers
 from hecklr.judge_calibration import CalibrationSet, CalibrationSetError
-from hecklr.results import LATEST, analyze_results, load_results, open_store, resolve_run
+from hecklr.results import (
+    LATEST,
+    definitions,
+    load_results,
+    open_store,
+    resolve_run,
+)
 from hecklr.testing import scripted_models
 from hecklr_core import Project, RunResults, open_llm
-from hecklr_report import fmt, render_terminal
+from hecklr_report import analyze, fmt, render_terminal
 from hecklr_schemas import Estimate, Grade, HumanLabel, LLMProvider, Verdict
-from hecklr_stats import JudgeCalibration, calibrate_judge, verdict_rate
+from hecklr_schemas.common import ModelName
+from hecklr_stats import JudgeCalibration, calibrate_judge, judge_drift, verdict_rate
 
 SIMULATED_COMPARISONS: Final = 200
 """A/A comparisons simulated at the suite's shape, as SC5 measures (200)."""
@@ -108,12 +115,22 @@ def calibrate(
             help="--judges: only labels whose labeler starts with this, e.g. human: (repeatable).",
         ),
     ] = None,
+    drift_from: Annotated[
+        str | None,
+        typer.Option(
+            "--drift-from",
+            help="--judges --set: also judge the set with this earlier judge model and warn if "
+            "agreement dropped with the current one.",
+        ),
+    ] = None,
 ) -> None:
     """Self-tests: A/A false-positive rate, judge agreement, voice loopback."""
     if not (aa or judges or voice_loopback):
         raise fail(
             "choose a self-test: --aa, --judges or --voice-loopback", exit_codes.CONFIG_ERROR
         )
+    if drift_from is not None and calibration_set is None:
+        raise fail("--drift-from re-judges a labeled set: add --set DIR", exit_codes.CONFIG_ERROR)
     if not judges and (calibration_set is not None or labelers):
         raise fail("--set and --labeler only apply to --judges", exit_codes.CONFIG_ERROR)
     if calibration_set is not None and judged_runs:
@@ -129,7 +146,9 @@ def calibrate(
         passed &= _report_aa(project, *pair, replicates=replicates)
     if judges and calibration_set is not None:
         providers = overrides(ctx).llm_providers or scripted_models()
-        passed &= _report_judge_set(project, calibration_set, labels, labelers or [], providers)
+        passed &= _report_judge_set(
+            project, calibration_set, labels, labelers or [], providers, drift_from
+        )
     elif judges:
         if labels is None:
             raise fail(
@@ -176,7 +195,17 @@ def _stored_pair(project: Project, refs: Sequence[str]) -> tuple[RunResults, Run
 
 
 def _report_aa(project: Project, first: RunResults, second: RunResults, *, replicates: int) -> bool:
-    analysis = analyze_results(project, second, first).analysis
+    defs = definitions(project, [second.run.suite, first.run.suite])
+    # A/A runs are the same agent by construction (or by the --runs contract), so they are the
+    # "identical runs" flaky scenarios are measured on, even without a recorded commit.
+    analysis = analyze(
+        second,
+        first,
+        project.config.stats,
+        defs.scenarios,
+        personas=defs.personas,
+        identical_runs=True,
+    )
     render_terminal(analysis, stdout)
     if analysis.problems:
         raise fail(
@@ -292,7 +321,7 @@ def _report_judges(
             f"no label in {labels_path} matches a judge grade of the runs {', '.join(refs)}",
             exit_codes.CONFIG_ERROR,
         )
-    stdout.print(_judge_table(calibrations))
+    stdout.print(_judge_table(calibrations, labels))
     _warn_if_not_human(labels, calibrations)
     return all(c.trusted for c in calibrations)
 
@@ -303,13 +332,15 @@ def _report_judge_set(
     labels_path: Path | None,
     labelers: Sequence[str],
     providers: Mapping[str, LLMProvider],
+    drift_from: str | None = None,
 ) -> bool:
     """Judge the labeled pairs of the set at ``root``, then compare the verdicts with the labels.
 
     Only pairs with a label of the chosen labelers and the rubric's current version are judged,
     so no judge call is paid for nothing; with no such pair at all it is a config error. Every
     rubric of the set must be calibrated: one without a usable label, or whose judge answered
-    nothing usable, fails the self-test.
+    nothing usable, fails the self-test. With ``drift_from``, the set is judged again with that
+    earlier model and a drop in agreement is reported (``_report_drift``).
     """
     try:
         calibration_set = judge_calibration.load_set(root)
@@ -330,20 +361,27 @@ def _report_judge_set(
     )
     with config_errors():
         try:
-            grades = anyio.run(_judge_set, project, calibration_set, pairs, providers)
+            grades = anyio.run(_judge_set, project, calibration_set, pairs, providers, judge_model)
+            earlier = (
+                anyio.run(_judge_set, project, calibration_set, pairs, providers, drift_from)
+                if drift_from is not None
+                else []
+            )
         except CalibrationSetError as exc:
             raise fail(str(exc), exit_codes.CONFIG_ERROR) from exc
     usable = [grade for grade in grades if grade.status == "ok"]
     calibrations = _calibrations(project, usable, labels)
     if calibrations:
-        stdout.print(_judge_table(calibrations))
+        stdout.print(_judge_table(calibrations, labels))
     uncalibrated = _uncalibrated(calibration_set, pairs, grades, calibrations)
     for grader, problem in uncalibrated.items():
         stdout.print(f"[bold red]{grader}[/]: not calibrated, {problem}", soft_wrap=True)
     errors = Counter(grade.grader for grade in grades if grade.status == "error")
     for grader, count in sorted(errors.items()):
         stdout.print(f"[yellow]{grader}[/]: {count} judge answer(s) unusable, left out")
-    spent = sum((grade.cost_usd for grade in grades), Decimal(0))
+    if drift_from is not None:
+        _report_drift(project, earlier, usable, labels)
+    spent = sum((grade.cost_usd for grade in [*grades, *earlier]), Decimal(0))
     stdout.print(f"Judge spend: ${spent:.4f}")
     _warn_if_not_human(labels, calibrations)
     return bool(calibrations) and not uncalibrated and all(c.trusted for c in calibrations)
@@ -358,14 +396,76 @@ async def _judge_set(
     calibration_set: CalibrationSet,
     pairs: Collection[tuple[str, str]],
     providers: Mapping[str, LLMProvider],
+    model: ModelName,
 ) -> list[Grade]:
     config = project.config
     # Fail fast on a missing API key, before hundreds of judge calls each become an error.
-    await check_model_providers(config.models, [config.models.judge], providers)
+    await check_model_providers(config.models, [model], providers)
     async with open_llm(config, project.output_dir, providers=providers) as llm:
-        return await judge_calibration.judge_set(
-            calibration_set, llm, config.models.judge, pairs=pairs
+        return await judge_calibration.judge_set(calibration_set, llm, model, pairs=pairs)
+
+
+def _report_drift(
+    project: Project,
+    earlier: Sequence[Grade],
+    current: Sequence[Grade],
+    labels: Sequence[HumanLabel],
+) -> None:
+    """κ of the earlier and the current judge model on the same labels, and their change.
+
+    The spec's drift check: a judge model change re-scores the labeled set, and a significant
+    drop in agreement (or falling from trusted to untrusted) is a warning. Only rubrics both
+    models judged usably on a shared labeled conversation are compared.
+    """
+    stats = project.config.stats
+    seed = stats.seed if stats.seed is not None else project.config.seed
+    before = {(g.grader, g.grader_version): g for g in earlier if g.status == "ok"}
+    drifts = []
+    for key in sorted({(g.grader, g.grader_version) for g in current} & before.keys()):
+        old = [g for g in earlier if (g.grader, g.grader_version) == key and g.status == "ok"]
+        new = [g for g in current if (g.grader, g.grader_version) == key]
+        if _labeled_trials(old, labels) & _labeled_trials(new, labels):
+            drifts.append(
+                judge_drift(old, new, labels, seed=seed, resamples=stats.bootstrap_resamples)
+            )
+    if not drifts:
+        stdout.print("[yellow]note[/]: no rubric was judged usably by both judge models.")
+        return
+    reference, candidate = drifts[0].reference.judge_model, drifts[0].candidate.judge_model
+    table = Table(
+        title=f"Judge model drift: {reference} → {candidate} on the same labels (95% CI)",
+        title_justify="left",
+    )
+    for name in ("rubric", "version", "kappa before", "kappa after", "change", "drift"):
+        table.add_column(name)
+    for drift in drifts:
+        table.add_row(
+            Text(drift.reference.grader),
+            Text(drift.reference.grader_version),
+            fmt.estimate(drift.reference.kappa, "number"),
+            fmt.estimate(drift.candidate.kappa, "number"),
+            _signed(drift.delta),
+            Text("DROPPED", "bold red") if drift.drifted else Text("ok", "green"),
         )
+    stdout.print(table)
+    dropped = [d.reference.grader for d in drifts if d.drifted]
+    if dropped:
+        stdout.print(
+            f"[bold yellow]warning[/]: judge agreement dropped with {candidate} on "
+            f"{', '.join(dropped)}; keep {reference} or fix the rubric before switching.",
+            soft_wrap=True,
+        )
+
+
+def _labeled_trials(grades: Sequence[Grade], labels: Sequence[HumanLabel]) -> set[str]:
+    labeled = {(label.trial_id, label.grader, label.grader_version) for label in labels}
+    return {g.trial_id for g in grades if (g.trial_id, g.grader, g.grader_version) in labeled}
+
+
+def _signed(estimate: Estimate) -> str:
+    return f"{estimate.value:+.2f} [{estimate.ci_low:+.2f}, {estimate.ci_high:+.2f}]".replace(
+        "-", "\N{MINUS SIGN}"
+    )
 
 
 def _uncalibrated(
@@ -443,8 +543,30 @@ def _judge_groups(grades: Sequence[Grade], labels: Sequence[HumanLabel]) -> list
     return [groups[key] for key in sorted(groups, key=lambda k: (k[0], k[1], k[2] or ""))]
 
 
-def _judge_table(calibrations: Sequence[JudgeCalibration]) -> Table:
-    table = Table(title="Judge agreement with human labels (95% CI)", title_justify="left")
+def _label_source(labels: Sequence[HumanLabel]) -> str:
+    """Whose labels the judges were compared with, so AI drafts never read as human (#97).
+
+    ``human:<name>`` labelers are people and print as "human"; any other labeler (an AI draft
+    such as ``claude-draft``, or anyone without the prefix) is named as is and called out as not
+    human.
+    """
+    names = sorted(
+        {
+            "human" if label.labeler.startswith(judge_calibration.HUMAN_PREFIX) else label.labeler
+            for label in labels
+        },
+        key=lambda name: (name != "human", name),
+    )
+    source = " and ".join(names) + " labels"
+    if names == ["human"]:
+        return source
+    return source + (" (not all human)" if "human" in names else " (not human)")
+
+
+def _judge_table(calibrations: Sequence[JudgeCalibration], labels: Sequence[HumanLabel]) -> Table:
+    table = Table(
+        title=f"Judge agreement with {_label_source(labels)} (95% CI)", title_justify="left"
+    )
     for name in ("rubric", "version", "model", "n", "kappa", "precision", "recall", "trusted"):
         table.add_column(name)
     for c in calibrations:

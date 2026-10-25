@@ -6,16 +6,20 @@ heterogeneous: most scenarios almost always pass, some usually do, a few are har
 ``REALISTIC_SUITE`` encodes that as a mixture of Beta distributions of per-scenario pass rates.
 """
 
+import math
+from collections.abc import Collection
 from dataclasses import dataclass
 
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import brentq
 from scipy.special import expit, logit
 
-from hecklr_schemas import Estimate, StatsConfig, Verdict
-from hecklr_stats.compare import decide_verdict, paired_comparison
+from hecklr_schemas import Estimate, RunId, StatsConfig, Verdict
+from hecklr_stats.compare import compare_sequentially, decide_verdict, paired_comparison
 from hecklr_stats.intervals import wilson_estimate
-from hecklr_stats.outcomes import FloatArray, ScenarioCounts
+from hecklr_stats.outcomes import FloatArray, ScenarioCounts, TrialOutcome
+from hecklr_stats.sequential import allocate_trials
 
 _RATE_FLOOR = 1e-6
 """Pass rates are kept inside (0, 1) so a logit shift is defined for every scenario."""
@@ -133,6 +137,79 @@ def verdict_rate(
         decided = decide_verdict(result.delta, result.p_value, config.alpha, config.min_effect)
         hits += decided is verdict
     return wilson_estimate(hits, replicates)
+
+
+ADAPTIVE_EXTRA_SHARE = 0.5
+"""Extra trials of an adaptive pass, as a share of the first pass's (``hecklr run --adaptive``)."""
+
+_SIM_RUN = RunId("0" * 26)
+
+
+def adaptive_verdict_rate(
+    *,
+    n_scenarios: int,
+    trials: int,
+    drop: float,
+    replicates: int,
+    config: StatsConfig,
+    seed: int,
+    verdicts: Collection[Verdict] = (Verdict.REGRESSION,),
+    model: SuiteModel = REALISTIC_SUITE,
+) -> Estimate:
+    """Share of simulated adaptive comparisons that end in one of ``verdicts`` (issue #103).
+
+    Each replicate runs the whole adaptive procedure: a first pass of ``trials`` trials per
+    scenario in both runs, ``ADAPTIVE_EXTRA_SHARE`` more candidate trials spread by
+    ``allocate_trials`` from what the first pass showed, then ``compare_sequentially`` with one
+    look per batch. The allocation depends on the data, which the boundaries do not model, so
+    this is how the design's false-alarm rate is checked, not assumed.
+
+    Args:
+        n_scenarios: Scenarios per suite.
+        trials: First-pass trials per scenario in each run.
+        drop: True pass-rate drop of the candidate on every scenario, in absolute points.
+        replicates: Simulated comparisons.
+        config: Alpha, minimum effect and resamples to decide with.
+        seed: Simulation seed.
+        verdicts: The suite verdicts counted (both rejections, for the test's false-alarm rate).
+        model: Distribution of per-scenario pass rates.
+    """
+    rng = np.random.default_rng(seed)
+    hits = 0
+    affected = np.ones(n_scenarios, dtype=bool)
+    budget = math.ceil(ADAPTIVE_EXTRA_SHARE * n_scenarios * trials)
+    for replicate in range(replicates):
+        rates = model.sample_pass_rates(n_scenarios, rng)
+        candidate_rates = shift_pass_rates(rates, drop, affected)
+        baseline = _simulate(rates, trials, rng)
+        first = _simulate(candidate_rates, trials, rng)
+        extra = allocate_trials(baseline, first, budget)
+        extra_trials = np.array([extra.get(sid, 0) for sid in first.scenario_ids])
+        added = ScenarioCounts.from_arrays(
+            np.maximum(extra_trials, 1), rng.binomial(extra_trials, candidate_rates)
+        )
+        first_outcomes = _outcomes(first)
+        looks = [first_outcomes, first_outcomes + _outcomes(added, extra_trials)]
+        comparisons = compare_sequentially(
+            _outcomes(baseline),
+            looks if budget else looks[:1],
+            baseline_run=_SIM_RUN,
+            candidate_run=_SIM_RUN,
+            config=config,
+            seed=seed + replicate,
+        )
+        hits += comparisons[0].verdict in verdicts
+    return wilson_estimate(hits, replicates)
+
+
+def _outcomes(counts: ScenarioCounts, trials: npt.ArrayLike | None = None) -> list[TrialOutcome]:
+    """``counts`` as trial outcomes; ``trials`` overrides how many trials each scenario has."""
+    sizes = counts.trials if trials is None else np.asarray(trials)
+    return [
+        TrialOutcome(scenario_id=sid, passed=i < passes)
+        for sid, n, passes in zip(counts.scenario_ids, sizes, counts.passes, strict=True)
+        for i in range(int(n))
+    ]
 
 
 def _simulate(rates: FloatArray, trials: int, rng: np.random.Generator) -> ScenarioCounts:
