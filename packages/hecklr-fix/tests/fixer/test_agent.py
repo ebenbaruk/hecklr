@@ -1,4 +1,5 @@
 import socket
+import sys
 from pathlib import Path
 
 import pytest
@@ -97,3 +98,43 @@ def test_templates_are_checked_before_any_run() -> None:
         "--json",
         "{}",
     ]
+
+
+def test_issue118_placeholders_with_spaces_stay_one_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "executable", "/Users/Jane Doe/.venv/bin/python")
+    project = Path("/Users/me/My Drive/acme/.hecklr/fix/01X/work/baseline-targeted")
+    command = AgentCommand("{python} {project}/agent/serve.py --port {port} --name 'a b'")
+
+    assert command.argv(port=8000, project=project) == [
+        "/Users/Jane Doe/.venv/bin/python",
+        f"{project}/agent/serve.py",
+        "--port",
+        "8000",
+        "--name",
+        "a b",
+    ]
+
+
+def test_issue118_a_quoted_placeholder_is_not_split_either() -> None:
+    project = Path("/w/My Drive")
+    command = AgentCommand('serve "{project}/x y.py" --port={port}')
+    assert command.argv(port=1, project=project) == ["serve", "/w/My Drive/x y.py", "--port=1"]
+
+
+def test_issue118_unbalanced_quotes_are_a_fix_error() -> None:
+    with pytest.raises(FixError, match="--agent-cmd"):
+        AgentCommand("serve --port {port} 'oops")
+
+
+async def test_issue118_an_agent_in_a_directory_with_a_space_starts(tmp_path: Path) -> None:
+    workspace = tmp_path / "My Drive" / "work"
+    workspace.mkdir(parents=True)
+    (workspace / "server.py").write_text(SERVER, encoding="utf-8")
+    port = free_port()
+
+    async with AgentCommand("{python} {project}/server.py {port} serve").launch(
+        workspace, "127.0.0.1", port, workspace / "a.log"
+    ):
+        assert _listening(port)

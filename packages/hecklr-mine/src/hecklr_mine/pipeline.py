@@ -4,13 +4,13 @@
 later stages produced; ``hecklr_mine.store`` writes it to disk.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
 import structlog
 
-from hecklr_llm import LLMOutputError
+from hecklr_llm import PRICES, LLMOutputError, UnknownPriceError, price_for
 from hecklr_mine.cluster import (
     ClusterLabel,
     Group,
@@ -31,6 +31,7 @@ from hecklr_schemas import (
     LLMProvider,
     LLMRequest,
     LLMResponse,
+    ModelPrice,
     Scenario,
     ScenarioProposal,
 )
@@ -66,8 +67,11 @@ class MineSettings:
     dedup_threshold: float = 0.9
     """Cosine similarity at or above which a proposal duplicates an existing scenario."""
     max_usd: Decimal | None = None
-    """Stop (``BudgetExceededError``) once model and embedding spend reach this. The cap is checked
-    before each model call, so up to ``concurrency`` calls already in flight can overshoot it."""
+    """Spending cap for model and embedding calls (``BudgetExceededError``). A priced call is
+    refused once spend reaches it and any call once spend crosses it, so a $0 cap runs free models
+    only. It is checked before each call: up to ``concurrency`` calls in flight can overshoot."""
+    prices: Mapping[str, ModelPrice] = field(default_factory=dict)
+    """``models.prices`` of ``hecklr.yaml``, over ``hecklr_llm.PRICES``: which models are free."""
     seed: int = 0
     concurrency: int = 8
 
@@ -109,21 +113,50 @@ class MineResult:
 
 
 class _Meter:
-    """An ``LLMProvider`` that adds up spend and refuses calls past the cap."""
+    """An ``LLMProvider`` that adds up spend and refuses calls past the cap.
 
-    def __init__(self, inner: LLMProvider, cap: Decimal | None, embedder: Embedder) -> None:
+    The cap means what it means for ``hecklr run``: spend may reach it but not cross it. So once
+    spend has reached it (at once, for a $0 cap) a call to a priced model is refused, while free
+    models (``fake/``, ``ollama/``, or priced at 0 in ``hecklr.yaml``) keep running.
+    """
+
+    def __init__(
+        self,
+        inner: LLMProvider,
+        cap: Decimal | None,
+        embedder: Embedder,
+        prices: Mapping[str, ModelPrice],
+    ) -> None:
         self._inner = inner
         self._cap = cap
         self._embedder = embedder
+        self._prices = {**PRICES, **prices}
         self.spent = Decimal(0)
 
-    def check(self) -> None:
+    def check(self, model: str | None = None) -> None:
+        """Refuse a call: spend crossed the cap, or reached it and ``model`` costs money."""
+        if self._cap is None:
+            return
         total = self.spent + self._embedder.spent_usd
-        if self._cap is not None and total >= self._cap:
-            raise BudgetExceededError(f"mining stopped: spend ${total:.4f} reached the cap")
+        if total > self._cap:
+            raise BudgetExceededError(
+                f"mining stopped: spend ${total:.4f} crossed the cap (${self._cap})"
+            )
+        if total == self._cap and model is not None and not self._free(model):
+            raise BudgetExceededError(
+                f"mining stopped: spend ${total:.4f} reached the cap (${self._cap}) and {model} "
+                "is not a free model"
+            )
+
+    def _free(self, model: str) -> bool:
+        try:
+            price = price_for(model, self._prices)
+        except UnknownPriceError:
+            return False  # unpriced paid models fail closed, as in the pre-run estimate
+        return price.input_per_mtok == 0 and price.output_per_mtok == 0
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
-        self.check()
+        self.check(request.model)
         response = await self._inner.complete(request)
         self.spent += response.cost_usd
         return response
@@ -152,14 +185,14 @@ async def mine(
 
     Raises:
         ValueError: ``settings`` need a model but ``llm`` is ``None``.
-        BudgetExceededError: Spend reached ``settings.max_usd``.
+        BudgetExceededError: Spend reached or crossed ``settings.max_usd`` (see ``MineSettings``).
         hecklr_llm.LLMError: A model call failed outright. Errors from concurrent calls are
             raised as the first error itself, never as an ``ExceptionGroup``.
     """
     if llm is None and (settings.model is not None or settings.judge_model is not None):
         raise ValueError("settings name a model but no LLM provider was given")
     scrubber = scrubber or Scrubber()
-    meter = _Meter(llm, settings.max_usd, embedder) if llm is not None else None
+    meter = _Meter(llm, settings.max_usd, embedder, settings.prices) if llm is not None else None
     model = settings.model if meter is not None else None
 
     finder = LlmPiiFinder(meter, model, seed=settings.seed) if meter and model else None
@@ -282,10 +315,16 @@ async def _labels(
             labels.append(keyword_label(members, summaries))
             continue
         try:
-            labels.append(await llm_label(members, llm, model, seed=settings.seed))
+            label = await llm_label(members, llm, model, seed=settings.seed)
         except LLMOutputError as exc:
             log.warning("mine.label_failed", error=str(exc))
-            labels.append(keyword_label(members, summaries))
+            label = keyword_label(members, summaries)
+        if not label.label.strip():
+            # A blank name is a valid reply (fake/ models give one) but an unusable label: the
+            # CLI and UI list clusters by it (#109).
+            log.warning("mine.label_blank", model=model)
+            label = keyword_label(members, summaries)
+        labels.append(label)
     return labels
 
 

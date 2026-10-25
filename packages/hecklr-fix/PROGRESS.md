@@ -42,6 +42,24 @@ the v1 mechanism.
   `hecklr mine` output:
   `packages/hecklr/tests/test_cli_mine.py::test_us10_hecklr_fix_targets_what_hecklr_mine_wrote`.
 
+- **Wave 6-close polish** (branch `ws-hmine-mine-fix-polish`):
+  - #118 quoting: `--agent-cmd` is split with `shlex` before `{project}`/`{python}`/`{port}` are
+    filled in, so a path with a space stays one argument; unbalanced quotes are a `FixError`.
+    Tests: `test_issue118_placeholders_with_spaces_stay_one_argument`,
+    `test_issue118_a_quoted_placeholder_is_not_split_either`,
+    `test_issue118_unbalanced_quotes_are_a_fix_error`,
+    `test_issue118_an_agent_in_a_directory_with_a_space_starts` (real subprocess).
+  - #118 budget: `--budget-usd 0` runs a session on free models; a priced or unpriced generator is
+    refused before any call (`BUDGET_EXHAUSTED`). Tests: `test_issue118_a_zero_budget_*`,
+    `test_issue118_an_unpriced_generator_counts_as_paid`,
+    `test_issue118_a_generator_priced_at_zero_in_the_config_is_free`; the e2e F1 CLI test now runs
+    with `--budget-usd 0`.
+  - #90: the e2e test's agent helper waited a fixed 30 s and never noticed a dead agent. Root
+    cause: the rules agent's cold start (~2 s of import CPU, ~20 s of first bytecode compile in a
+    fresh venv) crossed 30 s at load ~25. The helper now starts the agent with
+    `AgentCommand.launch`, the fixer's own readiness contract (60 s, fails at once on exit).
+    Test: `test_issue90_an_agent_that_dies_at_start_up_fails_at_once`.
+
 ## Next
 
 - Detect an agent-side provider outage in a pass (agent errors from a 429 count as failures) and

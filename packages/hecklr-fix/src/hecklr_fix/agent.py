@@ -54,16 +54,25 @@ class AgentCommand:
         self.argv(port=1, project=Path())  # fail on unknown placeholders before any run
 
     def argv(self, *, port: int, project: Path) -> list[str]:
-        """The command for one launch, split like a POSIX shell would (no shell runs it)."""
+        """The command for one launch, split like a POSIX shell would (no shell runs it).
+
+        The template is split before the placeholders are filled in, so a value containing a
+        space (a project under ``My Drive``) stays one argument.
+        """
         try:
-            text = self.template.format(port=port, python=sys.executable, project=project)
+            tokens = shlex.split(self.template)
+        except ValueError as exc:
+            raise FixError(f"--agent-cmd: cannot split {self.template!r}: {exc}") from exc
+        try:
+            return [
+                token.format(port=port, python=sys.executable, project=project) for token in tokens
+            ]
         except (KeyError, IndexError, ValueError) as exc:
             raise FixError(
                 f"--agent-cmd: bad placeholder {exc}; known: "
                 + ", ".join(f"{{{name}}}" for name in PLACEHOLDERS)
                 + " (write {{ and }} for literal braces)"
             ) from exc
-        return shlex.split(text)
 
     @asynccontextmanager
     async def launch(self, workspace: Path, host: str, port: int, log: Path) -> AsyncIterator[None]:

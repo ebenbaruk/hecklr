@@ -30,7 +30,7 @@ from hecklr_mine.store import (
     FAILURES_FILE,
     SCENARIOS_DIR,
 )
-from hecklr_schemas import FailureCluster, LLMRequest, LLMResponse, Scenario
+from hecklr_schemas import FailureCluster, LLMRequest, LLMResponse, ModelPrice, Scenario
 
 Reply = Callable[[LLMRequest], dict[str, Any]]
 SETTINGS = MineSettings(world="acme", persona="busy-homeowner", model="fake/miner", seed=3)
@@ -124,6 +124,18 @@ def test_ws13_unusable_model_replies_fall_back_or_are_recorded(responder: Reply)
     assert set(result.synthesis_errors) == {c.id for c in result.clusters}
 
 
+PAID = "openai/gpt-4.1-mini"
+
+
+def paid(settings: MineSettings) -> MineSettings:
+    """``settings`` with every model a priced one, as the cent-per-call replies pretend."""
+    return dataclasses.replace(
+        settings,
+        model=PAID if settings.model else None,
+        judge_model=PAID if settings.judge_model else None,
+    )
+
+
 class _Paid:
     """FakeLLM replies that cost one cent each."""
 
@@ -140,11 +152,46 @@ class _Paid:
 
 
 def test_ws13_spend_is_counted_and_capped(responder: Reply) -> None:
-    result = _run(SETTINGS, _Paid(responder))
+    result = _run(dataclasses.replace(SETTINGS, model=PAID), _Paid(responder))
     assert result.llm_usd == Decimal("0.01") * (2 * len(result.clusters))
-    capped = MineSettings(world="w", persona="p", model="fake/m", max_usd=Decimal("0.02"))
+    capped = MineSettings(world="w", persona="p", model=PAID, max_usd=Decimal("0.02"))
     with pytest.raises(BudgetExceededError, match="reached the cap"):
         _run(capped, _Paid(responder))
+
+
+def test_issue108_a_zero_cap_runs_free_models(fake_llm: FakeLLM) -> None:
+    result = _run(dataclasses.replace(SETTINGS, max_usd=Decimal(0)), fake_llm)
+    assert result.clusters
+    assert result.proposals
+    assert result.llm_usd == 0
+
+
+def test_issue108_a_zero_cap_refuses_a_paid_model_before_any_call(responder: Reply) -> None:
+    llm = _Paid(responder)
+    capped = MineSettings(world="w", persona="p", model=PAID, max_usd=Decimal(0))
+    with pytest.raises(BudgetExceededError, match=r"reached the cap \(\$0\).*openai/gpt-4.1-mini"):
+        _run(capped, llm)
+    assert llm.calls == []
+
+
+def test_issue108_a_model_priced_at_zero_in_the_config_is_free(fake_llm: FakeLLM) -> None:
+    local = "openai-compatible/llama"
+    free = ModelPrice(input_per_mtok=Decimal(0), output_per_mtok=Decimal(0))
+    settings = dataclasses.replace(SETTINGS, model=local, max_usd=Decimal(0), prices={local: free})
+    assert _run(settings, fake_llm).proposals
+    with pytest.raises(BudgetExceededError, match="reached the cap"):
+        _run(dataclasses.replace(settings, prices={}), fake_llm)
+
+
+def test_issue108_free_calls_continue_at_the_cap_and_stop_once_it_is_crossed(
+    responder: Reply,
+) -> None:
+    # A free model that bills anyway (a misconfigured price) still cannot run past the cap.
+    llm = _Paid(responder)
+    capped = MineSettings(world="w", persona="p", model="fake/m", max_usd=Decimal("0.02"))
+    with pytest.raises(BudgetExceededError, match="crossed the cap"):
+        _run(capped, llm)
+    assert len(llm.calls) == 3
 
 
 @pytest.mark.parametrize(
@@ -221,7 +268,7 @@ def test_ws13_budget_in_a_concurrent_stage_raises_the_bare_error(
             return {"verdict": "pass", "rationale": "ok", "evidence": []}
         return responder(request)
 
-    capped = dataclasses.replace(settings, max_usd=Decimal("0.02"))
+    capped = dataclasses.replace(paid(settings), max_usd=Decimal("0.02"))
     llm = _Paid(judging)
     with pytest.raises(BudgetExceededError, match="reached the cap") as caught:
         _run(capped, llm, n=60)
@@ -253,3 +300,18 @@ def test_ws13_embedding_spend_is_capped_without_a_model() -> None:
         anyio.run(lambda: mine(logs.conversations, settings, embedder=_PaidEmbedder()))
     free = MineSettings(world="w", persona="p", max_usd=Decimal(0))
     assert anyio.run(lambda: mine(logs.conversations, free, embedder=HashingEmbedder())).clusters
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
+def test_issue109_a_blank_model_label_falls_back_to_the_keyword_label(
+    responder: Reply, blank: str
+) -> None:
+    def blank_labels(request: LLMRequest) -> Any:
+        if request.schema_name == "ClusterLabel":
+            return {"label": blank, "description": "Customers wait."}
+        return responder(request)
+
+    result = _run(SETTINGS, FakeLLM(responder=blank_labels))
+    assert result.clusters
+    assert all(c.label.startswith("failures about ") for c in result.clusters)
+    assert all(c.label.removeprefix("failures about ").strip() for c in result.clusters)
