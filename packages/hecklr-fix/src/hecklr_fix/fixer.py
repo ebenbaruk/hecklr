@@ -37,10 +37,12 @@ from hecklr_fix.validation import (
     regressions,
 )
 from hecklr_fix.workspace import TARGETED_SUITE, prepare_workspace
+from hecklr_llm import PRICES, UnknownPriceError, price_for
 from hecklr_schemas import (
     Comparison,
     FailureCluster,
     LLMProvider,
+    ModelPrice,
     Patch,
     PatchId,
     PatchStatus,
@@ -111,6 +113,10 @@ class FixSettings:
     guard_trials: int | None = None
     """Trials per guard-suite scenario; the suite's own when ``None``."""
     budget_usd: Decimal | None = None
+    """Cap on the session's spend. As for ``hecklr run``, spend may reach it but not cross it, so
+    at the cap (at once, for $0) only free models run: ``fake/``, ``ollama/``, or priced at 0."""
+    prices: Mapping[str, ModelPrice] = field(default_factory=dict)
+    """``models.prices`` of ``hecklr.yaml``, over ``hecklr_llm.PRICES``: which models are free."""
     evidence_trials: int = 6
     """Failing trials shown to the generator."""
 
@@ -212,6 +218,10 @@ class Fixer:
                 baseline,
                 None,
             )
+        try:
+            self._check_generation_budget()
+        except _BudgetExhaustedError as exc:
+            return self._result(FixOutcome.BUDGET_EXHAUSTED, str(exc), [], baseline, None)
         generation = await generate_candidates(
             self.llm,
             model=self.settings.model,
@@ -276,7 +286,7 @@ class Fixer:
     ) -> SuiteRun:
         budget = self.settings.budget_usd
         left = None if budget is None else budget - self._session.spent
-        if left is not None and left <= 0:
+        if left is not None and left < 0:
             raise _BudgetExhaustedError(f"the budget of ${budget} was spent before {label}")
         port = self.ports()
         workspace = prepare_workspace(
@@ -312,6 +322,23 @@ class Fixer:
         if status is not RunStatus.COMPLETED:
             raise FixError(f"run {run.results.run.id} ({label}) ended {status.value}")
         return run
+
+    def _check_generation_budget(self) -> None:
+        """Refuse generation once spend crossed the cap, or reached it with a priced model.
+
+        A run's own pre-run estimate makes that call for its simulator and judge models; the
+        generator has none, so it is made here.
+        """
+        budget = self.settings.budget_usd
+        if budget is None:
+            return
+        spent = self._session.spent
+        model = self.settings.model
+        if spent > budget or (spent == budget and not _free(model, self.settings.prices)):
+            raise _BudgetExhaustedError(
+                f"the budget of ${budget} was spent before generating candidates "
+                f"({model} is not a free model)"
+            )
 
     def _propose(self, candidate: Candidate) -> None:
         self._session.files[candidate.index] = candidate.files
@@ -377,6 +404,14 @@ class Fixer:
             spent_usd=self._session.spent,
             winner_files=self._session.files[winner.candidate_index] if winner else {},
         )
+
+
+def _free(model: str, prices: Mapping[str, ModelPrice]) -> bool:
+    try:
+        price = price_for(model, {**PRICES, **prices})
+    except UnknownPriceError:
+        return False  # an unpriced paid model fails closed, as in the pre-run estimate
+    return price.input_per_mtok == 0 and price.output_per_mtok == 0
 
 
 def _rank(patch: Patch) -> tuple[float, float, int]:

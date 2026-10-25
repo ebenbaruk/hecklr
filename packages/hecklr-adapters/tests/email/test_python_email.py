@@ -5,7 +5,14 @@ import pytest
 
 from hecklr_adapters import AgentError, AgentSession
 from hecklr_adapters.email import PythonEmailTarget, make_reply
-from hecklr_schemas import EmailMessage, EmailTarget, SessionContext, TrialId, new_id
+from hecklr_schemas import (
+    EmailAttachment,
+    EmailMessage,
+    EmailTarget,
+    SessionContext,
+    TrialId,
+    new_id,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -86,3 +93,29 @@ async def test_ws12_python_email_agent_failures_are_agent_errors() -> None:
         await PythonEmailTarget(wrong_type).deliver(email(), ctx())  # type: ignore[arg-type]
     with pytest.raises(AgentError, match="down for maintenance"):
         await PythonEmailTarget(own_error).deliver(email(), ctx())
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        pytest.param({"body": "Sure \ud83d"}, id="body"),
+        pytest.param({"subject": "Re: \ud83d"}, id="subject"),
+        pytest.param(
+            {"attachments": [EmailAttachment(filename="\ud83d.pdf", data=b"x")]}, id="attachment"
+        ),
+    ],
+)
+async def test_issue119_a_reply_with_a_lone_surrogate_is_an_agent_error(
+    field: dict[str, object],
+) -> None:
+    async def broken(session: AgentSession, msg: EmailMessage) -> EmailMessage:
+        return make_reply(msg, body="ok", from_addr=AGENT).model_copy(update=field)
+
+    target = PythonEmailTarget(broken)
+    context = ctx()
+    with pytest.raises(AgentError, match="not valid Unicode"):
+        await target.deliver(email(), context)
+    # Nothing unstorable was queued for the driver to log.
+    with anyio.move_on_after(0.05):
+        await anext(target.replies(context))
+        pytest.fail("an unstorable reply was queued")

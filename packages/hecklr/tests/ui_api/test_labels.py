@@ -13,7 +13,14 @@ from typer.testing import CliRunner
 
 from hecklr import exit_codes
 from hecklr.cli import app as cli_app
-from hecklr.ui_api.labels import LabelBook, LabelFileError, agreement, label_queue
+from hecklr.ui_api.labels import (
+    LabelBook,
+    LabelFileError,
+    UnknownGradeError,
+    agreement,
+    find_judge_grade,
+    label_queue,
+)
 from hecklr_core import RunResults
 from hecklr_schemas import (
     AgentRef,
@@ -191,7 +198,7 @@ async def test_the_labels_file_is_what_hecklr_calibrate_judges_reads(
     # (issue #100).
     output = click.unstyle(result.output)
     assert result.exit_code == exit_codes.CHECK_FAILED, output
-    assert "Judge agreement with human labels" in output
+    assert f"Judge agreement with {USER} labels" in output
     assert {j["grader"]: j["n"] for j in ui_report["judges"]} == {
         "judge:no_hallucination": 4,
         "judge:resolved": 4,
@@ -206,7 +213,8 @@ async def test_the_labels_file_is_what_hecklr_calibrate_judges_reads(
 _WORLD = WorldSnapshot(world_id="w", taken_at_ms=0, collections={})
 
 
-def _results(graders: dict[str, int]) -> RunResults:
+def _results(graders: dict[str, int], *, unjudged: frozenset[str] = frozenset()) -> RunResults:
+    """``graders[name]`` ``ok`` grades each; the ``unjudged`` ones decided without a judge."""
     run = Run(
         id=RunId(new_id()),
         created_at=NOW,
@@ -244,14 +252,17 @@ def _results(graders: dict[str, int]) -> RunResults:
                     grader_version="1",
                     value=True,
                     passed=True,
-                    judge_model="fake/judge",
+                    judge_model=None if grader in unjudged else "fake/judge",
                 )
             )
     return RunResults(run=run, trials=trials, events=[], grades=grades)
 
 
 def test_queue_interleaves_rubrics_so_a_prefix_covers_each_equally() -> None:
-    results = _results({"judge:a": 10, "judge:b": 2, "judge:c": 10, "tool_called": 5})
+    results = _results(
+        {"judge:a": 10, "judge:b": 2, "judge:c": 10, "tool_called": 5},
+        unjudged=frozenset({"tool_called"}),
+    )
 
     items, labeled = label_queue([results], {}, [], labeler=USER, grader=None, limit=7, seed=3)
 
@@ -260,6 +271,40 @@ def test_queue_interleaves_rubrics_so_a_prefix_covers_each_equally() -> None:
     assert labeled == 0
     shuffled, _ = label_queue([results], {}, [], labeler=USER, grader=None, limit=7, seed=4)
     assert [i.grade.id for i in shuffled] != [i.grade.id for i in items]
+
+
+_SAFETY_GRADERS_ASKING_A_JUDGE = ("injection_resisted", "no_policy_override", "no_pii_leak")
+
+
+def test_issue87_safety_graders_that_ask_a_judge_are_in_the_queue() -> None:
+    judged = _results(dict.fromkeys(_SAFETY_GRADERS_ASKING_A_JUDGE, 2))
+    # Their deterministic pre-checks (a forbidden string, a leaked phone number) ask no judge.
+    prechecked = _results(
+        dict.fromkeys(_SAFETY_GRADERS_ASKING_A_JUDGE, 3),
+        unjudged=frozenset(_SAFETY_GRADERS_ASKING_A_JUDGE),
+    )
+
+    items, _ = label_queue(
+        [judged, prechecked], {}, [], labeler=USER, grader=None, limit=50, seed=0
+    )
+
+    assert sorted(i.grade.id for i in items) == sorted(g.id for g in judged.grades)
+    assert Counter(i.grade.grader for i in items) == dict.fromkeys(
+        _SAFETY_GRADERS_ASKING_A_JUDGE, 2
+    )
+
+
+def test_issue87_a_judged_safety_grade_can_be_labeled_but_not_its_pre_check() -> None:
+    judged = _results({"injection_resisted": 1}).grades[0]
+    prechecked = _results(
+        {"injection_resisted": 1}, unjudged=frozenset({"injection_resisted"})
+    ).grades[0]
+    results = _results({})
+    both = RunResults(run=results.run, trials=[], events=[], grades=[judged, prechecked])
+
+    assert find_judge_grade(both, judged.id) == judged
+    with pytest.raises(UnknownGradeError):
+        find_judge_grade(both, prechecked.id)
 
 
 def test_relabeling_keeps_the_newest_label_and_other_labelers_do_not_count(tmp_path: Path) -> None:

@@ -22,7 +22,6 @@ from hecklr_schemas import Grade, HumanLabel, LabelId, new_id
 from hecklr_stats import calibrate_judge
 
 LABELS_FILE: Final = "labels.jsonl"
-JUDGE_PREFIX: Final = "judge:"
 TRANSCRIPT_KINDS: Final = ("utterance", "email")
 
 
@@ -94,8 +93,13 @@ def newest_by_grade(labels: Iterable[HumanLabel], labeler: str) -> dict[str, Hum
 
 
 def judge_grades(results: RunResults) -> list[Grade]:
-    """The run's ``ok`` judge grades: the ones a human can agree or disagree with."""
-    return [g for g in results.grades if g.grader.startswith(JUDGE_PREFIX) and g.status == "ok"]
+    """The run's ``ok`` judge grades: the ones a human can agree or disagree with.
+
+    A grade is a judge's when a judge model decided it, whatever the grader is called: the safety
+    graders ``injection_resisted``, ``no_policy_override`` and ``no_pii_leak`` ask a judge but
+    report under their own name, and their deterministic pre-checks carry no judge model.
+    """
+    return [g for g in results.grades if g.judge_model is not None and g.status == "ok"]
 
 
 def find_judge_grade(results: RunResults, grade_id: str) -> Grade:

@@ -17,6 +17,7 @@ from hecklr_adapters.context import (
 from hecklr_adapters.email import make_email_target
 from hecklr_adapters.errors import AdapterConfigError, AgentError, AgentTimeoutError
 from hecklr_adapters.factory import make_chat_target
+from hecklr_adapters.headers import resolve_headers
 from hecklr_adapters.http import HttpChatSession, HttpChatTarget
 from hecklr_adapters.openai_compatible import (
     OpenAICompatibleChatSession,
@@ -58,6 +59,7 @@ __all__ = [
     "make_chat_target",
     "make_email_target",
     "make_voice_target",
+    "resolve_headers",
     "session_fields",
     "session_headers",
 ]

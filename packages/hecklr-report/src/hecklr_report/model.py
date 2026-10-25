@@ -83,7 +83,11 @@ class TrialCounts(FrozenModel):
     analyzed: Count
     """Trials behind every pass-rate statistic: total minus harness errors minus undecided."""
     contradiction_rate: Estimate | None
-    """Share of conversations where the simulator contradicted its brief at least once."""
+    """Share of conversations where the simulator contradicted its brief at least once,
+    counting those the consistency guard gave up on (ADR 0024-hstats)."""
+    errors_after_contradiction: Count = 0
+    """Harness errors in trials whose simulator contradicted its brief: mostly the consistency
+    guard giving up on a turn, though a later failure of another kind is counted too."""
 
 
 class FailureCause(FrozenModel):
@@ -130,6 +134,9 @@ class ScenarioResult(FrozenModel):
     """Majority pass on one side and majority fail on the other (as ``hecklr_stats`` defines)."""
     cause: FailureCause | None = None
     """The most common failure cause on the failing side, for failed or flipped scenarios."""
+    flaky: Estimate | None = None
+    """Pass rate pooled over both runs when they are declared identical and it lies in 20-80%: the
+    scenario is flaky (spec, "Validating the statistics"); ``None`` otherwise."""
 
 
 class FlipGroup(FrozenModel):
@@ -195,6 +202,9 @@ class Analysis(FrozenModel):
     verdict: Verdict | None = None
     """The suite pass-rate verdict; ``None`` without a usable baseline."""
     scenarios: list[ScenarioResult] = Field(default_factory=list)
+    identical_runs: bool = False
+    """The caller declared baseline and candidate the same agent and code (``hecklr calibrate
+    --aa``), so scenarios were checked for flakiness (``ScenarioResult.flaky``)."""
     flips: list[FlipGroup] = Field(default_factory=list)
     voice: VoiceSection | None = None
     judges: list[JudgeTrust] = Field(default_factory=list)
@@ -210,6 +220,20 @@ class Analysis(FrozenModel):
     def baseline_summary(self, metric: str, slice_: Slice | None = None) -> Estimate | None:
         """The baseline's estimate of ``metric`` on ``slice_`` (default: whole suite)."""
         return _find(self.baseline_summaries, metric, slice_ or {})
+
+    @property
+    def judge_model_change(self) -> tuple[str, str] | None:
+        """``(baseline, candidate)`` judge models when both were recorded and they differ.
+
+        The spec's judge drift check: verdicts of judge rubrics may then move with the judge,
+        so reports warn and point to re-scoring the labeled set (issue #102).
+        """
+        if self.baseline is None:
+            return None
+        before, after = self.baseline.judge_model, self.candidate.judge_model
+        if before is None or after is None or before == after:
+            return None
+        return before, after
 
     @property
     def suite_comparison(self) -> Comparison | None:

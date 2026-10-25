@@ -84,6 +84,8 @@ def _header(analysis: Analysis) -> Text:
         text.append(
             analysis.verdict.value.replace("_", " ").upper(), _VERDICT_STYLES[analysis.verdict]
         )
+        if analysis.suite_comparison is not None:
+            text.append(fmt.look(analysis.suite_comparison))
     return text
 
 
@@ -217,6 +219,16 @@ def _health(analysis: Analysis) -> Text:
         text.append(
             f"\nSimulator contradiction rate {fmt.estimate(counts.contradiction_rate, 'percent')}"
         )
+        if counts.errors_after_contradiction:
+            text.append(f" · {fmt.errors_after_contradiction(counts.errors_after_contradiction)}")
+    flaky = [(s.scenario_id, s.flaky) for s in analysis.scenarios if s.flaky is not None]
+    if flaky:
+        text.append("\nFlaky across identical runs (pass rate 20-80%): ", "yellow")
+        text.append(fmt.flaky_list(flaky))
+    if (change := analysis.judge_model_change) is not None:
+        before, after = change
+        text.append(f"\nJudge model changed: {before} → {after}; ", "yellow")
+        text.append(fmt.rescore_advice(before))
     for problem in analysis.problems:
         text.append(f"\nCannot gate: {problem}", "bold red")
     return text

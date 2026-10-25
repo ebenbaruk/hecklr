@@ -249,6 +249,9 @@ class RunExecutor:
                 )
                 with anyio.CancelScope(shield=True):
                     await self._store.write_run(self._final(running, status, budget, tally))
+                    if status is RunStatus.CANCELLED:
+                        # Ctrl-C or SIGTERM: the trials that finished stay readable (#117).
+                        await self._store.export(run.id)
                 # A cancellation (Ctrl-C, a caller's deadline) is the user's decision, not an error.
                 log = _log.info if status is RunStatus.CANCELLED else _log.error
                 log("run.end", status=status.value, error=repr(exc))

@@ -295,7 +295,10 @@ class ResultStore:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        await self._in_worker(self.close)
+        # Shielded: leaving a cancelled scope (Ctrl-C, SIGTERM) must still checkpoint and close
+        # the databases, or the WAL is left behind (issue #117).
+        with anyio.CancelScope(shield=True):
+            await self._in_worker(self.close)
 
     # --- worker-thread side -------------------------------------------------------------------
 

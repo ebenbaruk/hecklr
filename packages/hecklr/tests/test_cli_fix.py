@@ -10,9 +10,7 @@ irrelevant one.
 import os
 import re
 import shutil
-import socket
 import subprocess
-import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -22,13 +20,14 @@ from pathlib import Path
 import click
 import pytest
 import yaml
+from anyio.from_thread import start_blocking_portal
 from typer.testing import CliRunner
 
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
 from hecklr_core import load_model
-from hecklr_fix import FixSummary, ProposedEdit, ProposedPatch, free_port
+from hecklr_fix import AgentCommand, FixError, FixSummary, ProposedEdit, ProposedPatch, free_port
 from hecklr_llm import FakeLLM
 from hecklr_schemas import (
     ClusterId,
@@ -88,30 +87,35 @@ def _copy_project(dest: Path, *, fault: str | None) -> Path:
 
 @contextmanager
 def _agent(project: Path) -> Iterator[None]:
-    """The project's own agent on a free port, with ``hecklr.yaml`` pointed at it."""
+    """The project's own agent on a free port, with ``hecklr.yaml`` pointed at it.
+
+    It is started by the fixer's own launcher (#90), so it shares the readiness contract of every
+    ``hecklr fix`` pass: ready once the port accepts, an error at once if the agent exits, and the
+    same start-up allowance (``AgentCommand.ready_timeout_s``). A fixed 30 s wait used to time out
+    when the agent's cold imports were starved of CPU on a saturated host.
+    """
     port = free_port()
     config = yaml.safe_load(project.read_text())
     chat = config["agent"]["adapters"]["chat"]
     chat["url"] = re.sub(r":\d+/", f":{port}/", chat["url"])
     project.write_text(yaml.safe_dump(config, sort_keys=False))
-    command = AGENT_CMD.format(python=sys.executable, port=port).split()
-    process = subprocess.Popen(command, cwd=project.parent)  # noqa: S603 -- our interpreter and script
-    try:
-        _wait_for(port)
+    # The log sits outside the project, which the fixer copies and the PR test commits.
+    log = project.parent.parent / f"agent-{port}.log"
+    launch = AgentCommand(AGENT_CMD).launch(project.parent, "127.0.0.1", port, log)
+    with start_blocking_portal() as portal, portal.wrap_async_context_manager(launch):
         yield
-    finally:
-        process.terminate()
-        process.wait(timeout=10)
 
 
-def _wait_for(port: int) -> None:
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        with socket.socket() as probe:
-            if probe.connect_ex(("127.0.0.1", port)) == 0:
-                return
-        time.sleep(0.1)
-    pytest.fail(f"the agent did not listen on {port}")
+@pytest.mark.slow
+def test_issue90_an_agent_that_dies_at_start_up_fails_at_once(tmp_path: Path) -> None:
+    project = _copy_project(tmp_path / "acme", fault=None)
+    (project.parent / "agent" / "serve.py").write_text("raise SystemExit(3)\n")
+    started = time.monotonic()
+
+    with pytest.raises(FixError, match="exited with code 3 before listening"), _agent(project):
+        pytest.fail("the block must not run")
+
+    assert time.monotonic() - started < 15  # not the whole start-up allowance
 
 
 def _invoke(args: list[str], llm: FakeLLM | None = None) -> tuple[int, str]:
@@ -173,6 +177,7 @@ def test_ws15_fixes_f1_and_the_guard_rejects_a_planted_bad_patch(
             "--tag", "catches-f1", "--agent-cmd", AGENT_CMD, "--model", "fake/fixer",
             "--candidates", "3", "--trials", "3",
             "--guard-suite", "smoke", "--guard-trials", "3", "--pr", "--draft",
+            "--budget-usd", "0",  # #118: free models (rules brain, fake/fixer) run on $0
         ],
         generator,
     )  # fmt: skip

@@ -89,7 +89,7 @@ def run(
     bench_dir: BenchDir = DEFAULT_BENCH,
     work_dir: WorkDir = DEFAULT_WORK,
 ) -> None:
-    """Measure stacks and write their leaderboard rows to ``results/<stack>.json``."""
+    """Measure stacks and write their leaderboard rows to `results/<stack>.json`."""
     manifest, chosen = _choose(bench_dir, stack, all_stacks)
     _check_budget(chosen, budget_usd)
     paths = BenchPaths(bench_dir, work_dir)

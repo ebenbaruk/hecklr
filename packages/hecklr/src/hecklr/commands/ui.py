@@ -4,6 +4,7 @@ import getpass
 import ipaddress
 import threading
 import webbrowser
+from pathlib import Path
 from typing import Annotated, Final
 
 import typer
@@ -13,9 +14,15 @@ from rich.markup import escape
 from hecklr import exit_codes
 from hecklr.commands._common import DEFAULT_CONFIG, ConfigPath, fail, load_project_or_exit, stdout
 from hecklr.ui_api import LOCAL_HOSTS, STATIC_DIR, create_app
+from hecklr.ui_api.build import (
+    BUILD_COMMAND,
+    UIBuildError,
+    build_app,
+    checkout_source,
+    is_built,
+)
 
 DEFAULT_PORT: Final = 8484
-BUILD_HINT: Final = "npm --prefix ui ci && npm --prefix ui run build"
 
 
 def ui(
@@ -39,12 +46,8 @@ def ui(
     """Start the local web UI."""
     project = load_project_or_exit(config)
     static_dir = None if dev else STATIC_DIR
-    if static_dir is not None and not (static_dir / "index.html").is_file():
-        raise fail(
-            f"the UI app is not built into {static_dir}; build it with `{BUILD_HINT}` "
-            "from a Hecklr checkout, or run `hecklr ui --dev` with `npm run dev` in ui/",
-            exit_codes.NOT_IMPLEMENTED,
-        )
+    if static_dir is not None and not is_built(static_dir):
+        _build(static_dir)
     app = create_app(
         project,
         user=user or getpass.getuser(),
@@ -59,6 +62,22 @@ def ui(
         # The browser takes longer to start than uvicorn takes to bind, so the page loads.
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+def _build(static_dir: Path) -> None:
+    """Build the app on the first start from a checkout; an installed wheel ships it built."""
+    source = checkout_source()
+    if source is None:
+        raise fail(
+            f"the UI app is missing from this install ({static_dir}): reinstall `hecklr[ui]`, "
+            f"or build it with `{BUILD_COMMAND}` from a Hecklr checkout",
+            exit_codes.NOT_IMPLEMENTED,
+        )
+    stdout.print(f"Building the UI app from {escape(str(source))} (first start only)...")
+    try:
+        build_app(source, static_dir)
+    except UIBuildError as exc:
+        raise fail(str(exc), exit_codes.NOT_IMPLEMENTED) from exc
 
 
 def allowed_hosts(bind: str) -> list[str]:

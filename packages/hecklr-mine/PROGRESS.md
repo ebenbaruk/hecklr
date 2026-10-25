@@ -67,6 +67,20 @@ Owner: WS13. Spec: `docs/SPEC.md` → "Miner (`hecklr-mine`)", US-08, WS13 row. 
     298 of 388 planted failures, sentiment on 388, escalation on 133; recall still 1.0).
   - Coverage 99%; hecklr-mine 106 passed, 1 skipped (spaCy model); `packages/hecklr` 222 passed.
 
+- **Wave 6-close polish** (branch `ws-hmine-mine-fix-polish`):
+  - #116: the e-mail rule anchors on each "@" and expands left, so scrubbing is linear (a 1 MB
+    alphanumeric turn took ~15 min, now well under a second). Tests:
+    `test_issue116_a_1mb_turn_scrubs_in_well_under_a_second`, hypothesis properties
+    `test_issue116_email_spans_match_the_reference_rule[_on_any_text]` (spans equal the old regex)
+    and `test_issue116_text_without_an_at_sign_is_unchanged`.
+  - #108: `--budget-usd 0` runs free models (`fake/`, `ollama/`, priced 0 in `hecklr.yaml`) as
+    `hecklr run` does; spend may reach the cap but not cross it, paid and unpriced models are
+    refused before any call, a paid OpenAI embedder is refused up front. Tests:
+    `test_issue108_*` in `test_pipeline.py` (4) and `test_cli_mine.py` (3).
+  - #109: a blank or whitespace model label falls back to the cluster's keyword label. Tests:
+    `test_issue109_a_blank_model_label_falls_back_to_the_keyword_label`,
+    `test_issue109_mine_with_the_default_fake_models_stores_readable_labels`.
+
 ## Next
 
 - WS16 builds the approval queue UI on ADR 0013a (`load_queue`, `decide`).

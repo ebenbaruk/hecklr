@@ -11,6 +11,7 @@ and an LLM pass (``LlmPiiFinder``) add names and free-text entities that pattern
 """
 
 import re
+import string
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Protocol
@@ -78,7 +79,8 @@ def normalize(entity: str, value: str) -> str:
 
 # --- regex rules ---------------------------------------------------------------------------
 
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+_EMAIL_LOCAL: Final = frozenset(string.ascii_letters + string.digits + "._%+-")
+_EMAIL_DOMAIN = re.compile(r"@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}\b")
 _CARD = re.compile(r"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d-])")
 _PHONE = re.compile(
@@ -130,7 +132,7 @@ class RegexDetector:
 
     def find(self, text: str) -> list[PiiSpan]:
         """Every rule's matches; on equal spans the earlier rule wins (a ZIP+4 is no phone)."""
-        spans = [PiiSpan(m.start(), m.end(), "EMAIL") for m in _EMAIL.finditer(text)]
+        spans = self._emails(text)
         spans += self._ibans(text)
         spans += [
             PiiSpan(m.start(), m.end(), "CARD")
@@ -147,6 +149,29 @@ class RegexDetector:
             and not _ISO_DATE.search(m.group())
         ]
         return spans
+
+    @staticmethod
+    def _emails(text: str) -> list[PiiSpan]:
+        # Anchored on each "@": a plain `local+@domain` regex restarts its local-part scan at
+        # every position of a long run with no "@" after it (a hex dump), which is quadratic
+        # (#116). Neither part can contain "@", so each scan stops at the neighbouring "@" and
+        # the whole pass is linear. The spans are those of that regex's `finditer`.
+        found = []
+        floor = 0  # matches never overlap: a local part starts after the previous match
+        at = text.find("@")
+        while at != -1:
+            domain = _EMAIL_DOMAIN.match(text, at)
+            start = at
+            if domain is not None:
+                while start > floor and text[start - 1] in _EMAIL_LOCAL:
+                    start -= 1
+            if domain is None or start == at:
+                at = text.find("@", at + 1)
+                continue
+            found.append(PiiSpan(start, domain.end(), "EMAIL"))
+            floor = domain.end()
+            at = text.find("@", floor)
+        return found
 
     @staticmethod
     def _ibans(text: str) -> list[PiiSpan]:

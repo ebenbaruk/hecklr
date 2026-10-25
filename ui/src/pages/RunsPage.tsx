@@ -24,14 +24,14 @@ function SummaryCells({ runId }: { runId: string }) {
   if (error) {
     const busy = error instanceof ApiError && error.status === 409;
     return (
-      <td colSpan={2} className={`${td} text-xs text-zinc-500`}>
+      <td colSpan={2} className={`${td} text-xs text-zinc-600 dark:text-zinc-400`}>
         {busy ? "results open when the run ends" : error.message}
       </td>
     );
   }
   if (!data) {
     return (
-      <td colSpan={2} className={`${td} text-xs text-zinc-400`}>
+      <td colSpan={2} className={`${td} text-xs text-zinc-600 dark:text-zinc-400`}>
         computing…
       </td>
     );
@@ -87,7 +87,7 @@ export function RunsPage() {
     <>
       <PageTitle sub="Every stored run of this project. Pick two to compare them.">Runs</PageTitle>
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col text-xs text-zinc-500">
+        <label className="flex flex-col text-xs text-zinc-600 dark:text-zinc-400">
           Suite
           <select
             className={input}
@@ -102,7 +102,7 @@ export function RunsPage() {
             ))}
           </select>
         </label>
-        <label className="flex flex-col text-xs text-zinc-500">
+        <label className="flex flex-col text-xs text-zinc-600 dark:text-zinc-400">
           Status
           <select
             className={input}
@@ -121,7 +121,7 @@ export function RunsPage() {
             )}
           </select>
         </label>
-        <label className="flex flex-col text-xs text-zinc-500">
+        <label className="flex flex-col text-xs text-zinc-600 dark:text-zinc-400">
           Search
           <input
             className={input}
@@ -194,7 +194,7 @@ export function RunsPage() {
                   <td className={td}>
                     {r.info.agent.name}
                     {r.info.git_sha && (
-                      <span className="ml-1 font-mono text-xs text-zinc-500">
+                      <span className="ml-1 font-mono text-xs text-zinc-600 dark:text-zinc-400">
                         {r.info.git_sha.slice(0, 7)}
                       </span>
                     )}

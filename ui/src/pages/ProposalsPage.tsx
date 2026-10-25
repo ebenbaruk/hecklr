@@ -138,11 +138,11 @@ function ProposalCard({
       title={
         <>
           {proposal.scenario.title}{" "}
-          <code className="ml-1 font-mono text-xs text-zinc-500">{proposal.scenario.id}</code>
+          <code className="ml-1 font-mono text-xs text-zinc-600 dark:text-zinc-400">{proposal.scenario.id}</code>
         </>
       }
       actions={
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-zinc-600 dark:text-zinc-400">
           from cluster{" "}
           <Link to={`/clusters/${proposal.cluster_id}`}>{item.cluster_label ?? proposal.cluster_id}</Link>{" "}
           · {dateTime(proposal.created_at)} · {item.source}
@@ -157,12 +157,12 @@ function ProposalCard({
           <Badge tone={proposal.status === "approved" ? "good" : "bad"}>{proposal.status}</Badge> by{" "}
           {proposal.reviewer}
           {proposal.decided_at && ` on ${dateTime(proposal.decided_at)}`}
-          {proposal.note && <span className="text-zinc-500"> · “{proposal.note}”</span>}
+          {proposal.note && <span className="text-zinc-600 dark:text-zinc-400"> · “{proposal.note}”</span>}
         </p>
       )}
       <label className="block text-sm">
         <span className="font-medium">Scenario YAML</span>
-        {open && <span className="ml-2 text-xs text-zinc-500">edit before approving if needed</span>}
+        {open && <span className="ml-2 text-xs text-zinc-600 dark:text-zinc-400">edit before approving if needed</span>}
         <textarea
           className={`${input} mt-1 block w-full font-mono text-xs`}
           rows={Math.min(24, yaml.split("\n").length + 1)}
@@ -205,7 +205,7 @@ function ProposalCard({
           )}
         </fieldset>
       )}
-      {open && !user && <p className="mt-2 text-xs text-zinc-500">Enter your name at the top to review.</p>}
+      {open && !user && <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">Enter your name at the top to review.</p>}
       {error && <ErrorBox error={error} />}
     </Card>
   );

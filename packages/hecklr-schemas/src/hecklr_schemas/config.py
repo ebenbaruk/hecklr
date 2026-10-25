@@ -34,6 +34,9 @@ class HttpAdapterConfig(FrozenModel):
     url: HttpUrl
     stream: Literal["none", "sse", "chunked"] = "none"
     headers: dict[str, str] = Field(default_factory=dict)
+    headers_env: dict[str, EnvVarName] = Field(default_factory=dict)
+    """Headers whose value is read from an environment variable when the adapter starts: header
+    name -> variable name, e.g. ``{Authorization: AGENT_AUTH_HEADER}`` (RFC 0023)."""
     request_template: dict[str, JsonValue] | None = None
     """JSON body with ``{{message}}``, ``{{session_id}}`` and ``{{trial_id}}`` placeholders."""
     response_path: str | None = None
@@ -71,6 +74,9 @@ class WebSocketAdapterConfig(FrozenModel):
     final_path: str | None = None
     """Dotted path to a boolean marking the agent's last message of a turn."""
     headers: dict[str, str] = Field(default_factory=dict)
+    headers_env: dict[str, EnvVarName] = Field(default_factory=dict)
+    """Headers whose value is read from an environment variable when the adapter starts: header
+    name -> variable name, e.g. ``{Authorization: AGENT_AUTH_HEADER}`` (RFC 0023)."""
     timeout_s: PositiveSeconds = 60.0
 
 
@@ -82,6 +88,9 @@ class WebhookAdapterConfig(FrozenModel):
     listen_host: str = "127.0.0.1"
     listen_port: Port = 8787
     headers: dict[str, str] = Field(default_factory=dict)
+    headers_env: dict[str, EnvVarName] = Field(default_factory=dict)
+    """Headers whose value is read from an environment variable when the adapter starts: header
+    name -> variable name, e.g. ``{Authorization: AGENT_AUTH_HEADER}`` (RFC 0023)."""
     timeout_s: PositiveSeconds = 120.0
 
 
@@ -109,6 +118,9 @@ class WebRTCAdapterConfig(FrozenModel):
     type: Literal["webrtc"]
     url: HttpUrl
     headers: dict[str, str] = Field(default_factory=dict)
+    headers_env: dict[str, EnvVarName] = Field(default_factory=dict)
+    """Headers whose value is read from an environment variable when the adapter starts: header
+    name -> variable name, e.g. ``{Authorization: AGENT_AUTH_HEADER}`` (RFC 0023)."""
 
 
 class SipAdapterConfig(FrozenModel):

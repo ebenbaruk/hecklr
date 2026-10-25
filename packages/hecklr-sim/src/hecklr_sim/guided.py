@@ -120,7 +120,7 @@ class GuidedSimulator:
 
     @property
     def contradictions(self) -> int:
-        """Turns whose first draft the guard rejected and that had to be regenerated."""
+        """Turns whose first draft the guard rejected: regenerated, or given up on (issue #101)."""
         return self._contradictions
 
     @property
@@ -190,6 +190,9 @@ class GuidedSimulator:
             self._issues.extend(issues)
             feedback = [issue.detail for issue in issues]
             problems = feedback
+        # A turn no regeneration could fix is the worst contradiction of all; it is counted so
+        # the trial the guard abandons still shows up in the contradiction rate (issue #101).
+        self._contradictions += int(regenerated)
         raise SimulatorError(
             f"trial {self._brief.trial_id}, customer turn {turn}: no valid draft in {attempts} "
             f"attempt(s); last problems: {'; '.join(problems)}"
