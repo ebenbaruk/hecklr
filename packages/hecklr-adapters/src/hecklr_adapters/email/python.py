@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 import anyio
 
+from hecklr_adapters.email.messages import storable
 from hecklr_adapters.errors import AgentError
 from hecklr_adapters.python import AgentSession
 from hecklr_schemas import EmailMessage, SessionContext, new_id
@@ -55,7 +56,8 @@ class PythonEmailTarget:
             raise
         except Exception as exc:
             raise AgentError(f"agent raised {type(exc).__name__}: {exc}") from exc
-        trial.pending.extend(_as_replies(answer))
+        replies = [storable(reply) for reply in _as_replies(answer)]
+        trial.pending.extend(replies)
         trial.arrived.set()
 
     async def replies(self, ctx: SessionContext) -> AsyncIterator[EmailMessage]:

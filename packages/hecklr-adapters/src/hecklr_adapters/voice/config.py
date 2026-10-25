@@ -11,6 +11,7 @@ from pydantic import Field, model_validator
 
 from hecklr_adapters.voice.audio import MULAW_RATE, SAMPLE_RATE
 from hecklr_schemas.common import FrozenModel
+from hecklr_schemas.config import EnvVarName
 
 WireProtocol = Literal["pcm", "twilio", "pipecat"]
 
@@ -35,6 +36,9 @@ class WebSocketVoiceAdapterConfig(FrozenModel):
     sample_rate: Annotated[int, Field(ge=8_000, le=48_000)] | None = None
     """Audio rate on the wire; 16 kHz by default, always 8 kHz for ``twilio``."""
     headers: dict[str, str] = Field(default_factory=dict)
+    headers_env: dict[str, EnvVarName] = Field(default_factory=dict)
+    """Headers whose value is read from an environment variable when the adapter starts: header
+    name -> variable name, e.g. ``{Authorization: AGENT_AUTH_HEADER}`` (RFC 0023)."""
     connect_timeout_s: Annotated[float, Field(gt=0)] = 10.0
 
     @model_validator(mode="after")

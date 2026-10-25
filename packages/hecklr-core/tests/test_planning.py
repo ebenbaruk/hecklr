@@ -119,20 +119,24 @@ def _scenario(**fields: object) -> Scenario:
     )
 
 
-def test_estimate_uses_max_turns_and_prices(ci_suite: Suite) -> None:
+def test_issue85_estimate_uses_max_turns_prices_and_every_simulator_draft(
+    ci_suite: Suite,
+) -> None:
     scenario = _scenario(limits=ScenarioLimits(max_turns=4))
     matrix = expand_matrix(ci_suite, run_seed=0)[:1]
     matrix = [matrix[0].model_copy(update={"scenario_id": "s"})]
     estimate = estimate_cost(
         matrix, {"s": scenario}, simulator_model=SONNET, judge_model="openai/gpt-4.1"
     )
-    # Simulator: 2 calls, input 2*800 + 80*2*1 = 1760, output 160, at $2/$10 per Mtok.
-    assert estimate.simulator_usd == Decimal("0.00512")
+    # Simulator (#85): 2 customer turns of 3 drafts each. A draft of turn k reads 800 + 80*2*k
+    # tokens, so 3 x (800 + 960) = 5280, plus 2 retries x 2 turns x 200 tokens of feedback =
+    # 6080 input; output 2 x 3 x 80 = 480; at $2/$10 per Mtok.
+    assert estimate.simulator_usd == Decimal("0.016960")
     # Judge prompt: 4000 instructions + goal 1 + facts "{}" 2 + 4 turns x 1200 transcript
     # + 4 x 400 world growth = 10403 chars = 5202 tokens. Asked twice (one retry resends the
     # answer): input 2 x 5202 + 1024 = 11428, output 2 x 1024 = 2048, at $2/$8 per Mtok.
     assert estimate.judge_usd == Decimal("0.039240")
-    assert estimate.total_usd == Decimal("0.044360")
+    assert estimate.total_usd == Decimal("0.056200")
     assert estimate.trials == 1
 
 

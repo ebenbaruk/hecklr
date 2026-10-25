@@ -227,6 +227,32 @@ models:
   asr: faster-whisper/base.en       # the caller's ears on the voice channel
 ```
 
+## Authenticating to your agent
+
+The `http`, `websocket` (chat and voice) and `webhook` adapters send `headers` with every request
+or handshake. Keep secrets out of `hecklr.yaml` with `headers_env`, which maps a header name to the
+environment variable holding its value:
+
+```yaml
+agent:
+  adapters:
+    chat:
+      type: http
+      url: https://staging.example.com/chat
+      headers: { X-Team: qa }                         # literal values, safe to commit
+      headers_env: { Authorization: AGENT_AUTH_HEADER }
+```
+
+```bash
+export AGENT_AUTH_HEADER="Bearer $(cat ~/.agent-token)"
+```
+
+Each variable is read once, when the run starts. An unset or empty variable stops the run before
+any trial with an error naming the variable (never its value), and a header set in both `headers`
+and `headers_env` is refused rather than silently resolved. The value stays in the adapter: it is
+not written to the run record, events, logs or reports. The `openai-compatible` adapter keeps its
+own `api_key_env`.
+
 ## Writing a new adapter
 
 Implement the protocol for your channel (`hecklr_schemas.ChatTarget`, `VoiceTarget` or
