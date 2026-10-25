@@ -1,6 +1,8 @@
 """``hecklr ui`` and the serving of the built app (ADR 0016a)."""
 
 import ipaddress
+import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ from fastapi import FastAPI
 from typer.testing import CliRunner
 
 import hecklr.commands.ui
+import hecklr.ui_api.build
 from hecklr import exit_codes
 from hecklr.cli import app as cli_app
 
@@ -205,7 +208,9 @@ async def test_hecklr_ui_dev_serves_the_api_only(
 def test_hecklr_ui_without_a_built_app_says_how_to_build_it(
     lab: Lab, tmp_path: Path, served: Served, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # An install without the app and without a checkout's ui/ sources to build it from.
     monkeypatch.setattr(hecklr.commands.ui, "STATIC_DIR", tmp_path / "missing")
+    monkeypatch.setattr(hecklr.ui_api.build, "UI_SOURCE", tmp_path / "no-checkout" / "ui")
 
     code, output = _invoke("--config", str(lab.config), "--no-open")
 
@@ -221,3 +226,121 @@ def test_hecklr_ui_with_a_broken_config_is_a_config_error(tmp_path: Path, served
     code, _ = _invoke("--config", str(config))
 
     assert code == exit_codes.CONFIG_ERROR
+
+
+# --- issue #106: a checkout install builds the app on the first `hecklr ui` ----------------------
+
+
+@dataclass
+class FakeNpm:
+    """``npm`` on PATH: records each call; ``run build`` writes the app into the static dir."""
+
+    static_dir: Path
+    fails: str | None = None
+    calls: list[tuple[list[str], Path]] = field(default_factory=list)
+
+    def run(self, args: list[str], *, cwd: Path, check: bool) -> subprocess.CompletedProcess[str]:
+        assert check is False
+        self.calls.append((args, cwd))
+        step = " ".join(args[1:])
+        if step == self.fails:
+            return subprocess.CompletedProcess(args, 1)
+        if step == "run build":
+            (self.static_dir / "assets").mkdir(parents=True)
+            (self.static_dir / "index.html").write_text(INDEX, encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0)
+
+
+@pytest.fixture
+def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A checkout's ``ui/`` sources with nothing built yet."""
+    source = tmp_path / "repo" / "ui"
+    source.mkdir(parents=True)
+    (source / "package.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(hecklr.ui_api.build, "UI_SOURCE", source)
+    monkeypatch.setattr(hecklr.commands.ui, "STATIC_DIR", tmp_path / "static")
+    return source
+
+
+@pytest.fixture
+def npm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeNpm:
+    fake = FakeNpm(tmp_path / "static")
+    monkeypatch.setattr("shutil.which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr("subprocess.run", fake.run)
+    return fake
+
+
+async def test_issue106_hecklr_ui_builds_the_app_from_a_checkout_on_first_start(
+    lab: Lab, checkout: Path, npm: FakeNpm, served: Served
+) -> None:
+    code, output = await anyio.to_thread.run_sync(
+        lambda: _invoke("--config", str(lab.config), "--no-open")
+    )
+
+    assert code == exit_codes.OK, output
+    assert "Building the UI app" in output
+    assert npm.calls == [(["/bin/npm", "ci"], checkout), (["/bin/npm", "run", "build"], checkout)]
+    async with _client(served.app) as client:
+        assert (await client.get("/")).text == INDEX
+
+
+def test_issue106_installed_node_modules_are_reused(
+    lab: Lab, checkout: Path, npm: FakeNpm, served: Served
+) -> None:
+    (checkout / "node_modules").mkdir()
+
+    code, output = _invoke("--config", str(lab.config), "--no-open")
+
+    assert code == exit_codes.OK, output
+    assert npm.calls == [(["/bin/npm", "run", "build"], checkout)]
+
+
+def test_issue106_a_built_app_is_not_rebuilt(
+    lab: Lab, checkout: Path, npm: FakeNpm, served: Served, built: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    monkeypatch.setattr(hecklr.commands.ui, "STATIC_DIR", built)
+
+    code, output = _invoke("--config", str(lab.config), "--no-open")
+
+    assert code == exit_codes.OK, output
+    assert npm.calls == []
+
+
+def test_issue106_without_node_the_error_names_node_and_the_exact_command(
+    lab: Lab, checkout: Path, served: Served, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    code, output = _invoke("--config", str(lab.config), "--no-open")
+
+    assert code == exit_codes.NOT_IMPLEMENTED
+    flat = " ".join(output.split())
+    assert "Node.js 20.19 or newer" in flat
+    assert "npm --prefix ui ci && npm --prefix ui run build" in flat
+    assert not hasattr(served, "app")
+
+
+def test_issue106_a_failed_npm_step_is_reported(
+    lab: Lab, checkout: Path, npm: FakeNpm, served: Served
+) -> None:
+    npm.fails = "ci"
+
+    code, output = _invoke("--config", str(lab.config), "--no-open")
+
+    assert code == exit_codes.NOT_IMPLEMENTED
+    assert "`npm ci`" in output
+    assert "exit code 1" in output
+    assert [args for args, _ in npm.calls] == [["/bin/npm", "ci"]]
+    assert not hasattr(served, "app")
+
+
+def test_issue106_a_build_that_writes_elsewhere_is_reported(
+    lab: Lab, checkout: Path, npm: FakeNpm, served: Served, tmp_path: Path
+) -> None:
+    npm.static_dir = tmp_path / "elsewhere"
+
+    code, output = _invoke("--config", str(lab.config), "--no-open")
+
+    assert code == exit_codes.NOT_IMPLEMENTED
+    assert "did not write" in output

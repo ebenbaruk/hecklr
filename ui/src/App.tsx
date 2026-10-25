@@ -48,7 +48,7 @@ export function App() {
             <img src="/favicon.svg" alt="" className="size-6" />
             <span className="font-semibold">Hecklr</span>
             {meta.data && (
-              <span className="hidden text-sm text-zinc-500 sm:inline">{meta.data.project}</span>
+              <span className="hidden text-sm text-zinc-600 dark:text-zinc-400 sm:inline">{meta.data.project}</span>
             )}
           </NavLink>
           <button
@@ -82,7 +82,7 @@ export function App() {
             ))}
           </nav>
           <div className="flex items-center gap-2 md:ml-auto">
-            <label className="flex items-center gap-1 text-sm text-zinc-500">
+            <label className="flex items-center gap-1 text-sm text-zinc-600 dark:text-zinc-400">
               <span>You:</span>
               <input
                 value={user}
@@ -111,7 +111,7 @@ export function App() {
         </Routes>
       </main>
       {meta.data && (
-        <footer className="mx-auto max-w-7xl px-4 pb-8 text-xs text-zinc-500">
+        <footer className="mx-auto max-w-7xl px-4 pb-8 text-xs text-zinc-600 dark:text-zinc-400">
           Hecklr {meta.data.version} · {meta.data.root} · values show [95% confidence interval]
         </footer>
       )}

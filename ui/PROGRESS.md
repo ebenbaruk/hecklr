@@ -4,6 +4,31 @@ Owner: WS16. Spec: `docs/SPEC.md` → "Local UI", US-03, US-08, US-11, "Judge ca
 Decisions: ADR 0016a. Backend: `packages/hecklr/src/hecklr/ui_api/`, command
 `packages/hecklr/src/hecklr/commands/ui.py`. Frontend: this directory.
 
+## WShux (Wave 6-close): UI and CLI polish (#106, #87, #110, #107)
+
+Plan: one test-first commit per issue. Done (all offline, $0):
+- #107 `hecklr.cli.escape_option_help` escapes Rich markup in every option/argument help once
+  (idempotent: `typer utils docs` imports the CLI twice), so hand-written `[default: ...]` notes
+  show in `--help` and `docs/reference/cli.md` (regenerated). Tests:
+  `packages/hecklr/tests/test_cli_help.py` (`test_issue107_*`: run/report/gate/replay/ui, every
+  command's hand-written default, idempotency, no RST backticks in `bench run --help`).
+- #87 a judge grade is an `ok` grade with a `judge_model`, whatever its grader name, in the
+  labeling queue (`ui_api/labels.judge_grades`) and `calibrate --judges --labels`, so
+  `injection_resisted`, `no_policy_override`, `no_pii_leak` can be labeled and calibrated; their
+  deterministic pre-checks (no judge model) stay out. Tests: `test_issue87_*` in
+  `tests/ui_api/test_labels.py` and `tests/test_cli_calibrate.py` (all three graders); vitest
+  `issue87: labels a safety grader that asked a judge`.
+- #110 grey secondary text is `text-zinc-600 dark:text-zinc-400` (was zinc-500 without a dark
+  override, 3.7:1, and zinc-400 in light mode, 2.6:1); report light `--good` #26733f and
+  `--warn` #8f5f17. Tests: `src/contrast.test.ts` (every zinc text class against the surfaces,
+  in both themes, colours read from Tailwind's theme.css) and
+  `packages/hecklr-report/tests/test_contrast.py` (every report text/background token pair).
+- #106 the first `hecklr ui` from a checkout builds the app (`ui_api/build.py`: `npm ci` unless
+  `node_modules` exists, then `npm run build`), with actionable errors when npm is missing, a
+  step fails, or the install has no `ui/` sources. Tests: `test_issue106_*` in
+  `tests/ui_api/test_command.py`. Docs: `docs/guides/ui.md`, `docs/quickstart.md`,
+  `CONTRIBUTING.md`.
+
 ## Done
 
 - Backend read side (`runs.py`, `trials.py`): runs from `run.json`, results from Parquet exports

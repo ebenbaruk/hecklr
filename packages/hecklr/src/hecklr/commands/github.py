@@ -190,7 +190,7 @@ def fetch_baseline_command(
     branch: Annotated[str, typer.Option(help="Branch whose runs store the baseline.")],
     config: ConfigPath = DEFAULT_CONFIG,
 ) -> None:
-    """Download the branch's newest baseline run into the run store; output ``run-id``."""
+    """Download the branch's newest baseline run into the run store; output `run-id`."""
     project = load_project_or_exit(config)
     try:
         run = fetch_baseline(_gh(ctx), repo, name, branch, runs_dir(project))
@@ -215,7 +215,7 @@ def latest_run_command(
     ] = None,
     config: ConfigPath = DEFAULT_CONFIG,
 ) -> None:
-    """Output ``run-id`` and ``status`` of the newest finished run of a suite."""
+    """Output `run-id` and `status` of the newest finished run of a suite."""
     project = load_project_or_exit(config)
     start = _parse_since(since) if since is not None else None
     run = latest_finished(runs_dir(project), suite, start)
@@ -249,7 +249,7 @@ def comment_command(
         str, typer.Option(help="Body when the body file is missing (the gate never ran).")
     ] = "Hecklr could not produce a report; see the workflow logs.",
 ) -> None:
-    """Create or update the suite's sticky PR comment; output ``comment`` (created/updated)."""
+    """Create or update the suite's sticky PR comment; output `comment` (created/updated)."""
     body = (
         body_file.read_text(encoding="utf-8")
         if body_file is not None and body_file.is_file()
