@@ -87,7 +87,12 @@ Done:
   voice,email` through the CLI; each agent found its trial's world from what the adapter sent.
 - #24: `hecklr calibrate --voice-loopback` (`test_sc4_calibrate_voice_loopback_measures_within_20ms`
   runs the installed console script). Found and fixed: DSP workers failed to start under the
-  console script (duckdb import without `__main__`), `cli._keep_dsp_workers_off_the_entry_script`.
+  console script (duckdb import without `__main__`), `cli._keep_dsp_workers_off_the_entry_script`;
+  removed in #82 since hecklr-voice's own pool never runs the main file (ADR 00hva):
+  `test_issue82_dsp_workers_start_under_an_entry_script_that_imports_the_cli`.
+- #94: `test_issue35_ctrl_c_prints_one_line_and_exits_130` exited 0 when the gate ran as a
+  background job: the CLI child inherited an ignored SIGINT and asyncio.run installed no handler.
+  The child restores `signal.default_int_handler`; the test always spawns it with SIGINT ignored.
 - #20 / #28: see the commit and the hecklr-voice / hecklr-adapters tests. Repeated full-suite
   `-n auto` runs: both tests passed in all 8 runs (the only other failure seen was the
   pre-existing hecklr-grade hypothesis bug, issue #38).

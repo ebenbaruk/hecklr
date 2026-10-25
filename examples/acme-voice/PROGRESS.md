@@ -22,9 +22,8 @@ SC4, US-06, US-07. ADRs: 0006, 0007e, 0009a, 0010a, and this workstream's 0011a.
   start > header > base URL > local, `/healthz`), `config.py` (`voice.yaml` + overlays),
   `normalize.py`, CLI. Tests: `test_pipeline.py`, `test_server.py`, `test_config.py`. The agent
   hears callers with hecklr-voice's own ASR, which decodes words only since #48 (its earlier
-  words-only `asr.py` is gone). Its `keep_warm` job is redundant since hecklr-voice's pool never
-  retires workers (#47, ADR 00hva); it stays while `bench/stacks/agents/livekit_acme.py` imports
-  it.
+  words-only `asr.py` is gone). Its `keep_warm` job is gone (#82): hecklr-voice's pool never
+  retires workers (#47, ADR 00hva).
 - **Faults F7-F10** (`examples/acme-faults/F7..F10`): one changed line of `voice.yaml` each
   (`test_sc8_each_voice_fault_changes_exactly_one_line_of_voice_yaml`,
   `test_sc8_each_voice_fault_flips_exactly_its_setting`), READMEs naming the catching metric.

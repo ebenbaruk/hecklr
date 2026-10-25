@@ -1,6 +1,7 @@
 import logging
+import subprocess
 import sys
-import types
+from pathlib import Path
 
 import click
 import pytest
@@ -93,18 +94,38 @@ def test_console_script_entry_point_runs_the_app(
     assert capsys.readouterr().out.strip() == hecklr.__version__
 
 
-def test_console_entry_gives_dsp_workers_no_script_to_rerun(
-    monkeypatch: pytest.MonkeyPatch,
+CONSOLE_ENTRY = """
+import os
+import sys
+
+import anyio
+
+from hecklr.cli import main  # the console script's own import: hecklr.cli imports duckdb
+from hecklr_voice.pool import run_dsp
+
+print("ran", file=open(sys.argv[1], "a"))
+print(anyio.run(run_dsp, os.getpid) != os.getpid())
+"""
+
+
+def test_issue82_dsp_workers_start_under_an_entry_script_that_imports_the_cli(
+    tmp_path: Path,
 ) -> None:
-    # DSP workers re-run the parent's main file without a __main__ module, where importing
-    # hecklr.cli (duckdb) fails; the console script must not be offered to them.
-    entry = types.ModuleType("__main__")
-    entry.__file__ = "/venv/bin/hecklr"
-    monkeypatch.setitem(sys.modules, "__main__", entry)
-    monkeypatch.setattr(sys, "argv", ["hecklr", "version"])
+    # DSP workers never run the parent's main file (ADR 00hva), so the console script needs no
+    # workaround to keep duckdb's import out of them (#82).
+    pytest.importorskip("hecklr_voice")
+    script = tmp_path / "hecklr_entry.py"
+    script.write_text(CONSOLE_ENTRY, encoding="utf-8")
+    runs = tmp_path / "runs.txt"
 
-    with pytest.raises(SystemExit) as exited:
-        main()
+    done = subprocess.run(  # noqa: S603 -- this interpreter running the test's own script
+        [sys.executable, str(script), str(runs)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
 
-    assert exited.value.code == 0
-    assert getattr(entry, "__file__", None) is None
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == "True\n"
+    assert runs.read_text() == "ran\n", "the entry script ran once, in the parent only"

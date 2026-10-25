@@ -128,20 +128,4 @@ escape_option_help(app)
 
 def main() -> None:
     """Console-script entry point."""
-    _keep_dsp_workers_off_the_entry_script()
     app()
-
-
-def _keep_dsp_workers_off_the_entry_script() -> None:
-    """Stop the voice engine's DSP workers from re-running this console script.
-
-    ``anyio.to_process`` workers (the voice engine's DSP pool) run the parent's ``__main__`` file
-    first, with ``__main__`` removed from ``sys.modules``. This script imports ``hecklr.cli`` and
-    with it duckdb, whose import fails without a ``__main__`` module ("ImportError: initialization
-    failed"), so every voice call failed with ``BrokenWorkerProcess``. The script defines nothing a
-    worker needs (DSP jobs are module-level functions of ``hecklr_voice``), so workers are given
-    no main file to run.
-    """
-    entry = sys.modules["__main__"]
-    if getattr(entry, "__file__", None) is not None:
-        del entry.__file__

@@ -59,3 +59,31 @@ jobs:
       - name: Load after the run
         if: always()
         run: uptime
+
+  # On demand only: the two WebRTC cases alone through scripts/sc4-webrtc.sh, the same command a
+  # developer runs on an idle machine (ADR 0024-hvoice-webrtc-sc4, #59). It fails if a case is
+  # skipped (the livekit case needs Docker, which the ubuntu runners have).
+  webrtc-sc4:
+    name: SC4 over WebRTC (livekit, pipecat-smallwebrtc; dedicated CPU)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ${{ inputs.runner || vars.VOICE_TIMING_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Install workspace
+        run: uv sync --all-packages --all-extras
+
+      - name: SC4 over WebRTC (serial, HECKLR_SHARED_CPU unset)
+        run: scripts/sc4-webrtc.sh "$RUNNER_TEMP/sc4-webrtc"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: sc4-webrtc-log
+          path: ${{ runner.temp }}/sc4-webrtc/sc4-webrtc.log

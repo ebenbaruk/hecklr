@@ -47,7 +47,12 @@ curl http://127.0.0.1:8765/healthz               # variant, pipeline, calls per 
 uv run hecklr run --config examples/acme-voice/hecklr.yaml --suite voice-timing --budget-usd 0.5
 uv run hecklr compare --config examples/acme-voice/hecklr.yaml <clean run id> latest
 examples/acme-voice/scripts/voice-fault-matrix.sh     # clean x2, F7-F10, with verdicts
+examples/acme-voice/scripts/voice-fault-matrix.sh smoke   # one clean timing run, no verdicts
 ```
+
+The matrix script starts and stops the agent itself. `HECKLR_VOICE_PORT` puts it on another port
+(the runs then use a copy of `hecklr.yaml` with the adapter URL moved, removed on exit), and the
+script stops at the first run that exits non-zero, such as one where no trial got through.
 
 Flags: `--brain`, `--model`, `--fault F7..F10` or `--overlay DIR`, `--vad`, `--asr`, `--tts`
 (override `voice.yaml`), `--world-base-url`, `--models-dir`, `--host`, `--port`. `ACME_*`
