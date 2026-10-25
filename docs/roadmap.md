@@ -40,7 +40,8 @@ These need a public repository, which is the owner's decision
 - A human review of the judge calibration labels (today AI-drafted), then the live κ run with
   `--labeler human:` ([judge calibration](guides/judge-calibration.md)).
 - SC3 (50 simultaneous calls) measured on an 8-core runner as a scheduled job.
-- SC4 asserted over WebRTC (LiveKit, SmallWebRTC) on a dedicated idle runner (#59).
+- SC4 over WebRTC (LiveKit, SmallWebRTC) in a scheduled job on a dedicated runner; today it is a
+  release check, `scripts/sc4-webrtc.sh` (ADR 0024-hvoice).
 - The voice fault matrix (F7-F10) as a nightly job on `main`.
 - The adaptive design's trial savings measured and published.
 - `agent.command` in `hecklr.yaml` instead of `hecklr fix --agent-cmd` (RFC 0015a).
