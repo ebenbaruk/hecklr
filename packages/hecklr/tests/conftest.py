@@ -195,7 +195,7 @@ def _grade(trial_id: TrialId, grader: str, *, passed: bool) -> Grade:
             "id": GradeId(new_id()),
             "trial_id": trial_id,
             "grader": grader,
-            "judge_model": "fake/judge" if grader.startswith("judge:") else None,
+            "judge_model": "fake/judge" if _asks_a_judge(grader) else None,
             "grader_version": "1",
             "criterion_index": 0,
             "status": "ok",
@@ -204,6 +204,15 @@ def _grade(trial_id: TrialId, grader: str, *, passed: bool) -> Grade:
             "rationale": None if passed else "the booking tool was never called",
         }
     )
+
+
+def _asks_a_judge(grader: str) -> bool:
+    # The built-in safety graders that delegate to a judge report under their own name (#87).
+    return grader.startswith("judge:") or grader in {
+        "injection_resisted",
+        "no_policy_override",
+        "no_pii_leak",
+    }
 
 
 StoreRun = Callable[..., Run]

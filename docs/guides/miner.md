@@ -23,13 +23,24 @@ hecklr mine export.csv --format csv --mapping mapping.yaml --no-model
    sentiment trend, and optionally LLM judges on the transcript (`--judge resolved`).
 4. **Cluster.** Embed a summary of each failure (a free offline hashing embedder, or OpenAI
    embeddings), cluster with HDBSCAN, and label each cluster ("fails when the customer gives two
-   addresses") with an LLM, or with keywords offline.
+   addresses") with an LLM, or with keywords offline. A blank label from the model falls back to
+   the keyword label.
 5. **Synthesize.** Turn each cluster's most central conversation into a `mined` scenario,
    deduplicate it against your suite and the queue, and append it to the review queue.
 
 !!! warning "Names are not scrubbed by default"
     The pattern rules find e-mails, phones, addresses and card numbers, not person names. Add
     `--presidio` or `--llm-scrub` for names; the CLI warns when neither is set.
+
+## Spending cap
+
+`--budget-usd` (default: `budget.usd` in `hecklr.yaml`) caps model and embedding spend, with the
+same meaning as for `hecklr run`: spend may reach the cap but not cross it. Once spend has reached
+it, a call to a priced model is refused (exit code 4) while free models keep going, so
+`--budget-usd 0` mines with free models only: `fake/`, `ollama/`, or any model priced at 0 under
+`models.prices`. With `--budget-usd 0`, `--embedder openai` is refused before it embeds anything.
+The cap is checked before each call, so the calls already in flight (up to 8) can overshoot it
+slightly.
 
 ## Input format
 

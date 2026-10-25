@@ -30,7 +30,7 @@ function RunPicker({
   onChange: (id: string) => void;
 }) {
   return (
-    <label className="flex flex-col text-xs text-zinc-500">
+    <label className="flex flex-col text-xs text-zinc-600 dark:text-zinc-400">
       {label}
       <select
         className={`${input} max-w-xs`}
@@ -72,7 +72,7 @@ export function ComparePage() {
       </PageTitle>
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <RunPicker label="Baseline" value={baseline} runs={runs.data ?? []} onChange={pick("baseline")} />
-        <span aria-hidden className="pb-2 text-zinc-400">
+        <span aria-hidden className="pb-2 text-zinc-600 dark:text-zinc-400">
           →
         </span>
         <RunPicker
@@ -118,7 +118,7 @@ function ComparisonView({ analysis }: { analysis: Analysis }) {
                     <Badge tone="good">fail → pass</Badge>
                   )}
                   <code className="font-mono">{flip.cause}</code>
-                  <span className="text-zinc-500">{flip.scenario_ids.length} scenario(s)</span>
+                  <span className="text-zinc-600 dark:text-zinc-400">{flip.scenario_ids.length} scenario(s)</span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2">
                   {flip.scenario_ids.map((id) => {
@@ -241,7 +241,7 @@ function VerdictCard({ comparison, minEffect }: { comparison: Comparison; minEff
         <span>
           Δ <strong><EstimateText estimate={comparison.delta} kind="delta" /></strong>
         </span>
-        <span className="text-sm text-zinc-500">
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">
           p = {pValue(comparison.p_value)} · minimum effect ±{(minEffect * 100).toFixed(1)} pts
         </span>
       </div>

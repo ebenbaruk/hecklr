@@ -150,7 +150,11 @@ On your own agent, `hecklr calibrate --aa` runs the same agent twice and reports
 comparison stays quiet, plus a simulated false-alarm rate at your suite's size.
 
 **Flaky scenarios.** A scenario whose pooled pass rate across identical runs sits between 20% and
-80% is flagged as flaky, so you fix the scenario or accept it knowingly.
+80% is flagged as flaky, with its interval, so you fix the scenario or accept it knowingly. Only
+runs known to test the same agent and code are checked: today that is `hecklr calibrate --aa`,
+whose two runs are identical by construction. Two runs of one commit are not assumed identical,
+because the recorded commit does not see uncommitted edits, and a real regression pooled over
+both runs would look flaky.
 
 **Judges.** Cohen's κ of every judge rubric against human labels, with an interval; rubrics below
 κ = 0.70 are marked untrusted ([Graders and judges](graders.md#llm-judges)).

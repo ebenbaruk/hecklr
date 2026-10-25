@@ -1,14 +1,16 @@
 """``hecklr run`` through Typer's CliRunner, on starter projects and scripted models."""
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
 import signal
 import subprocess
 import sys
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -22,11 +24,13 @@ import hecklr.commands.run
 from hecklr import exit_codes
 from hecklr.cli import app
 from hecklr.commands._common import CliOverrides
-from hecklr.commands.run import _exit_code
+from hecklr.commands.run import _exit_code, at_most_usd
 from hecklr.testing import scripted_models
 from hecklr_core import ResultStore, RunResults
+from hecklr_core.planning import SIM_DRAFTS_PER_TURN
 from hecklr_llm import FakeLLM, ProviderConfigError
 from hecklr_schemas import AgentRef, Budget, LLMRequest, Run, RunId, RunStatus, new_id
+from hecklr_sim import SimulatorSettings
 
 Edit = Callable[[Path, str, str], None]
 StubAgent = Callable[..., str]
@@ -229,19 +233,115 @@ def test_issue34_max_reply_bytes_sets_the_cap(config_path: Path, stub_agent: Stu
     assert code == exit_codes.OK, output
 
 
+@contextlib.contextmanager
+def _sigint_ignored() -> Iterator[None]:
+    """Ignore SIGINT while a child is spawned: it inherits SIG_IGN, as under a background job."""
+    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
 @pytest.mark.slow
 def test_issue35_ctrl_c_prints_one_line_and_exits_130(
     config_path: Path, stub_agent: StubAgent
 ) -> None:
-    stub_agent("slow", 2.0)
-    # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal.
+    asked = threading.Event()
+    # Every reply takes longer than the test needs to signal, so the run cannot finish first.
+    stub_agent("slow", 5.0, asked)
+    # A real process: SIGINT must reach asyncio's own handler, as it does in a terminal. A child
+    # inherits an ignored SIGINT (the gate started as `cmd &`, nohup), and asyncio.run installs no
+    # handler then, so the signal was dropped and the run ended 0 (#94). The child restores the
+    # terminal default, and the test always hands it an ignored SIGINT to keep that case covered.
+    restore = "import signal; signal.signal(signal.SIGINT, signal.default_int_handler)"
+    command = [sys.executable, "-c", f"{restore}; from hecklr.cli import main; main()", "run"]
+    with _sigint_ignored():
+        process = subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
+            [*command, "-c", str(config_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            # CI forces colour on; the assertions read plain text.
+            env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
+        )
+    with process:
+        try:
+            assert process.stderr is not None
+            plan = click.unstyle(process.stderr.readline())
+            assert plan.startswith("Suite ci:"), plan
+            run_id = plan.split("; run ")[1].strip()
+            # In flight: a trial has reached the agent, so the run loop and its handler are up.
+            assert asked.wait(timeout=60), "no trial reached the agent within 60 s"
+            assert process.poll() is None, "the run ended before it was interrupted"
+            process.send_signal(signal.SIGINT)
+            out, rest = process.communicate(timeout=60)
+        finally:
+            if process.poll() is None:
+                process.kill()
+
+    assert process.returncode == exit_codes.INTERRUPTED, (process.returncode, rest, out)
+    assert click.unstyle(rest).strip() == f"Interrupted: run {run_id} recorded as cancelled"
+    store = ResultStore(config_path.parent / ".hecklr" / "runs")
+    (run,) = store.list_runs()
+    store.close()
+    assert (run.id, run.status) == (run_id, RunStatus.CANCELLED)
+
+
+@pytest.mark.parametrize(
+    ("usd", "printed"),
+    [
+        ("0", "$0.00"),
+        ("0.0149", "$0.02"),
+        ("0.01", "$0.01"),
+        ("0.0071", "$0.0071"),
+        ("0.00712001", "$0.0072"),
+        ("0.00000001", "$0.0001"),
+        ("1.231", "$1.24"),
+        ("25", "$25.00"),
+    ],
+)
+def test_issue84_the_estimate_is_printed_rounded_up(usd: str, printed: str) -> None:
+    assert at_most_usd(Decimal(usd)) == printed
+
+
+def test_issue85_the_estimate_charges_the_simulator_hecklr_run_builds() -> None:
+    # hecklr-core cannot import hecklr-sim, so its constants are checked here against the
+    # settings `hecklr run` builds its simulators with (make_adversarial_simulator's defaults).
+    settings = SimulatorSettings(model="fake/customer")
+    assert settings.max_regenerations + 1 == SIM_DRAFTS_PER_TURN
+    assert not settings.llm_consistency_check
+
+
+_ISSUE117_AGENT = """\
+import asyncio
+from pathlib import Path
+
+import hecklr
+import hecklr_agent
+
+
+@hecklr.agent(channel="chat")
+async def reply(session: hecklr.Session, message: str) -> str:
+    if "saturday" in message.lower():
+        Path(__file__).with_name("stuck").touch()
+        await asyncio.sleep(3600)  # this scenario's trials are still running when SIGTERM comes
+    return await hecklr_agent.reply(session, message)
+"""
+
+
+@pytest.mark.slow
+def test_issue117_sigterm_finalizes_the_run_like_ctrl_c(config_path: Path, edit: Edit) -> None:
+    project = config_path.parent
+    (project / "issue117_agent.py").write_text(_ISSUE117_AGENT, encoding="utf-8")
+    edit(config_path, "hecklr_agent:reply", "issue117_agent:reply")
     command = [sys.executable, "-c", "from hecklr.cli import main; main()", "run"]
     with subprocess.Popen(  # noqa: S603 -- this interpreter and a test-made config path
         [*command, "-c", str(config_path)],
+        cwd=project,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        # CI forces colour on; the assertions read plain text.
         env={k: v for k, v in os.environ.items() if k != "FORCE_COLOR"} | {"NO_COLOR": "1"},
     ) as process:
         try:
@@ -249,23 +349,32 @@ def test_issue35_ctrl_c_prints_one_line_and_exits_130(
             plan = click.unstyle(process.stderr.readline())
             assert plan.startswith("Suite ci:"), plan
             run_id = plan.split("; run ")[1].strip()
-            recorded = config_path.parent / ".hecklr" / "runs" / run_id / "run.json"
-            deadline = time.monotonic() + 30
-            while not recorded.exists() and time.monotonic() < deadline:
+            deadline = time.monotonic() + 60
+            while not (project / "stuck").exists() and time.monotonic() < deadline:
                 time.sleep(0.05)
-            time.sleep(0.5)  # trials are in flight: each agent reply takes 2 s
-            process.send_signal(signal.SIGINT)
+            time.sleep(2.0)  # the other scenarios' trials answer at once and finish meanwhile
+            process.send_signal(signal.SIGTERM)
             _, rest = process.communicate(timeout=60)
         finally:
             if process.poll() is None:
                 process.kill()
 
-    assert process.returncode == exit_codes.INTERRUPTED, rest
-    assert click.unstyle(rest).strip() == f"Interrupted: run {run_id} recorded as cancelled"
-    store = ResultStore(config_path.parent / ".hecklr" / "runs")
+    assert process.returncode == 128 + signal.SIGTERM, rest
+    assert click.unstyle(rest).strip() == f"Terminated: run {run_id} recorded as cancelled"
+    run_dir = project / ".hecklr" / "runs" / run_id
+    assert sorted(path.name for path in run_dir.glob("*.parquet")) == [
+        "events.parquet",
+        "grades.parquet",
+        "trials.parquet",
+    ]
+    assert not list(run_dir.glob("*.wal")), "the result database was not closed"
+    store = ResultStore(run_dir.parent)
     (run,) = store.list_runs()
+    results = anyio.run(store.load_run, run_id)
     store.close()
-    assert (run.id, run.status) == (run_id, RunStatus.CANCELLED)
+    assert run.status is RunStatus.CANCELLED
+    assert run.counts.planned == 15
+    assert run.counts.ok == len(results.trials) >= 1
 
 
 def test_issue35_only_cancellations_of_the_embedded_server_are_silenced(

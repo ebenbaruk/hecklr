@@ -3,6 +3,7 @@
 import json
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -199,22 +200,61 @@ def test_mine_reports_input_problems_as_config_errors(
     assert re.search(message, output), output
 
 
-def test_mine_stops_at_the_budget(config_path: Path, logs: Path) -> None:
-    code, output = _mine(config_path, logs, "--budget-usd", "0")
+PAID = "openai/gpt-4.1-mini"
 
-    assert code == exit_codes.BUDGET
+
+def _mine_paid(config_path: Path, logs: Path, *args: str) -> tuple[int, str, FakeLLM]:
+    """Mine with a priced model, its replies scripted by a FakeLLM serving ``openai/``."""
+    llm = FakeLLM(responder=_reply)
+    result = runner.invoke(
+        app,
+        ["mine", str(logs), "--config", str(config_path), *args],
+        obj=CliOverrides({"openai": llm}),
+    )
+    return result.exit_code, click.unstyle(result.output), llm
+
+
+def test_issue108_mine_with_a_zero_budget_runs_free_models(config_path: Path, logs: Path) -> None:
+    code, output = _mine(config_path, logs, "--judge", "resolved", "--budget-usd", "0")
+
+    assert code == exit_codes.OK, output
+    assert "scenario proposal(s) queued for review; spent $0.0000" in output
+
+
+def test_issue108_mine_with_a_zero_budget_refuses_a_paid_model(
+    config_path: Path, logs: Path
+) -> None:
+    code, output, llm = _mine_paid(config_path, logs, "--model", PAID, "--budget-usd", "0")
+
+    assert code == exit_codes.BUDGET, output
     assert "reached the cap" in output
+    assert PAID in output
+    assert llm.calls == []
 
 
 @pytest.mark.parametrize("args", [("--judge", "resolved"), ("--llm-scrub",), ("--llm-summaries",)])
 def test_mine_stops_at_the_budget_inside_concurrent_stages(
-    config_path: Path, logs: Path, args: tuple[str, ...]
+    config_path: Path,
+    logs: Path,
+    args: tuple[str, ...],
+    edit: Callable[[Path, str, str], None],
 ) -> None:
-    code, output = _mine(config_path, logs, *args, "--budget-usd", "0")
+    edit(config_path, "judge: fake/judge", f"judge: {PAID}")
+    code, output, _ = _mine_paid(config_path, logs, "--model", PAID, *args, "--budget-usd", "0")
 
     assert code == exit_codes.BUDGET, output
     assert "reached the cap" in output
     assert "ExceptionGroup" not in output
+
+
+def test_issue108_mine_refuses_a_paid_embedder_with_a_zero_budget(
+    config_path: Path, logs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-used")
+    code, output = _mine(config_path, logs, "--embedder", "openai", "--budget-usd", "0")
+
+    assert code == exit_codes.BUDGET, output
+    assert "--embedder openai" in output
 
 
 @pytest.mark.parametrize("args", [("--judge", "resolved"), ("--llm-scrub",), ("--llm-summaries",)])
@@ -301,3 +341,22 @@ def test_mine_default_persona_skips_adversarial_ones(
     queue = load_queue(config_path.parent / ".hecklr" / MINE_DIR)
     assert queue
     assert {proposal.scenario.persona for proposal in queue} == {"busy-commuter"}
+
+
+def test_issue109_mine_with_the_default_fake_models_stores_readable_labels(
+    config_path: Path, logs: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "mined"
+    result = runner.invoke(
+        app,
+        ["mine", str(logs), "--config", str(config_path), "--out", str(out)],
+        obj=CliOverrides({}),
+    )
+
+    assert result.exit_code == exit_codes.OK, result.output
+    clusters = [
+        FailureCluster.model_validate_json(line)
+        for line in (out / "clusters.jsonl").read_text().splitlines()
+    ]
+    assert clusters
+    assert all(cluster.label.startswith("failures about ") for cluster in clusters)

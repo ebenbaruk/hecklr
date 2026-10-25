@@ -38,12 +38,15 @@ def flooding_agent(reply_bytes: int) -> FastAPI:
     return app
 
 
-def slow_agent(delay_s: float) -> FastAPI:
-    """Answers every message with ``{"reply": "ok"}`` after ``delay_s`` seconds."""
+def slow_agent(delay_s: float, asked: threading.Event | None = None) -> FastAPI:
+    """Answers every message with ``{"reply": "ok"}`` after ``delay_s`` seconds; sets ``asked``
+    when a message arrives, so a test can tell that a trial is in flight."""
     app = FastAPI()
 
     @app.post("/chat")
     async def chat() -> dict[str, str]:
+        if asked is not None:
+            asked.set()
         await anyio.sleep(delay_s)
         return {"reply": "ok"}
 

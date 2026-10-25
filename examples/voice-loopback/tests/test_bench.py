@@ -74,8 +74,13 @@ async def test_loop_lag_beats_until_cancelled() -> None:
 @pytest.mark.sc4_timing
 async def test_sc4_calibration_case_runs_end_to_end() -> None:
     result = await sc4_calibrate.calibrate_case(300.0, 150.0, calls=1)
-    assert result.statuses == ["ok"]
-    assert result.within(20.0), sc4_calibrate.describe("latency", result.latency)
+    report = (
+        f"{result.underruns} harness send underruns\n"
+        f"{sc4_calibrate.describe('latency', result.latency)}\n"
+        f"{sc4_calibrate.describe('barge-in', result.reaction)}"
+    )
+    assert result.statuses == ["ok"], report
+    assert result.within(20.0), report
     assert "bias" in sc4_calibrate.describe("barge-in", result.reaction)
 
 

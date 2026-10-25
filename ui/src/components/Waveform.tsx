@@ -85,7 +85,7 @@ export function Waveform({ recording }: { recording: Recording }) {
             {playing ? "Pause" : "Play"}
           </button>
         )}
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-zinc-600 dark:text-zinc-400">
           <span className="mr-1 inline-block size-2 rounded-sm bg-sky-500/50" /> caller
           <span className="mx-1 ml-3 inline-block size-2 rounded-sm bg-rose-500/50" /> agent
           <span className="mx-1 ml-3 inline-block h-2 w-0.5 bg-amber-600" /> interruption
@@ -99,10 +99,10 @@ export function Waveform({ recording }: { recording: Recording }) {
           role="img"
         />
       ) : (
-        <p className="text-sm text-zinc-500">{recording.note}</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{recording.note}</p>
       )}
       {failed && <p className="text-sm text-rose-600">Could not load the recording: {failed}</p>}
-      <details className="mt-1 text-xs text-zinc-500">
+      <details className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
         <summary>Turn markers ({recording.markers.length})</summary>
         <ul className="mt-1 font-mono">
           {recording.markers.map((m, i) => (

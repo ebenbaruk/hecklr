@@ -1,7 +1,7 @@
 """The pipeline on a simulated agent whose behaviour follows its prompt, like the rules brain."""
 
 import itertools
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,7 +20,15 @@ from hecklr_fix.target import FixTarget
 from hecklr_fix.validation import SuiteRun
 from hecklr_fix.workspace import TARGETED_DIR, TARGETED_SUITE
 from hecklr_llm import FakeLLM
-from hecklr_schemas import ClusterId, FailureCluster, HecklrConfig, PatchStatus, RunStatus, new_id
+from hecklr_schemas import (
+    ClusterId,
+    FailureCluster,
+    HecklrConfig,
+    ModelPrice,
+    PatchStatus,
+    RunStatus,
+    new_id,
+)
 
 from .factories import FAST_STATS, make_run, scenario, suite_run
 
@@ -120,19 +128,22 @@ def _fixer(
     runner: FakeRunner | None = None,
     budget: str | None = None,
     candidates: int | None = None,
+    model: str = "fake/fixer",
+    prices: Mapping[str, ModelPrice] | None = None,
 ) -> tuple[Fixer, FakeRunner, FakeLauncher, FakeLLM]:
     config = load_model(project, HecklrConfig)
     llm = FakeLLM(script=list(script))
     runner = runner or FakeRunner()
     launcher = FakeLauncher()
     settings = FixSettings(
-        model="fake/fixer",
+        model=model,
         guard_suite="ci",
         seed=11,
         stats=FAST_STATS,
         candidates=candidates if candidates is not None else len(script),
         targeted_trials=TRIALS,
         budget_usd=Decimal(budget) if budget is not None else None,
+        prices=prices or {},
     )
     fixer = Fixer(
         config_path=project,
@@ -235,6 +246,52 @@ async def test_the_budget_stops_the_session_with_what_is_known(project: Path) ->
     assert result.patches[0].targeted  # candidate 0 was measured before the money ran out
     assert result.spent_usd == Decimal("0.06")
     assert [r.budget_usd for r in runner.requests] == [Decimal("0.05"), Decimal("0.02")]
+
+
+async def test_issue118_a_zero_budget_runs_a_session_on_free_models(project: Path) -> None:
+    fixer, runner, _, llm = _fixer(project, [GOOD, IRRELEVANT], budget="0")
+
+    result = await fixer.run()
+
+    assert result.outcome is FixOutcome.FIXED, result.message
+    assert len(llm.calls) == 2
+    assert result.spent_usd == 0
+    # Every run gets the $0 cap, so its own pre-run estimate refuses paid simulator/judge models.
+    assert {r.budget_usd for r in runner.requests} == {Decimal(0)}
+
+
+async def test_issue118_a_zero_budget_refuses_a_paid_generator_before_any_call(
+    project: Path,
+) -> None:
+    fixer, runner, _, llm = _fixer(project, [GOOD], budget="0", model="openai/gpt-4.1-mini")
+
+    result = await fixer.run()
+
+    assert result.outcome is FixOutcome.BUDGET_EXHAUSTED
+    assert "openai/gpt-4.1-mini is not a free model" in result.message
+    assert llm.calls == []
+    assert len(runner.requests) == 1  # the free targeted baseline ran
+    assert result.targeted_baseline is not None
+
+
+async def test_issue118_an_unpriced_generator_counts_as_paid(project: Path) -> None:
+    fixer, _, _, llm = _fixer(project, [GOOD], budget="0", model="openai-compatible/llama")
+
+    result = await fixer.run()
+
+    assert result.outcome is FixOutcome.BUDGET_EXHAUSTED
+    assert llm.calls == []
+
+
+async def test_issue118_a_generator_priced_at_zero_in_the_config_is_free(project: Path) -> None:
+    local = "openai-compatible/llama"
+    free = ModelPrice(input_per_mtok=Decimal(0), output_per_mtok=Decimal(0))
+    fixer, _, _, llm = _fixer(project, [GOOD], budget="0", model=local, prices={local: free})
+
+    result = await fixer.run()
+
+    assert result.outcome is FixOutcome.FIXED, result.message
+    assert len(llm.calls) == 1
 
 
 async def test_a_winner_found_before_the_budget_ran_out_is_still_the_winner(

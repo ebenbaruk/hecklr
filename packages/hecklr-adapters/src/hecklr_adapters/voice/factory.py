@@ -34,7 +34,7 @@ def make_voice_target(
     """
     match config:
         case WebSocketVoiceAdapterConfig():
-            return WebSocketVoiceTarget(config)
+            return WebSocketVoiceTarget(config, environ=environ)
         case PipecatAdapterConfig():
             module = _extra("hecklr_adapters.voice.pipecat", "pipecat")
             return cast(VoiceTarget, module.PipecatVoiceTarget(config))

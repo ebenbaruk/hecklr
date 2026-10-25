@@ -86,10 +86,24 @@ calls):
 | 600 / 300 ms | +3 ms [+3, +4] | 7 ms [6, 8] | +3 ms [+3, +4] | 8 ms [7, 10] | 13 ms |
 | 900 / 200 ms | +4 ms [+3, +4] | 8 ms [6, 10] | +3 ms [+3, +4] | 8 ms [6, 9] | 13 ms |
 
-The timing tests run on every change in CI, serially on an idle runner (timing measured under a
-parallel test run measures the machine, not Hecklr). A ten-minute call drifts by less than 5 ms
-between the send and receive clocks. Over WebRTC transports (Pipecat SmallWebRTC, LiveKit) the
-same tests pass on an idle machine but are not yet asserted on the shared CI runners.
+The local gate (`scripts/ci-local.sh`, ADR 0022a) runs the timing tests in their own serial step,
+and reruns a failed one alone once the machine is quieter (ADR `0024-hvoice-timing-under-load.md`):
+timing measured under a parallel test run measures the machine, not Hecklr. A ten-minute call drifts by less than 5 ms
+between the send and receive clocks. When the harness itself is starved of CPU, its caller audio
+leaves late and the trial carries a warning that its voice timings may be skewed; measure on a
+machine with idle cores.
+
+**Over WebRTC** (LiveKit, Pipecat SmallWebRTC) the transport adds its own delay: Opus encoding and
+the receivers' jitter buffers, 113-334 ms measured on an idle laptop. A caller hears that delay,
+so Hecklr reports it as part of the response latency rather than subtracting it. The voice
+contract checks that it is bounded (0-350 ms for LiveKit, 0-400 ms for SmallWebRTC, within the
+20 ms tolerance) and steady within a call (spread at most 40 ms plus 60 ms for LiveKit, 200 ms for
+SmallWebRTC). Those cases need idle cores, because their reference bots share the test process,
+so the shared gate skips their timing checks; run them with `scripts/sc4-webrtc.sh`
+([ADR 0024-hvoice-webrtc-sc4](https://github.com/ebenbaruk/hecklr/blob/main/docs/adr/0024-hvoice-webrtc-sc4.md)).
+SmallWebRTC's larger allowance is Pipecat's own behaviour (issue #27): when the bot's thread is
+starved, Pipecat's output track sends every overdue 10 ms frame at once instead of dropping any,
+and since it fills quiet time with silence, the caller hears the rest of the call that much later.
 
 **Concurrency (SC3).** 50 simultaneous calls from one harness ran with zero frame underruns (also
 100 and 150) on a 10-core laptop, with the loopback agent and synthetic speech. At 200 calls the

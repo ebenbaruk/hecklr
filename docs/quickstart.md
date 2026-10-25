@@ -23,7 +23,9 @@ hecklr run             # 5 scenarios x 3 trials, pass rates with 95% CIs, report
     ```
 
     Then run `hecklr init --yes` and `hecklr run` as above. Extras will be `hecklr[voice]`,
-    `hecklr[local-voice]`, `hecklr[mine]`, `hecklr[ui]` and `hecklr[all]`.
+    `hecklr[local-voice]`, `hecklr[mine]`, `hecklr[ui]` and `hecklr[all]`. From a checkout, the
+    first `hecklr ui` builds the web UI with npm (Node.js 20.19 or newer); see
+    [the UI guide](guides/ui.md).
 
 `hecklr init` writes a starter project into the current directory:
 

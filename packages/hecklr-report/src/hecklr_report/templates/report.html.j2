@@ -7,8 +7,8 @@
 <style>
 :root {
   --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
-  --accent: #3a5bd9; --user: #3a5bd9; --agent: #d9822b; --bad: #c0362c; --good: #2f8a4c;
-  --warn: #b7791f; --code: #f1f0ec;
+  --accent: #3a5bd9; --user: #3a5bd9; --agent: #d9822b; --bad: #c0362c; --good: #26733f;
+  --warn: #8f5f17; --code: #f1f0ec;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -93,6 +93,10 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
   <div class="panel problems"><strong>Cannot gate on this run:</strong>
     <ul>{% for p in a.problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
   {% endif %}
+  {% if a.judge_model_change %}{% set before, after = a.judge_model_change %}
+  <div class="panel problems"><strong>Judge model changed:</strong>
+    <code>{{ before }}</code> → <code>{{ after }}</code>; {{ fmt.rescore_advice(before) }}</div>
+  {% endif %}
   <nav>
     <a href="#overview">Overview</a>
     {% if a.comparisons %}<a href="#comparisons">Comparisons</a>{% endif %}
@@ -128,6 +132,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
       <div class="label">simulator contradiction rate</div>
       <div class="value">{{ fmt.value(a.counts.contradiction_rate.value, "percent") }}</div>
       <div class="ci">{{ fmt.confidence(a.counts.contradiction_rate) }} {{ fmt.interval(a.counts.contradiction_rate, "percent") }}</div>
+      {% if a.counts.errors_after_contradiction %}<div class="ci">{{ fmt.errors_after_contradiction(a.counts.errors_after_contradiction) }}</div>{% endif %}
     </div>
     {% endif %}
     <div class="panel card">
@@ -140,7 +145,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
 
 {% if a.comparisons %}
 <section id="comparisons">
-  <h2>Comparisons <span class="meta">(candidate − baseline, α={{ a.stats.alpha }}, δ={{ a.stats.min_effect }})</span></h2>
+  <h2>Comparisons <span class="meta">(candidate − baseline, α={{ a.stats.alpha }}, δ={{ a.stats.min_effect }}{% if a.suite_comparison %}{{ fmt.look(a.suite_comparison) }}{% endif %})</span></h2>
   <div class="scroll"><table>
     <thead><tr><th>Metric</th><th>Slice</th><th>Baseline</th><th>Candidate</th><th>Δ [CI]</th><th>p</th><th>q</th><th>Verdict</th></tr></thead>
     <tbody>
@@ -179,7 +184,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
     {% for s in a.scenarios %}
       <tr id="s-{{ s.scenario_id }}"><td><code>{{ s.scenario_id }}</code><div class="meta">{{ s.title }}</div></td>
         <td>{{ s.tags|join(", ") }}</td>
-        <td class="num">{% if s.pass_rate %}{{ fmt.estimate(s.pass_rate, "percent") }} <span class="meta">{{ s.passes }}/{{ s.trials }}</span>{% else %}no analyzable trial{% endif %}</td>
+        <td class="num">{% if s.pass_rate %}{{ fmt.estimate(s.pass_rate, "percent") }} <span class="meta">{{ s.passes }}/{{ s.trials }}</span>{% else %}no analyzable trial{% endif %}{% if s.flaky %}<div class="bad">flaky across identical runs: {{ fmt.estimate(s.flaky, "percent") }}</div>{% endif %}</td>
         {% if a.baseline %}
         <td class="num">{% if s.baseline_pass_rate %}{{ fmt.estimate(s.baseline_pass_rate, "percent") }}{% else %}—{% endif %}</td>
         <td class="{{ 'bad' if s.flip == 'pass_to_fail' else 'good' }}">{{ (s.flip or "").replace("_", " ") }}</td>

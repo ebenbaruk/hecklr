@@ -5,6 +5,21 @@ report, calibrate, model defaults, the GitHub Action in `action/`). Spec: `docs/
 "Developer experience", "Run lifecycle", "Agent adapters", "Statistics and reporting".
 Decisions: ADR 0007a, ADR 0007c.
 
+## WShrun (Wave 6-close): #117, #84, #85, #83, #115 (doctor)
+
+- #117 `hecklr run` cancels on SIGTERM, records the run `cancelled`, exports and exits 143:
+  `test_issue117_sigterm_finalizes_the_run_like_ctrl_c` (real SIGTERM to a subprocess). Real:
+  acme `full` (380 trials, fake models, rules agent) terminated mid-run: `run.json` status
+  `cancelled`, counts `ok: 258`, Parquet exports written, no DuckDB WAL left.
+- #84 the "at most" figure rounds up (to 1/100 cent below a cent):
+  `test_issue84_the_estimate_is_printed_rounded_up`.
+- #85 `test_issue85_the_estimate_charges_the_simulator_hecklr_run_builds` pins the estimate's
+  draft count to the simulator `hecklr run` builds.
+- #83 doctor's models-available check probes `OLLAMA_BASE_URL`:
+  `test_issue83_models_available_probes_ollama_where_ollama_base_url_points`.
+- #115 doctor reports an unset `headers_env` variable by name:
+  `test_issue115_doctor_names_an_unset_header_variable_never_a_value`.
+
 ## WShrun (Wave 4): run/gate/report hardening (ADR 00hra)
 
 Plan, one test-first commit per issue (test names cite the issue):
@@ -72,7 +87,12 @@ Done:
   voice,email` through the CLI; each agent found its trial's world from what the adapter sent.
 - #24: `hecklr calibrate --voice-loopback` (`test_sc4_calibrate_voice_loopback_measures_within_20ms`
   runs the installed console script). Found and fixed: DSP workers failed to start under the
-  console script (duckdb import without `__main__`), `cli._keep_dsp_workers_off_the_entry_script`.
+  console script (duckdb import without `__main__`), `cli._keep_dsp_workers_off_the_entry_script`;
+  removed in #82 since hecklr-voice's own pool never runs the main file (ADR 00hva):
+  `test_issue82_dsp_workers_start_under_an_entry_script_that_imports_the_cli`.
+- #94: `test_issue35_ctrl_c_prints_one_line_and_exits_130` exited 0 when the gate ran as a
+  background job: the CLI child inherited an ignored SIGINT and asyncio.run installed no handler.
+  The child restores `signal.default_int_handler`; the test always spawns it with SIGINT ignored.
 - #20 / #28: see the commit and the hecklr-voice / hecklr-adapters tests. Repeated full-suite
   `-n auto` runs: both tests passed in all 8 runs (the only other failure seen was the
   pre-existing hecklr-grade hypothesis bug, issue #38).

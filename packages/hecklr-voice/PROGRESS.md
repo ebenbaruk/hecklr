@@ -104,6 +104,38 @@ Done (decisions: ADR 00hva, ADR 0010b follow-up):
   and have their own serial CI step; #59:
   `.github/workflows/voice-timing.yml` (first run owed until Actions billing is restored).
 
+## hvoice-close (Wave 6): voice cleanup and timing flakes
+
+Done (branch `ws-hvoice-voice-and-flakes`; decisions: ADR 0024-hvoice-webrtc-sc4,
+ADR 0024-hvoice-timing-under-load):
+
+- #95: `examples/acme-voice/scripts/voice-fault-matrix.sh` writes `HECKLR_VOICE_PORT` into the
+  adapter URL of a generated copy of `hecklr.yaml` (next to it, removed on exit), stops at the
+  first run that exits non-zero, and has a `smoke` mode. Run for real:
+  `HECKLR_VOICE_PORT=36571 ... voice-fault-matrix.sh smoke` -> run `01M5R0QYKPW6JJTTT1A2F7TRDF`,
+  24 trials completed against the agent on 36571 (load 15-33), exit 0, generated config removed.
+- #82: `keep_warm` (acme-voice), the LiveKit bench agent's pre-warm synthesis and the CLI's
+  `_keep_dsp_workers_off_the_entry_script` are gone.
+  `test_issue82_dsp_workers_start_under_an_entry_script_that_imports_the_cli` (hecklr) runs a DSP
+  job from an entry script that imports `hecklr.cli`; SC3/SC4 serial results are in the PR's
+  Local CI comment.
+- #59: `scripts/sc4-webrtc.sh` (+ manual `webrtc-sc4` job in `voice-timing.yml`). At load 12.3
+  -> 8.3: livekit SC4 failed (offsets 107-411 ms latency, up to 1,262 ms barge-in). At load
+  3.9 -> 8.5: 18 passed, 2 structural skips; offsets livekit 105-136 / 142-179 ms, SmallWebRTC
+  208-405 / 228-257 ms (latency / barge-in).
+- #27: Pipecat's `RawAudioTrack` catch-up burst is upstream behaviour (ADR 00hfa tests); recorded
+  in ADR 0024-hvoice-webrtc-sc4 and the voice guide; allowance kept.
+- #94: root cause is the SIGINT disposition, not load. A gate or pytest started as a background
+  job (`cmd &`, nohup) hands the CLI child an ignored SIGINT; asyncio.run then installs no Ctrl-C
+  handler, the signal is dropped and the run exits 0. Reproduced: `(uv run pytest ...::
+  test_issue35_ctrl_c_prints_one_line_and_exits_130) & wait` failed with rc 0. The child now
+  restores `signal.default_int_handler` before `main()`, and the test always spawns it with SIGINT
+  ignored, so it guards the case on every run (without the restore it fails in the foreground).
+  It also signals only once a trial is in flight and the process is still running.
+- #121, #123: `scripts/ci-local.sh` reruns the failed tests of `sc4-timing` and `perf` alone once
+  the load falls to half the cores (max 900 s wait), keeps both logs and reports both; exercised
+  with fake steps (rerun passes, rerun fails, no failed test named).
+
 ## Next
 
 - WS10: voice adapters (Pipecat, LiveKit) deliver 16 kHz `TimedFrame`s with media-clock

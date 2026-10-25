@@ -27,6 +27,8 @@ from hecklr_report.outcomes import ACCENT, SNR_DB, ConvertedRun, convert
 from hecklr_report.voice import SNR_ORDER, degradation, mean_estimate, voice_metrics
 from hecklr_schemas import (
     Channel,
+    Comparison,
+    Estimate,
     Event,
     MetricSummary,
     Persona,
@@ -35,7 +37,16 @@ from hecklr_schemas import (
     Scenario,
     StatsConfig,
 )
-from hecklr_stats import JudgeCalibration, compare_runs, summarize_run, wilson_estimate
+from hecklr_stats import (
+    JudgeCalibration,
+    TrialOutcome,
+    compare_runs,
+    compare_sequentially,
+    flaky_scenarios,
+    summarize_run,
+    wilson_estimate,
+)
+from hecklr_stats.sequential import MIN_LOOK_GAP
 
 COST_PER_TRIAL = "cost_usd_per_trial"
 """Mean simulator and judge spend per conversation, with a bootstrap interval."""
@@ -57,6 +68,7 @@ def analyze(
     *,
     personas: Mapping[str, Persona] | None = None,
     judge_calibrations: Sequence[JudgeCalibration] = (),
+    identical_runs: bool = False,
 ) -> Analysis:
     """Analyze ``candidate``, compared with ``baseline`` when one is given.
 
@@ -71,6 +83,10 @@ def analyze(
             when their persona is given.
         judge_calibrations: Agreement of judge rubrics with human labels, when available; rubrics
             below κ 0.70 are flagged untrusted.
+        identical_runs: The caller vouches that both runs test the same agent and code, so
+            scenarios between 20% and 80% pooled pass rate are flagged flaky; an A/A self-test
+            declares it. It is never inferred: a shared commit says nothing about uncommitted
+            edits, and pooling a real regression would label it flaky (ADR 0024-hstats).
     """
     known_personas = personas or {}
     seed = stats.seed if stats.seed is not None else candidate.run.seed
@@ -85,13 +101,8 @@ def analyze(
         base_seed = stats.seed if stats.seed is not None else baseline.run.seed
         baseline_summaries = _summaries(baseline, base, stats, base_seed)
         if not problems:
-            comparisons = compare_runs(
-                base.outcomes,
-                cand.outcomes,
-                baseline_run=baseline.run.id,
-                candidate_run=candidate.run.id,
-                config=stats,
-                seed=seed,
+            comparisons = _compare_pass_rates(
+                candidate, cand, baseline, base, stats, seed
             ) + compare_latencies(
                 base.outcomes,
                 cand.outcomes,
@@ -100,7 +111,13 @@ def analyze(
                 config=stats,
                 seed=seed,
             )
-    scenario_results = _scenario_results(cand.rows, base.rows if base else None, scenarios)
+    identical = baseline is not None and identical_runs
+    flaky = (
+        {f.scenario_id: f.pass_rate for f in flaky_scenarios([*base.outcomes, *cand.outcomes])}
+        if identical and base is not None
+        else {}
+    )
+    scenario_results = _scenario_results(cand.rows, base.rows if base else None, scenarios, flaky)
     return Analysis(
         created_at=datetime.now(UTC),
         candidate=RunInfo.of(candidate.run),
@@ -114,12 +131,62 @@ def analyze(
         comparisons=comparisons,
         verdict=comparisons[0].verdict if comparisons else None,
         scenarios=scenario_results,
+        identical_runs=identical,
         flips=_flip_groups(scenario_results),
         voice=_voice(candidate, cand, summaries, baseline_summaries, stats, seed),
         judges=[_trust(c) for c in judge_calibrations],
         trials=cand.rows,
         problems=problems,
     )
+
+
+def _compare_pass_rates(
+    candidate: RunResults,
+    cand: ConvertedRun,
+    baseline: RunResults,
+    base: ConvertedRun,
+    stats: StatsConfig,
+    seed: int,
+) -> list[Comparison]:
+    """Pass-rate comparisons: fixed design, or one group-sequential look per adaptive batch."""
+    looks = candidate_looks(candidate, cand)
+    base_id, cand_id = baseline.run.id, candidate.run.id
+    if len(looks) == 1:
+        return compare_runs(
+            base.outcomes,
+            cand.outcomes,
+            baseline_run=base_id,
+            candidate_run=cand_id,
+            config=stats,
+            seed=seed,
+        )
+    return compare_sequentially(
+        base.outcomes, looks, baseline_run=base_id, candidate_run=cand_id, config=stats, seed=seed
+    )
+
+
+def candidate_looks(results: RunResults, converted: ConvertedRun) -> list[list[TrialOutcome]]:
+    """The candidate's outcomes at each look: the first pass, then everything (issue #103).
+
+    ``hecklr_core`` plans every cell with the same trial indices ``0 .. trials - 1`` in a row,
+    and an adaptive pass appends cells numbered from ``trials`` on (``extend_matrix``), so the
+    first cell's leading run in the matrix is the first pass's trials per cell. A run without an
+    adaptive pass, or whose extra trials are too few to be a look of their own
+    (``MIN_LOOK_GAP``), has one look: the fixed design.
+    """
+    everything = converted.outcomes
+    matrix = results.run.matrix
+    if not results.run.adaptive or not matrix:
+        return [everything]
+    first_cell = matrix[0].key[:3]
+    per_cell = next((n for n, spec in enumerate(matrix) if spec.key[:3] != first_cell), len(matrix))
+    analyzed = [row for row in converted.rows if row.passed is not None]
+    first = [
+        outcome for row, outcome in zip(analyzed, everything, strict=True) if row.index < per_cell
+    ]
+    if not first or len(everything) - len(first) < MIN_LOOK_GAP * len(everything):
+        return [everything]
+    return [first, everything]
 
 
 def _problems(
@@ -225,6 +292,7 @@ def _scenario_results(
     rows: Sequence[TrialRow],
     baseline_rows: Sequence[TrialRow] | None,
     scenarios: Mapping[str, Scenario],
+    flaky: Mapping[str, Estimate],
 ) -> list[ScenarioResult]:
     by_scenario = _group(rows)
     base_by_scenario = _group(baseline_rows or [])
@@ -251,6 +319,7 @@ def _scenario_results(
                 ),
                 flip=flip,
                 cause=_dominant_cause(failing_side),
+                flaky=flaky.get(sid),
             )
         )
     return results

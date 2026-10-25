@@ -19,6 +19,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Final
 
 import numpy as np
 import numpy.typing as npt
@@ -390,4 +391,62 @@ def compare_runs(
                 created_at=created_at,
             )
         )
+    return comparisons
+
+
+DECISIVE: Final = frozenset({Verdict.REGRESSION, Verdict.IMPROVEMENT})
+"""Verdicts that cross a group-sequential boundary and so end an adaptive comparison early."""
+
+
+def compare_sequentially(
+    baseline: Sequence[TrialOutcome],
+    looks: Sequence[Sequence[TrialOutcome]],
+    *,
+    baseline_run: RunId,
+    candidate_run: RunId,
+    config: StatsConfig,
+    seed: int,
+) -> list[Comparison]:
+    """Compare at each look of a group-sequential design and stop at the first decision.
+
+    ``--adaptive`` adds candidate trials in batches; each batch is a look (issue #103). Look j's
+    information fraction is its share of the candidate's trials, and it is tested at its
+    O'Brien-Fleming nominal alpha (``group_sequential_boundaries``), so looking more than once
+    keeps the overall false-alarm rate at ``config.alpha``. The first look whose whole-suite
+    verdict is a regression or an improvement decides; otherwise the last look does. No change
+    never stops a comparison early: the design spends alpha on rejections only.
+
+    Args:
+        baseline: Outcomes of the baseline run.
+        looks: The candidate outcomes available at each look, cumulative: each look holds every
+            trial of the one before, and the last holds all of them.
+        baseline_run: Baseline run id.
+        candidate_run: Candidate run id.
+        config: Overall alpha, minimum effect and resamples.
+        seed: The run seed.
+
+    Returns:
+        ``compare_runs`` of the deciding look, with its ``look`` and ``alpha_spent``.
+
+    Raises:
+        ValueError: no look, or looks that do not grow by at least ``MIN_LOOK_GAP`` of the trials.
+    """
+    if not looks:
+        raise ValueError("a sequential comparison needs at least one look")
+    total = len(looks[-1])
+    fractions = [len(look) / total for look in looks]
+    group_sequential_boundaries(fractions, config.alpha)  # validates every look up front
+    comparisons: list[Comparison] = []
+    for number, look in enumerate(looks, start=1):
+        comparisons = compare_runs(
+            baseline,
+            look,
+            baseline_run=baseline_run,
+            candidate_run=candidate_run,
+            config=config,
+            seed=seed,
+            look_fractions=fractions[:number],
+        )
+        if comparisons[0].verdict in DECISIVE:
+            break
     return comparisons

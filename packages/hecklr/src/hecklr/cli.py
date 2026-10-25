@@ -4,12 +4,16 @@ Each command lives in its own module under ``hecklr.commands`` and is registered
 workstreams adding commands touch one new file and one line.
 """
 
+import inspect
 import logging
+import re
 import sys
-from typing import Annotated, Any
+from collections.abc import Callable, Iterator
+from typing import Annotated, Any, get_args, get_origin
 
 import structlog
 import typer
+from typer.models import ParameterInfo
 
 from hecklr import __version__
 from hecklr.commands import bench, github
@@ -87,22 +91,41 @@ app.add_typer(bench.app)
 app.add_typer(github.app)
 
 
+_UNESCAPED_BRACKET = re.compile(r"(?<!\\)\[")
+
+
+def escape_option_help(typer_app: typer.Typer) -> None:
+    """Escape Rich markup in every option and argument help of ``typer_app`` and its sub-apps.
+
+    Typer renders help with Rich markup, so a hand-written note such as ``[default: html]`` reads
+    as a style tag and disappears from ``--help`` and the generated CLI reference (issue #107).
+    Option help is plain prose here, so escaping it centrally keeps every such note visible
+    without each command module having to remember to escape. Idempotent: ``typer utils docs``
+    executes this module a second time over the same command modules.
+    """
+    for command in typer_app.registered_commands:
+        if command.callback is not None:
+            for info in _parameter_infos(command.callback):
+                if info.help:
+                    info.help = _UNESCAPED_BRACKET.sub(r"\\[", info.help)
+    for group in typer_app.registered_groups:
+        if group.typer_instance is not None:
+            escape_option_help(group.typer_instance)
+
+
+def _parameter_infos(callback: Callable[..., Any]) -> Iterator[ParameterInfo]:
+    for parameter in inspect.signature(callback, eval_str=True).parameters.values():
+        if isinstance(parameter.default, ParameterInfo):
+            yield parameter.default
+        if get_origin(parameter.annotation) is Annotated:
+            yield from (
+                meta for meta in get_args(parameter.annotation) if isinstance(meta, ParameterInfo)
+            )
+
+
+escape_option_help(app)
+
+
 def main() -> None:
     """Console-script entry point."""
-    _keep_dsp_workers_off_the_entry_script()
     app()
-
-
-def _keep_dsp_workers_off_the_entry_script() -> None:
-    """Stop the voice engine's DSP workers from re-running this console script.
-
-    ``anyio.to_process`` workers (the voice engine's DSP pool) run the parent's ``__main__`` file
-    first, with ``__main__`` removed from ``sys.modules``. This script imports ``hecklr.cli`` and
-    with it duckdb, whose import fails without a ``__main__`` module ("ImportError: initialization
-    failed"), so every voice call failed with ``BrokenWorkerProcess``. The script defines nothing a
-    worker needs (DSP jobs are module-level functions of ``hecklr_voice``), so workers are given
-    no main file to run.
-    """
-    entry = sys.modules["__main__"]
-    if getattr(entry, "__file__", None) is not None:
-        del entry.__file__

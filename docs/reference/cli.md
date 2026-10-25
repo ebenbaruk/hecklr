@@ -115,7 +115,7 @@ $ hecklr compare [OPTIONS] {baseline} [candidate]
 
 * `-c, --config <path>`: Path to hecklr.yaml.  [default: hecklr.yaml]
 * `-f, --format <terminal|md|html|json|junit>`: Output format.  [default: terminal]
-* `--out <path>`: Write to this file .
+* `--out <path>`: Write to this file [html default: the candidate&#x27;s run directory].
 * `--help`: Show this message and exit.
 
 ## `hecklr gate`
@@ -134,9 +134,9 @@ $ hecklr gate [OPTIONS]
 * `-s, --suite <str>`: Gate the latest run of this suite.
 * `--candidate <str>`: Candidate run: an id or `latest`.  [default: latest]
 * `--baseline <str>`: Baseline run: an id, or `baseline` (the candidate&#x27;s recorded baseline, else the newest earlier completed run of its suite).  [default: baseline]
-* `--on-inconclusive <fail|pass>`: Exit code of an inconclusive verdict .
+* `--on-inconclusive <fail|pass>`: Exit code of an inconclusive verdict [default: gate.on_inconclusive].
 * `--missing-baseline <error|pass>`: With no baseline run at all: `error` exits 3; `pass` reports the candidate alone and exits 0 when the candidate itself is sound.  [default: error]
-* `--out-dir <path>`: Where the reports go .
+* `--out-dir <path>`: Where the reports go [default: the candidate&#x27;s run directory].
 * `--report-url <str>`: Link to the full report, shown in the comment.
 * `--help`: Show this message and exit.
 
@@ -157,9 +157,9 @@ $ hecklr report [OPTIONS] [run]
 **Options**:
 
 * `-c, --config <path>`: Path to hecklr.yaml.  [default: hecklr.yaml]
-* `-f, --format <md|html|json|junit>`: Formats to write (repeatable) .
-* `--baseline <str>`: Compare with this run (an id or `baseline`) .
-* `--out-dir <path>`: Directory for the files .
+* `-f, --format <md|html|json|junit>`: Formats to write (repeatable) [default: html].
+* `--baseline <str>`: Compare with this run (an id or `baseline`) [default: the run&#x27;s recorded one].
+* `--out-dir <path>`: Directory for the files [default: the run directory].
 * `--open`: Open the HTML report in a browser.
 * `--help`: Show this message and exit.
 
@@ -185,9 +185,10 @@ $ hecklr calibrate [OPTIONS]
 * `--runs <str>`: --aa: compare these two stored runs instead of running (give twice).
 * `--replicates <int range>`: --aa: simulated A/A comparisons (0 skips the simulation).  [default: 200; x&gt;=0]
 * `--labels <file>`: --judges: human labels, JSONL.
-* `--run <str>`: --judges: runs whose judge grades were labeled .
+* `--run <str>`: --judges: runs whose judge grades were labeled [latest].
 * `--set <directory>`: --judges: a labeled transcript set to judge now (e.g. calibration/judges).
 * `--labeler <str>`: --judges: only labels whose labeler starts with this, e.g. human: (repeatable).
+* `--drift-from <str>`: --judges --set: also judge the set with this earlier judge model and warn if agreement dropped with the current one.
 * `--help`: Show this message and exit.
 
 ## `hecklr replay`
@@ -207,9 +208,9 @@ $ hecklr replay [OPTIONS] {transcripts}
 **Options**:
 
 * `-c, --config <path>`: Path to hecklr.yaml.  [default: hecklr.yaml]
-* `--out <path>`: Directory for the scenario files .
-* `--persona <str>`: Persona the replays run with .
-* `--model <str>`: Extraction model .
+* `--out <path>`: Directory for the scenario files [default: scenarios/replay].
+* `--persona <str>`: Persona the replays run with [default: the first non-adversarial one in personas/].
+* `--model <str>`: Extraction model [default: models.simulator].
 * `--help`: Show this message and exit.
 
 ## `hecklr mine`
@@ -231,18 +232,18 @@ $ hecklr mine [OPTIONS] {logs}
 * `-f, --format <jsonl|otel|langfuse|langsmith|csv>`: Format of LOGS.  [default: jsonl]
 * `--mapping <file>`: CSV column mapping (YAML), for csv.
 * `-c, --config <path>`: Path to hecklr.yaml.  [default: hecklr.yaml]
-* `--out <path>`: Directory for the results .
-* `--model <str>`: Model for labels and scenarios .
+* `--out <path>`: Directory for the results [default: &lt;output_dir&gt;/mine/&lt;mine id&gt;, where the review queue looks].
+* `--model <str>`: Model for labels and scenarios [default: models.simulator].
 * `--no-model`: No LLM: keyword labels, no proposed scenarios.
 * `--embedder <hashing|openai>`: How failure summaries are embedded.  [default: hashing]
 * `--judge <str>`: Judge every conversation on this rubric (repeatable), e.g. resolved.
 * `--llm-scrub / --no-llm-scrub`: Also ask the model for PII the patterns missed (names).  [default: no-llm-scrub]
 * `--llm-summaries / --no-llm-summaries`: Cluster LLM-written root causes instead of transcript text.  [default: no-llm-summaries]
-* `--presidio / --no-presidio`: Also scrub with Presidio (hecklr-mine).  [default: no-presidio]
-* `--persona <str>`: Persona of the proposed scenarios .
-* `--min-cluster-size <int range>`: Smallest cluster .  [x&gt;=2]
+* `--presidio / --no-presidio`: Also scrub with Presidio (hecklr-mine[presidio]).  [default: no-presidio]
+* `--persona <str>`: Persona of the proposed scenarios [default: first non-adversarial persona].
+* `--min-cluster-size <int range>`: Smallest cluster [default: 2.5% of failures].  [x&gt;=2]
 * `--dedup-threshold <float range>`: Similarity that makes a duplicate.  [default: 0.9; 0.0&lt;=x&lt;=1.0]
-* `--budget-usd <float range>`: Spending cap . Checked before each model call, so the calls already in flight (up to 8) can overshoot it slightly.  [x&gt;=0.0]
+* `--budget-usd <float range>`: Spending cap [default: budget.usd]. Checked before each model call, so the calls already in flight (up to 8) can overshoot it slightly. 0 runs free models only (fake/, ollama/), as for hecklr run.  [x&gt;=0.0]
 * `--help`: Show this message and exit.
 
 ## `hecklr fix`
@@ -270,10 +271,10 @@ $ hecklr fix [OPTIONS] [cluster]
 * `--candidates <int range>`: Patches to generate.  [default: 5; x&gt;=1]
 * `--trials <int range>`: Trials per cluster scenario in the targeted pass.  [default: 3; x&gt;=1]
 * `--guard-suite <str>`: Suite the guard pass runs.  [default: ci]
-* `--guard-trials <int range>`: Trials per guard scenario .  [x&gt;=1]
-* `--model <str>`: Model that writes the patches .
-* `--seed <int>`: Seed of every run .
-* `--budget-usd <float range>`: Cap on Hecklr&#x27;s spend for the session .  [x&gt;=0]
+* `--guard-trials <int range>`: Trials per guard scenario [default: the suite&#x27;s].  [x&gt;=1]
+* `--model <str>`: Model that writes the patches [default: models.judge].
+* `--seed <int>`: Seed of every run [default: seed].
+* `--budget-usd <float range>`: Cap on Hecklr&#x27;s spend for the session [default: budget.usd]. 0 runs free models only (fake/, ollama/), as for hecklr run.  [x&gt;=0]
 * `--ready-timeout <float range>`: Seconds the agent has to start listening.  [default: 60.0; x&gt;=1]
 * `--pr`: Open a pull request with the winner.
 * `--draft / --no-draft`: With --pr: open it as a draft.  [default: no-draft]
@@ -309,7 +310,7 @@ $ hecklr ui [OPTIONS]
 * `-c, --config <path>`: Path to hecklr.yaml.  [default: hecklr.yaml]
 * `--host <str>`: Interface to bind; the UI has no login, keep it local.  [default: 127.0.0.1]
 * `--port <int>`: Port to serve on.  [default: 8484]
-* `--user <str>`: Default labeler and reviewer name .
+* `--user <str>`: Default labeler and reviewer name [default: your OS user name].
 * `--open / --no-open`: Open the UI in a browser.  [default: open]
 * `--dev / --no-dev`: Serve the API only, for `npm run dev` in ui/ (it proxies /api).  [default: no-dev]
 * `--help`: Show this message and exit.
@@ -352,7 +353,7 @@ $ hecklr bench list [OPTIONS]
 
 ### `hecklr bench run`
 
-Measure stacks and write their leaderboard rows to ``results/&lt;stack&gt;.json``.
+Measure stacks and write their leaderboard rows to `results/&lt;stack&gt;.json`.
 
 **Usage**:
 
@@ -419,12 +420,12 @@ $ hecklr github [OPTIONS] COMMAND [ARGS]...
 **Commands**:
 
 * `fetch-baseline`: Download the branch&#x27;s newest baseline run...
-* `latest-run`: Output ``run-id`` and ``status`` of the...
+* `latest-run`: Output `run-id` and `status` of the newest...
 * `comment`: Create or update the suite&#x27;s sticky PR...
 
 ### `hecklr github fetch-baseline`
 
-Download the branch&#x27;s newest baseline run into the run store; output ``run-id``.
+Download the branch&#x27;s newest baseline run into the run store; output `run-id`.
 
 **Usage**:
 
@@ -442,7 +443,7 @@ $ hecklr github fetch-baseline [OPTIONS]
 
 ### `hecklr github latest-run`
 
-Output ``run-id`` and ``status`` of the newest finished run of a suite.
+Output `run-id` and `status` of the newest finished run of a suite.
 
 **Usage**:
 
@@ -459,7 +460,7 @@ $ hecklr github latest-run [OPTIONS]
 
 ### `hecklr github comment`
 
-Create or update the suite&#x27;s sticky PR comment; output ``comment`` (created/updated).
+Create or update the suite&#x27;s sticky PR comment; output `comment` (created/updated).
 
 **Usage**:
 

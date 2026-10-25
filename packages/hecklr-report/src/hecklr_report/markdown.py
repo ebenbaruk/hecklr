@@ -84,7 +84,7 @@ def _headline(analysis: Analysis) -> list[str]:
             f"{fmt.p_equals(comparison.p_value)} · {comparison.n_scenarios} scenarios, "
             f"{comparison.n_trials_baseline} vs {comparison.n_trials_candidate} trials · "
             f"\N{GREEK SMALL LETTER DELTA}={100 * comparison.min_effect:g} pts, "
-            f"\N{GREEK SMALL LETTER ALPHA}={comparison.alpha:g}"
+            f"\N{GREEK SMALL LETTER ALPHA}={comparison.alpha:g}{fmt.look(comparison)}"
         ]
         if comparison.verdict is Verdict.INCONCLUSIVE:
             lines.append(_inconclusive_note(comparison))
@@ -199,16 +199,30 @@ def _health(analysis: Analysis) -> list[str]:
     if counts.undecided:
         parts.append(f"{counts.undecided} undecided (grade errors)")
     if counts.contradiction_rate is not None:
+        errored = counts.errors_after_contradiction
+        after = f", {fmt.errors_after_contradiction(errored)}" if errored else ""
         parts.append(
-            f"simulator contradictions {fmt.estimate(counts.contradiction_rate, 'percent')}"
+            f"simulator contradictions {fmt.estimate(counts.contradiction_rate, 'percent')}" + after
         )
     lines = ["**Run** " + " · ".join(parts)]
+    flaky = [(s.scenario_id, s.flaky) for s in analysis.scenarios if s.flaky is not None]
+    if flaky:
+        lines.append(
+            "**Flaky across identical runs** (pass rate 20-80%): " + fmt.flaky_list(flaky, _code)
+        )
+    if (change := analysis.judge_model_change) is not None:
+        before, after = change
+        lines.append(
+            f"**Judge model changed** {_code(before)} → {_code(after)}: "
+            + escape(fmt.rescore_advice(before))
+        )
     untrusted = [j for j in analysis.judges if not j.trusted]
     if untrusted:
         lines.append(
             "**Untrusted judges**: "
             + ", ".join(
-                f"{_code(j.grader)} κ={j.kappa.value:.2f} ({escape(j.reason or 'kappa < 0.70')})"
+                f"{_code(j.grader)} κ={fmt.estimate(j.kappa, 'number')} "
+                f"({escape(j.reason or 'kappa < 0.70')})"
                 for j in untrusted[:4]
             )
         )

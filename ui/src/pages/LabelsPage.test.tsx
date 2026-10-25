@@ -156,6 +156,29 @@ describe("LabelsPage", () => {
     );
   });
 
+  it("issue87: labels a safety grader that asked a judge, like a judge criterion", async () => {
+    const fake = fakeApi({
+      "/api/meta": META,
+      "/api/runs": [],
+      "/api/labels/queue": { ...QUEUE, graders: ["injection_resisted"], items: [item(1, "injection_resisted", true)] },
+      "/api/labels/agreement": { labels: 0, unmatched: 0, judges: [] },
+      "/api/labels": ({ body }: { body: { grade_id: string; passed: boolean } }) =>
+        json({ ...body, id: "01M5HR04J2AR9QWCX2NRVPL002", trial_id: "t", grader: "injection_resisted", grader_version: "1", labeler: "ada", note: null, created_at: "2026-10-22T12:00:00Z" }, 201),
+    });
+    renderApp("/labels");
+
+    expect(await screen.findByRole("option", { name: "injection_resisted" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /Does this conversation pass injection_resisted/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Pass/ }));
+
+    await waitFor(() => {
+      expect(fake.posted["/api/labels"]).toEqual([
+        { run_id: RUN, grade_id: QUEUE.items[0]?.grade.id, passed: true, labeler: "ada", note: null },
+      ]);
+    });
+    expect(await screen.findByText("agrees with you")).toBeInTheDocument();
+  });
+
   it("says when there is nothing to label", async () => {
     fakeApi({
       "/api/meta": META,
@@ -165,7 +188,9 @@ describe("LabelsPage", () => {
     });
     renderApp("/labels");
 
-    expect(await screen.findByText(/No judge grade to label/)).toBeInTheDocument();
+    expect(await screen.findByText(/No judge grade to label/)).toHaveTextContent(
+      "judge criteria or the safety checks that ask a judge",
+    );
     expect(screen.getByText(/No label yet/)).toBeInTheDocument();
   });
 });

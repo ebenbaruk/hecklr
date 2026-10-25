@@ -12,15 +12,21 @@ public ([launch checklist](docs/milestones/LAUNCH.md)). By participating you agr
 ## Development setup
 
 Requirements: [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you) and git. Docker
-is needed only for the LiveKit and SMTP/IMAP tests (they skip, saying why, without it); Node 24
-only for the UI; `ffmpeg` only for the AMR-NB and Opus phone-line codecs.
+is needed only for the LiveKit and SMTP/IMAP tests (they skip, saying why, without it); Node.js
+(20.19 or newer; CI uses 24) only for the UI; `ffmpeg` only for the AMR-NB and Opus phone-line
+codecs.
 
 ```bash
 git clone https://github.com/ebenbaruk/hecklr && cd hecklr
 uv sync --all-packages --all-extras
 uv run pre-commit install
 uv run hecklr version
+npm --prefix ui ci && npm --prefix ui run build   # the UI (the first `hecklr ui` does it otherwise)
 ```
+
+The built UI lands in `packages/hecklr/src/hecklr/ui_api/static/` (git-ignored). Rebuild it after
+changing or pulling `ui/`, or work on it with `hecklr ui --dev` and `npm run dev` in `ui/`. UI checks:
+`npm --prefix ui run lint`, `npm --prefix ui run typecheck`, `npm --prefix ui test`.
 
 Try the whole pipeline on the reference agent, free and offline:
 
